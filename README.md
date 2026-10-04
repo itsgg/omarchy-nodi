@@ -48,7 +48,7 @@ text already typed:
 | `kill chromium`, `ports`, `services` | Processes, listening ports, user services |
 | `h github`, `prs`, `tmux`, `ssh `, `man ls` | Browser history, pull requests, tmux, SSH hosts, man pages |
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
-| `ask why is the sky blue`, or Tab | A quick answer from Claude |
+| `ask why is the sky blue`, or Tab | A quick answer from Claude; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `?` | Help, with every example answered live |
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
@@ -114,8 +114,9 @@ scripts from [raycast/script-commands](https://github.com/raycast/script-command
 run as they are.
 
 Other settings: `fallbacks` (what a query nothing answers offers),
-`ask.model` (`haiku` by default), and `providers` (what Nodi searches, in
-order). A list you set replaces the default one, so start from
+`ask.model` (the Claude model for `ask` and app descriptions, `haiku` by
+default), and
+`providers` (what Nodi searches, in order). A list you set replaces the default one, so start from
 `config.default.json`; only `keywords` merge.
 
 ## What it touches
@@ -124,7 +125,7 @@ order). A list you set replaces the default one, so start from
   with arguments that are never read as shell.
 - It goes online for exchange rates (open.er-api.com, once a day, or every
   ten minutes while that fails), for `prs` (through `gh`), and for Claude,
-  through the `claude` command, under `ask` and, if turned on, to describe
+  through Claude Code's `claude` command, under `ask` and, if turned on, to describe
   apps. That Claude session has no tools, no MCP servers and none of your
   Claude settings, and saves nothing.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`. It
