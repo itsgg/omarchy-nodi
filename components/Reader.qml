@@ -21,6 +21,9 @@ Item {
   property int timeoutMs: 5000
   property int maxBytes: 1048576
   property var extraEnvironment: ({})
+  // A read that can be cancelled (a script filter's run that a newer
+  // keystroke replaced) is ended with the program and all it started.
+  property bool cancelable: false
   // Its own flag, not proc.running: a Process reports running only once it
   // has started, so a second run() straight after the first saw it idle and
   // replaced the first one's command (found by tests/qml/RequestsTest.qml).
@@ -63,6 +66,31 @@ Item {
     deadline.restart()
   }
 
+  // Ends the running read, and what it started: TERM to the children of the
+  // wrapper (Sources.limited), chosen by parent pid. One is timeout(1),
+  // which forwards it to its own process group, the program and all it
+  // started; the other is the output's reader. A TERM to the wrapper's group
+  // missed both, as timeout makes a group of its own (tests/qml/RequestsTest.qml).
+  // The read then ends as failed, its tag saying it was cancelled. Said
+  // again every 50 ms until it has ended: a read cancelled as it starts may
+  // not have started its children yet.
+  function cancel() {
+    if (!reader.active || !reader.cancelable) return
+    if (reader.tag) reader.tag.cancelled = true
+    cancelling.start()
+    cancelling.triggered()
+  }
+
+  Timer {
+    id: cancelling
+    interval: 50
+    repeat: true
+    onTriggered: {
+      if (!reader.active) { stop(); return }
+      if (proc.processId > 0) Quickshell.execDetached(["/usr/bin/pkill", "-TERM", "-P", String(proc.processId)])
+    }
+  }
+
   Process {
     id: proc
     clearEnvironment: true
@@ -93,6 +121,7 @@ Item {
   function ended(ok) {
     if (!reader.active) return
     deadline.stop()
+    cancelling.stop()
     reader.finished(reader.collected, ok, reader.tag)
     reader.active = false
     Qt.callLater(reader.drain)

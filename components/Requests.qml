@@ -13,7 +13,7 @@ Item {
   visible: false
 
   property var providers: []
-  property var env: ({})            // { user, home, cacheDir } for the sources' argv
+  property var env: ({})            // { user, home, cacheDir, path } for the sources' argv
 
   signal arrived(string key)
 
@@ -37,6 +37,13 @@ Item {
     if (!argv) return
     var slot = source.concurrent ? key : name
     var reader = requests.readers[slot] || requests.make(slot, name, source)
+    // A `supersede` source's newer read ends the one running (a keystroke
+    // replacing the last query's run): that one is dropped, not failed, so
+    // the query typed again is read again.
+    if (reader.busy && source.supersede && reader.tag && reader.tag.key !== key && !reader.tag.cancelled) {
+      requests.put(reader.tag.key, Requests.dropped(requests.cache[reader.tag.key]))
+      reader.cancel()
+    }
     if (reader.busy) {
       var before = requests.waiting[slot]
       if (before && before !== key) requests.put(before, Requests.dropped(requests.cache[before]))
@@ -47,7 +54,11 @@ Item {
   }
 
   function make(slot, name, source) {
-    var reader = readerType.createObject(requests, { timeoutMs: source.timeoutMs || 5000, maxBytes: source.maxBytes || 1048576 })
+    // A source that runs the user's own programs (`sessionPath`) gets the
+    // session's PATH, ~/.local/bin and the like, where the rest get only
+    // Omarchy's and the system's.
+    var reader = readerType.createObject(requests, { timeoutMs: source.timeoutMs || 5000, maxBytes: source.maxBytes || 1048576,
+      cancelable: !!source.supersede, extraEnvironment: source.sessionPath && requests.env.path ? { PATH: requests.env.path } : {} })
     reader.finished.connect(function(text, ok, tag) { requests.finish(name, tag, text, ok) })
     requests.readers[slot] = reader
     return reader
@@ -56,6 +67,8 @@ Item {
   function finish(name, tag, text, ok) {
     if (!tag) return
     if (requests.waiting[tag.slot] === tag.key) requests.waiting[tag.slot] = ""
+    // Cancelled by a newer read: its entry was dropped then; nothing lands.
+    if (tag.cancelled) return
     // A concurrent key's Reader goes when its read lands, or one per script
     // ever listed would stay for the life of the shell (agy 2026-10-03).
     if (tag.slot !== name && !requests.waiting[tag.slot]) {

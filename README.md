@@ -113,6 +113,43 @@ folders. The same header with `@raycast.` works, so
 scripts from [raycast/script-commands](https://github.com/raycast/script-commands)
 run as they are.
 
+A script filter is a program that turns what you type after a keyword
+into rows, as you type:
+
+```jsonc
+"filters": [
+  { "keyword": "n", "title": "Notes", "icon": "󰎞", "command": ["my-notes", "--nodi"] }
+]
+```
+
+`n meet` runs `my-notes --nodi meet`: the words after the keyword, trimmed,
+are the last argument (so a program must not read it as an option) and
+`NODI_QUERY`. From your session it gets PATH, HOME, USER,
+`XDG_RUNTIME_DIR`, `OMARCHY_PATH`, the Wayland, Hyprland and D-Bus
+variables, and nothing else; LANG is `C.UTF-8`. It runs for 3 s at most
+(`timeoutMs`, up to 10000), and each keystroke ends the run before it, the
+program and what it started. Where two take the same word, the one earlier
+in `providers` wins: by default your `keywords`, then filters, then Nodi's
+own prefixes (`w`, `kill`, `cb`), so pick a word of its own. It prints one
+JSON object a line, each a row; only `title` is required:
+
+```json
+{"title": "Meeting notes", "subtitle": "Monday", "icon": "󰎞", "image": "/abs/path.png", "badge": "3",
+ "id": "notes/meeting", "action": {"exec": ["my-notes", "open", "meeting"]}, "confirm": true,
+ "preview": "## Meeting notes\n\n- ship it", "actions": [{"title": "Copy link", "action": {"copy": "https://..."}}]}
+```
+
+`action` is one of `{"exec": [argv]}` (started through a login shell, its
+arguments never read as shell), `{"open": "url or /path"}`,
+`{"copy": "text"}`, `{"paste": "text"}` (into the window you were in) or
+`{"query": "text"}` (fills the bar in). `confirm` asks for a second Enter.
+`preview` is Markdown for the pane beside the list, or `{"title",
+"subtitle", "markdown"}`; pictures and HTML in it are shown as text, never
+loaded. A row with an `id` is remembered and ranked like any other.
+`actions` are what Ctrl+K offers, each with `exec`, `open`, `copy` or
+`paste`. At most 50 rows; a line that is not such an object is skipped.
+While a run is on its way, the last rows stay.
+
 Other settings: `fallbacks` (what a query nothing answers offers),
 `ask.model` (the Claude model for `ask` and app descriptions, `haiku` by
 default), and

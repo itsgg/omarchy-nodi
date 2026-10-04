@@ -1,10 +1,13 @@
 import QtQuick
 import qs.Commons
+import "../lib/Markdown.js" as Markdown
 
 // The selected row's preview beside the list (ROADMAP item 26), shown only
 // when the row has one (his ruling 2026-10-04): a header, its labels, then
 // the text or the picture. A provider gives `preview` on a row:
-//   { title, subtitle, text, mono, follow, image, labels: [[label, value], ...] }
+//   { title, subtitle, text, markdown, mono, follow, image, labels: [[label, value], ...] }
+// `markdown` is drawn as Markdown, its pictures and HTML taken out first
+// (lib/Markdown.js); `text` is drawn as it is.
 // Kadhir's pane is the model: a hairline, 16 px inside.
 Rectangle {
   id: pane
@@ -13,7 +16,8 @@ Rectangle {
 
   readonly property var p: preview || ({})
   readonly property bool hasImage: !!p.image
-  readonly property bool hasText: !hasImage && !!p.text
+  readonly property bool hasMarkdown: !hasImage && typeof p.markdown === "string" && p.markdown !== ""
+  readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text)
 
   // No fill: secondary text is chosen to read on the card itself, and a
   // tint under it took four themes just under 4.5:1 (Fable 2026-10-04).
@@ -56,7 +60,9 @@ Rectangle {
       width: parent.width
       height: Style.spacing.hairline
       color: Util.alpha(nodi.foreground, 0.08)
-      visible: (pane.p.labels || []).length > 0 || pane.hasImage || pane.hasText
+      // Under a header only: with no title or subtitle there is nothing to
+      // divide from.
+      visible: !!(pane.p.title || pane.p.subtitle) && ((pane.p.labels || []).length > 0 || pane.hasImage || pane.hasText)
     }
     Repeater {
       model: pane.p.labels || []
@@ -93,6 +99,8 @@ Rectangle {
     anchors.top: head.bottom
     anchors.bottom: parent.bottom
     anchors.margins: Style.space(16)
+    // No header (a preview of Markdown alone): the pane's own margin only.
+    anchors.topMargin: head.height > 0 ? Style.space(16) : 0
     fillMode: Image.PreserveAspectFit
     asynchronous: true
     smooth: true
@@ -111,6 +119,8 @@ Rectangle {
     anchors.top: head.bottom
     anchors.bottom: parent.bottom
     anchors.margins: Style.space(16)
+    // No header (a preview of Markdown alone): the pane's own margin only.
+    anchors.topMargin: head.height > 0 ? Style.space(16) : 0
     contentWidth: width
     contentHeight: bodyText.implicitHeight
     clip: true
@@ -122,9 +132,10 @@ Rectangle {
       id: bodyText
       width: body.width
       wrapMode: Text.Wrap
-      textFormat: Text.PlainText
-      text: pane.p.text || ""
+      textFormat: pane.hasMarkdown ? Text.MarkdownText : Text.PlainText
+      text: pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : (pane.p.text || "")
       color: nodi.foreground
+      linkColor: nodi.foreground
       font.family: nodi.fontFamily
       font.pixelSize: pane.p.mono ? Style.font.caption : Style.font.subtitle
       lineHeight: 1.15
