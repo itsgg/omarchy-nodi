@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { load, plain } from "./load.mjs";
-import { run, top } from "./fixtures.mjs";
+import { Engine, config, services, run, top } from "./fixtures.mjs";
 
 const D = load("providers/dev.js");
 const projects = D.parseProjects("git\t/home/u/Work/GG/omarchy-nodi\ngit\t/home/u/Work/kalvi\nz\t18.0\t/home/u/Work\nz\t4.0\t/home/u/Work/kalvi\nnot a line\n", true);
@@ -32,7 +32,11 @@ test("tmux sessions, SSH hosts, man and tldr", () => {
   assert.equal(t[0].subtitle, "tmux, 1 window, attached");
   assert.deepEqual(plain(top("ssh box", { ssh }).run.argv.slice(-3)), ["ssh", "--", "box"]);
   assert.deepEqual(plain(top("man ls").run.argv.slice(-3)), ["man", "--", "ls"]);
-  assert.deepEqual(plain(top("man printf 3").run.argv.slice(-3)), ["man", "3", "printf"]);
+  assert.deepEqual(plain(top("man printf 3").run.argv.slice(-4)), ["man", "--", "3", "printf"]);
+  assert.deepEqual(plain(top("man --help 1").run.argv.slice(-4)), ["man", "--", "1", "--help"], "with a section too, a page is never an option");
+  assert.equal(t[0].remember, false, "a session id is not replayed after tmux restarts");
+  assert.deepEqual(plain(D.parseSsh('Host "build"\nHost=web\nHost db # production\nHost *.corp !bad ok\n#Host gone\nHost "two words"')),
+                   ["build", "web", "db", "ok", "two words"], "ssh_config's quotes, = and comments");
   assert.deepEqual(plain(top("tldr tar").run.argv.slice(-3)), ["tldr", "--", "tar"]);
   assert.ok(!run("man ls; reboot").some(r => r.key && r.key.indexOf("man:") === 0), "a page name is a name, nothing more");
 });
@@ -101,6 +105,27 @@ test("ports: Enter opens localhost, Ctrl+K stops the owner after asking; filter 
   assert.equal(top("ports drop", lists).title, ":17500 dropbox");
   assert.ok(!all[0].actions.some(a => /^Stop/.test(a.label)), "another user's socket has nothing to stop");
   assert.equal(top("ports", {}).title, "Reading ports...");
+  assert.equal(top("ports", { failed: { ports: "ss failed" } }).title, "Could not read ports", "a failed read says so");
+  assert.equal(top("services", { failed: { services: "no bus" } }).title, "Could not read your services");
+  // Opened where it listens: a wildcard or 127.0.0.1 is localhost; any other
+  // address is itself, an IPv6 one in brackets (codex 2026-10-04).
+  const where = D.parsePorts([
+    'LISTEN 0 5 192.168.1.20:8080 0.0.0.0:* users:(("lan",pid=7,fd=3))',
+    'LISTEN 0 5 127.0.0.53%lo:5353 0.0.0.0:* users:(("dns",pid=8,fd=3))',
+    'LISTEN 0 5 [fd00::5]:9090 [::]:* users:(("six",pid=9,fd=3))',
+    'LISTEN 0 5 *:7000 *:* users:(("any",pid=10,fd=3))'].join("\n"));
+  const opened = n => plain(Engine.run("ports " + n, config, services({ ports: where }))[0].run.target);
+  assert.equal(opened("lan"), "http://192.168.1.20:8080");
+  assert.equal(opened("dns"), "http://127.0.0.53:5353");
+  assert.equal(opened("six"), "http://[fd00::5]:9090");
+  assert.equal(opened("any"), "http://localhost:7000");
+});
+
+test("projects are ranked before the list is cut", () => {
+  const many = Array.from({ length: 9 }, (_, i) => ({ path: "/home/u/w/r" + i, name: "r" + i, git: true, score: 0 }))
+    .concat([{ path: "/home/u/w/repo", name: "repo", git: true, score: 0 }]);
+  const rows = Engine.run("repo", config, services({ projects: many })).filter(r => r.provider === "dev");
+  assert.equal(rows[0].title, "repo", "the exact name, though it came last");
 });
 
 test("services parse escaped names and refuse one that reads as an option", () => {

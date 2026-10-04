@@ -207,7 +207,8 @@ var provider = {
     if (q.length < 2 || qw.length === 0) return []
 
     // "install zed": only the install tree, matched on the rest.
-    var gate = GATE_WORDS[qw[0]] || ""
+    // Own keys: "constructor" is a word, not an installer gate (codex 2026-10-04).
+    var gate = own(GATE_WORDS, qw[0]) || ""
     var words = gate ? qw.slice(1) : qw
     var text = gate ? words.join(" ") : q
     if (gate && words.length === 0) return []

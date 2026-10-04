@@ -73,8 +73,9 @@ function tokenize(src) {
       while (i < src.length && /[a-z0-9π]/i.test(src[i])) word += src[i++]
       word = word.toLowerCase()
       if (word === "mod" || word === "of") tokens.push({ t: "op", v: word })
-      else if (FUNCTIONS[word]) tokens.push({ t: "fn", v: word })
-      else if (CONSTANTS[word] !== undefined) tokens.push({ t: "const", v: word })
+      // Own keys only: "constructor" is no function of the calculator's.
+      else if (Object.prototype.hasOwnProperty.call(FUNCTIONS, word)) tokens.push({ t: "fn", v: word })
+      else if (Object.prototype.hasOwnProperty.call(CONSTANTS, word)) tokens.push({ t: "const", v: word })
       else throw "unknown word"
       continue
     }

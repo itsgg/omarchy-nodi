@@ -68,7 +68,11 @@ function parseScripts(text) {
       if (!h["argument" + n]) { args.push({ type: "gap", placeholder: "", optional: true, percentEncoded: false, data: [] }); continue }
       try {
         var a = JSON.parse(h["argument" + n])
-        if (a && typeof a === "object") args.push({ type: String(a.type || "text"), placeholder: String(a.placeholder || "argument " + n),
+        // JSON but no object (null, a list, a number) is as invalid as no
+        // JSON: dropped, it moved the next argument into its place (codex
+        // 2026-10-04).
+        if (!a || typeof a !== "object" || Array.isArray(a)) throw "not an object"
+        args.push({ type: String(a.type || "text"), placeholder: String(a.placeholder || "argument " + n),
                                                      optional: a.optional === true, percentEncoded: a.percentEncoded === true,
                                                      data: Array.isArray(a.data) ? a.data : [] })
       } catch (e) { args.push({ type: "invalid", placeholder: "argument " + n, optional: false, percentEncoded: false, data: [] }) }
@@ -131,13 +135,17 @@ function argumentsFor(script, typed) {
 
 // Run without a window; the last line of output, or the failure, as a
 // notification. $1 the title, $2 the folder, then the script and its
-// arguments, none of them read as shell.
-var QUIET = 'title=$1; cd -- "$2" 2>/dev/null; shift 2; out=$("$@" 2>&1); code=$?; last=$(printf "%s" "$out" | tail -n 1); '
+// arguments, none of them read as shell. A folder that cannot be entered
+// stops it: run where Nodi was, a script's relative paths were someone
+// else's files (codex 2026-10-04).
+var QUIET = 'title=$1; cd -- "$2" 2>/dev/null || { notify-send -a Nodi -u critical -- "$title failed" "Cannot enter $2"; exit 0; }; '
+          + 'shift 2; out=$("$@" 2>&1); code=$?; last=$(printf "%s" "$out" | tail -n 1); '
           + 'if [ "$code" -eq 0 ]; then [ -n "$last" ] && notify-send -a Nodi -- "$title" "$last"; '
           + 'else notify-send -a Nodi -u critical -- "$title failed" "${last:-exit $code}"; fi; true'
 
 // In Omarchy's floating terminal, held open until a key, as `> command`.
-var LOUD = 'cd -- "$1" 2>/dev/null; shift; omarchy-show-logo 2>/dev/null; "$@"; code=$?; [ "$code" -ne 130 ] && omarchy-show-done; exit "$code"'
+var LOUD = 'cd -- "$1" 2>/dev/null || { echo "Cannot enter $1"; omarchy-show-done; exit 1; }; '
+         + 'shift; omarchy-show-logo 2>/dev/null; "$@"; code=$?; [ "$code" -ne 130 ] && omarchy-show-done; exit "$code"'
 
 function folderOf(script, home) {
   return script.cwd ? expand(script.cwd, home) : script.path.replace(/\/[^\/]*$/, "") || "/"
@@ -195,7 +203,10 @@ function row(script, typed, ctx, extra) {
     return extend(out, extra)
   }
   out.actions[0].run = loud(script, args.values, home)
-  if (script.mode === "inline" && script.args.length === 0) {
+  // One that asks twice asks from Ctrl+K too, and is never run to fill its
+  // row (codex 2026-10-04).
+  out.actions[0].confirm = script.confirm
+  if (script.mode === "inline" && script.args.length === 0 && !script.confirm) {
     var got = ctx.request ? ctx.request("script-output", JSON.stringify([folderOf(script, home), script.path, script.refreshMs])) : { state: "pending" }
     var line = typeof got.value === "string" ? got.value : ""
     out.subtitle = line || (got.state === "error" ? "Failed: " + (got.error || "no output") : got.value === undefined ? "Running..." : "(no output)")
@@ -249,7 +260,7 @@ var provider = {
     "script-output": {
       argv: function(param) {
         var p = JSON.parse(param)
-        return ["/usr/bin/bash", "-lc", 'cd -- "$1" 2>/dev/null; exec "$2"', "nodi", String(p[0]), String(p[1])]
+        return ["/usr/bin/bash", "-lc", 'cd -- "$1" 2>/dev/null || exit 1; exec "$2"', "nodi", String(p[0]), String(p[1])]
       },
       parse: function(text, ok) {
         if (!ok) throw "the script failed"

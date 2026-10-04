@@ -9,7 +9,8 @@ Item {
 
   Desktop { id: desktop }
 
-  Component.onCompleted: later.start()
+  // Started by tools/qs-test.sh once it listens for `done`.
+  function start() { later.start() }
 
   Timer {
     id: later

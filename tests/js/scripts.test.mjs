@@ -116,3 +116,35 @@ test("a header in Nodi's words and one in Raycast's are both read; a key given b
   assert.equal(mixed[0].title, "Mine");
   assert.equal(mixed[0].mode, "silent");
 });
+
+test("a folder that cannot be entered stops the script; it never runs where Nodi was", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-cwd-"));
+  const log = join(dir, "log");
+  writeFileSync(join(dir, "notify-send"), `#!/bin/bash\necho "notify $*" >> ${log}\n`); chmodSync(join(dir, "notify-send"), 0o755);
+  const marker = join(dir, "ran");
+  const script = { title: "Touch", path: "/usr/bin/touch", cwd: join(dir, "gone"), args: [], mode: "silent" };
+  const r = S.quiet(script, [marker], "/nonexistent");
+  execFileSync("bash", ["-c", r.script, "nodi", ...r.args], { env: { PATH: dir + ":/usr/bin:/bin" } });
+  assert.equal(existsSync(marker), false, "the script did not run");
+  assert.match(readFileSync(log, "utf8"), /notify -a Nodi -u critical -- Touch failed Cannot enter .*gone/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("a script that asks twice is not run to fill its row, and asks twice from Ctrl+K", () => {
+  const asked = [];
+  const confirmInline = { path: "/s/check", keyword: "check", title: "Check", mode: "inline", packageName: "", description: "", icon: "", cwd: "",
+                          confirm: true, refreshMs: 60000, args: [] };
+  const r = S.row(confirmInline, "", { home: "/home/u", request: (name, param) => { asked.push(name); return { state: "pending" } } }, {});
+  assert.deepEqual(asked, [], "its output is not read");
+  assert.equal(r.confirm, true);
+  assert.equal(r.actions[0].confirm, true, "Run in a terminal asks twice too");
+});
+
+test("an argument that is JSON but no object marks the script invalid, places kept", () => {
+  const listing = "/s/x\u0000# @nodi.title X\n/s/x\u0000# @nodi.mode silent\n/s/x\u0000# @nodi.argument1 null\n/s/x\u0000# @nodi.argument2 {\"type\": \"text\", \"placeholder\": \"b\"}\n";
+  const parsed = S.parseScripts(listing)[0];
+  assert.deepEqual(plain(parsed.args.map(a => a.type)), ["invalid", "text"], "argument 2 stays argument 2");
+  const r = S.row(parsed, "a b", { home: "/home/u" }, {});
+  assert.equal(r.badge, "Not run");
+  assert.equal(r.run, undefined);
+});

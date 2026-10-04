@@ -1,7 +1,9 @@
 #!/usr/bin/bash -p
 # Runs tests/qml/*Test.qml inside Quickshell, for the components that need
 # its types (a Reader is a Quickshell Process). Each test is an Item with
-# `signal done(bool ok, string report)`; nothing it makes is a window, so
+# `signal done(bool ok, string report)` and `function start()`, called once
+# `done` is connected, so a test that finishes at once is still heard
+# (codex 2026-10-04); nothing it makes is a window, so
 # nothing appears on the screen and no hotkey is bound. Like
 # compile-check.sh, it uses the session's Wayland display and stops qs by
 # its own pid.
@@ -49,6 +51,8 @@ ShellRoot {
         console.warn("NODI-TEST " + (ok ? "pass " : "fail ") + name + (ok ? "" : " " + report))
         if (--left === 0) console.warn("NODI-TEST done")
       }) })(files[i], t)
+      if (typeof t.start === "function") t.start()
+      else { console.warn("NODI-TEST fail " + files[i] + " has no start()"); left-- }
     }
     if (left === 0) console.warn("NODI-TEST done")
   }
