@@ -904,7 +904,7 @@ Item {
   Requests {
     id: requests
     providers: Engine.providers()
-    env: ({ user: root.user, home: root.home, cacheDir: root.cacheDir })
+    env: ({ user: root.user, home: root.home, cacheDir: root.cacheDir, path: Quickshell.env("PATH") || "" })
     onArrived: if (root.opened) root.recompute()
   }
 

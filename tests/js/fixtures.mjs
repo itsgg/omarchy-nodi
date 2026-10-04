@@ -58,6 +58,11 @@ export const windows = [
 // keybindings, the developer lists, the clipboard's text, scripts. A read
 // that would start (not a { fetch: false } look) is recorded in `asked` as
 // its key, "rates" or "directory:/home/u".
+// A filter's read as Requests settles it: what the parse threw is an error.
+function filtered(read, param) {
+  try { return read(JSON.parse(param), param); } catch (e) { return { failed: String(e) }; }
+}
+
 export function requester(data, asked) {
   return function(name, param, opts) {
     if (asked && !(opts && opts.fetch === false)) asked.push(param ? name + ":" + param : name);
@@ -79,7 +84,9 @@ export function requester(data, asked) {
       : name === "prs" ? data.prs
       : name === "clipboard-text" ? data.clipboardText
       : name === "scripts" ? data.scripts
-      : name === "script-output" ? (data.scriptOutput || {})[JSON.parse(param)[1]] : undefined;
+      : name === "script-output" ? (data.scriptOutput || {})[JSON.parse(param)[1]]
+      : name === "filter" ? (typeof data.filter === "function" ? filtered(data.filter, param) : undefined) : undefined;
+    if (value && value.failed) return { state: "error", error: value.failed };
     if (data.failed && data.failed[name]) return { state: "error", error: data.failed[name], value };
     return value === undefined || value === null ? { state: "pending" } : { state: "ready", value, error: "", at: 0 };
   };

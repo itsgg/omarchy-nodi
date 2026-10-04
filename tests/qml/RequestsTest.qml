@@ -1,10 +1,13 @@
 import QtQuick
+import Quickshell
 import "../../components"
 
 // components/Requests.qml with real reads: a value arriving, the cache
 // answering after, a failure, a deadline, output past its cap, a read
 // queued behind another replaced by a newer one, reads asked while one
-// lands, and a concurrent source's keys read side by side. Run by tools/qs-test.sh inside Quickshell.
+// lands, a concurrent source's keys read side by side, and a newer read
+// ending the running one of a `supersede` source, program and all. Run by
+// tools/qs-test.sh inside Quickshell.
 Item {
   id: test
   signal done(bool ok, string report)
@@ -27,11 +30,19 @@ Item {
       roomy: { argv: function() { return ["/usr/bin/bash", "-c", "printf '%5000s' x"] }, parse: function(text, ok) { if (!ok) throw "failed"; return text.replace(/\n$/, "").length },
                maxAgeMs: 60000, maxBytes: 10000 },
       chain: { argv: function(p) { return ["/usr/bin/bash", "-c", "sleep 0.3; printf %s \"$0\"", p] }, parse: function(text) { return text.trim() }, maxAgeMs: 60000 },
-      side: { argv: function(p) { return ["/usr/bin/bash", "-c", "sleep 1.2; printf %s \"$0\"", p] }, parse: function(text) { return text.trim() }, maxAgeMs: 60000, concurrent: true }
+      side: { argv: function(p) { return ["/usr/bin/bash", "-c", "sleep 1.2; printf %s \"$0\"", p] }, parse: function(text) { return text.trim() }, maxAgeMs: 60000, concurrent: true },
+      // A script filter's shape: a newer read ends the running one, which
+      // must then never reach its end (it would leave a marker), and the
+      // program sees the session's PATH.
+      typed: { argv: function(p) { return ["/usr/bin/bash", "-c", 'sleep 1.2; : > "$1/$0.done"; printf "%s %s" "$0" "$PATH"', p, test.marks] },
+               parse: function(text) { return text.trim() }, maxAgeMs: 60000, supersede: true, sessionPath: true },
+      marks: { argv: function() { return ["/usr/bin/ls", "-1", test.marks] }, parse: function(text) { return text.trim().split("\n").filter(Boolean) }, maxAgeMs: 0 }
     }
   })
 
-  Requests { id: requests; providers: [test.provider]; env: ({}) }
+  readonly property string marks: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/nodi-requests-test-" + Date.now()
+
+  Requests { id: requests; providers: [test.provider]; env: ({ path: "/nodi/test/bin:/usr/bin:/bin" }) }
 
   // While chain:a lands, c and d are asked: d, the newest, must be read,
   // not left pending behind the b that waited before (codex 2026-10-04).
@@ -60,13 +71,29 @@ Item {
     requests.request("side", "a")
     requests.request("side", "b")
     requests.request("side", "c")
+    Quickshell.execDetached(["/usr/bin/mkdir", "-p", test.marks])
+    // Replaced before it starts, then replaced while it runs.
+    requests.request("typed", "a")
+    requests.request("typed", "b")
+    typedLater.start()
+    peek.start()
     later.start()
   }
 
+  Timer { id: typedLater; interval: 300; onTriggered: requests.request("typed", "c") }
+  Timer { id: peek; interval: 3400; onTriggered: requests.request("marks") }
+
   Timer {
     id: later
-    interval: 3000
+    interval: 3800
     onTriggered: {
+      var tc = requests.request("typed", "c", { fetch: false })
+      check(tc.state === "ready" && tc.value === "c /nodi/test/bin:/usr/bin:/bin", "the newest typed read lands, with the session's PATH: " + JSON.stringify(tc))
+      check(!requests.cache["typed:a"] && !requests.cache["typed:b"], "the replaced reads hold nothing: " + Object.keys(requests.cache).filter(function(k) { return k.indexOf("typed") === 0 }).join(","))
+      var m = requests.request("marks", "", { fetch: false })
+      check(m.state === "ready" && m.value.indexOf("c.done") !== -1 && m.value.indexOf("a.done") === -1 && m.value.indexOf("b.done") === -1,
+            "a replaced program never reached its end, before it started or while it ran: " + JSON.stringify(m))
+      Quickshell.execDetached(["/usr/bin/rm", "-rf", "--", test.marks])
       var e = requests.request("echo")
       check(e.state === "ready" && e.value.length === 2 && e.value[1] === "b", "echo read a,b: " + JSON.stringify(e))
       var b = requests.request("broken")

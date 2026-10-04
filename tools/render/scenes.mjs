@@ -85,6 +85,14 @@ const ports = Dev.parsePorts([
   'LISTEN 0 4096 0.0.0.0:17500 0.0.0.0:* users:(("dropbox",pid=4507,fd=74))',
   'LISTEN 0 4096 127.0.0.53%lo:53 0.0.0.0:*'].join("\n"));
 
+const Filters = load("providers/filters.js");
+const withFilter = Object.assign({}, config, { filters: [{ keyword: "n", title: "Notes", icon: "󰎞", command: ["notes"] }] });
+const filterOutput = [
+  { title: "Meeting notes", subtitle: "Monday, 3 items", id: "meeting", action: { exec: ["notes", "open", "meeting"] },
+    preview: "## Meeting notes\n\n- Ship the **filter** contract\n- Review the `nodi` command\n\n![a remote picture](https://x.test/p.png)\n\n```sh\nnodi pick < rows.txt\n```" },
+  { title: "Weekly report", subtitle: "Friday", id: "weekly", action: { exec: ["notes", "open", "weekly"] }, preview: "Numbers from the Friday run." }
+].map(o => JSON.stringify(o)).join("\n");
+
 const ScriptsProvider = load("providers/scripts.js");
 const scriptsDir = join(root, "tests/js/fixtures/scripts");
 const listing = ScriptsProvider.provider.sources.scripts.argv(scriptsDir);
@@ -162,6 +170,7 @@ const scenes = [
     { name, preview: "/usr/share/omarchy/themes/" + name.toLowerCase().replace(/ /g, "-") + "/preview.png" })) } }),
   scene("23-scripts", "scripts ", { scripts, scriptOutput: { [join(scriptsDir, "uptime.sh")]: "up 3 days, 4 hours" } }),
   scene("docs-home", "", Object.assign({}, docsBase, { history: docsHistory })),
+  scene("30-filter-markdown", "n meet", { filter: () => Filters.parse(filterOutput, { keyword: "n", title: "Notes", icon: "󰎞" }) }, null, withFilter),
   (() => {
     const firefox = plain(Engine.run("firefox", config, services(base)))[0];
     return { name: "18-alias-prompt", query: "ff", rows: plain(Engine.aliasPrompt("ff", firefox)), mode: { label: "Alias", icon: "󰌌" }, aliasRow: firefox,

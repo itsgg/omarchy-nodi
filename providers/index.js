@@ -2,6 +2,7 @@
 .import "keywords.js" as Keywords
 .import "snippets.js" as Snippets
 .import "scripts.js" as Scripts
+.import "filters.js" as Filters
 .import "ask.js" as Ask
 .import "shell.js" as Shell
 .import "math.js" as Calculator
@@ -31,6 +32,7 @@ var all = [
   Keywords.provider,
   Snippets.provider,
   Scripts.provider,
+  Filters.provider,
   Ask.provider,
   Shell.provider,
   Calculator.provider,
