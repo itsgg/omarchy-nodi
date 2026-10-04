@@ -36,10 +36,15 @@ ln -s "$root/components" "$work/components"
 ln -s "$root/lib" "$work/lib"
 cp "$root/tools/render/Harness.qml" "$work/Harness.qml"
 
+# Every scene drawn this run, or a failure: the pictures of an earlier run
+# go first, so `make docs` cannot copy one a crash left behind (Fable
+# 2026-10-04).
+want=$("$node" -e 'const t = require("fs").readFileSync(process.argv[1], "utf8"); console.log(JSON.parse(t.slice(t.indexOf("=") + 1)).length)' "$work/scenes.js")
+rm -f -- "$out"/*.png
 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 120 qml6 -I "$work" "$work/Harness.qml" -- "$out" >"$work/log" 2>&1 || true
 shots=$(grep -c "SHOT " "$work/log" || true)
 problems=$(grep -E "Error|error|TypeError|ReferenceError|is not a type|Cannot|Unable|not found|undefined|Binding loop|anchor loop" "$work/log" | sed "s#file://$work/##g" | sort -u || true)
 if [[ -n $problems ]]; then echo "$problems"; fi
-if [[ $shots -eq 0 ]]; then tail -20 "$work/log" | sed "s#file://$work/##g"; fi
-echo "render: $shots shots in $out"
-[[ -z $problems && $shots -gt 0 ]]
+if [[ $shots -ne $want ]]; then tail -20 "$work/log" | sed "s#file://$work/##g"; fi
+echo "render: $shots of $want shots in $out"
+[[ -z $problems && $shots -eq $want ]]
