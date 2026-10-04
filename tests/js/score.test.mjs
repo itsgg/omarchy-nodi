@@ -1,0 +1,176 @@
+// The scoring table and the history it learns from.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { load, plain } from "./load.mjs";
+
+const Score = load("lib/Score.js");
+const History = load("lib/History.js");
+
+test("tiers, best first", () => {
+  const m = { name: "Visual Studio Code", generic: "Text Editor", aliases: ["code"], keywords: ["ide", "programming"], description: "Edit text files", context: ["Develop"] };
+  const t = q => Score.tier(q, m);
+  assert.equal(t("visual studio code"), "exact");
+  assert.equal(t("code"), "exact", "an alias said exactly");
+  assert.equal(t("visualstudiocode"), "exact", "the name without its spaces");
+  assert.equal(t("visu"), "prefix");
+  assert.equal(t("studio code"), "words");
+  assert.equal(t("text ed"), "words", "the generic name names an app by its words");
+  assert.equal(t("vsc"), "acronym");
+  assert.equal(t("tudio"), "substring");
+  assert.equal(t("program"), "keyword");
+  assert.equal(t("files"), "description");
+  assert.equal(t("develop"), "context");
+  assert.equal(t("zzz"), "");
+});
+
+test("digits name only the name", () => {
+  const pinta = { name: "Pinta", generic: "Image Editor", keywords: ["2d", "paint"] };
+  assert.equal(Score.tier("2+2", pinta), "");
+  assert.equal(Score.tier("2", pinta), "");
+  assert.equal(Score.tier("2d", pinta), "keyword", "a word with letters still reaches keywords");
+  assert.equal(Score.tier("1pass", { name: "1Password" }), "prefix");
+});
+
+test("one letter names only the start of a name's word", () => {
+  assert.equal(Score.tier("w", { name: "Brave", generic: "Web Browser" }), "");
+  assert.equal(Score.tier("b", { name: "Brave", generic: "Web Browser" }), "prefix");
+  assert.equal(Score.tier("c", { name: "Visual Studio Code" }), "words");
+});
+
+test("typos: one edit from five letters, two from eight, the first letter kept", () => {
+  assert.equal(Score.tier("screnshot", { name: "Screenshot" }), "fuzzy");
+  assert.equal(Score.tier("bluetoth", { name: "Bluetooth" }), "fuzzy");
+  assert.equal(Score.tier("chrme", { name: "Chrome" }), "fuzzy");
+  assert.equal(Score.tier("night", { name: "Light" }), "", "not the first letter");
+  assert.equal(Score.tier("nght", { name: "Night" }), "", "too short for a typo");
+  assert.equal(Score.tier("screnshot region", { name: "Screenshot", keywords: ["region"] }), "fuzzy");
+  assert.equal(Score.tier("remove steam", { name: "Moonlight", keywords: ["remote", "steam"] }), "", "a typo only in the name's own words");
+  assert.equal(Score.tier("pass", { name: "1Password" }), "prefix", "leading numerals skipped");
+});
+
+test("letters in order only where asked", () => {
+  assert.equal(Score.tier("frfx", { name: "Firefox", letters: true }), "fuzzy");
+  assert.equal(Score.tier("frfx", { name: "Firefox" }), "");
+  assert.equal(Score.tier("fire", { name: "Firmware" }), "");
+});
+
+test("kind decides between rows named equally well", () => {
+  const app = Score.score("prefix", "app"), action = Score.score("prefix", "action"), setting = Score.score("prefix", "setting");
+  assert.ok(app > action && action > setting);
+  assert.ok(Score.score("exact", "action") > Score.score("prefix", "app"), "a whole tier outweighs a kind");
+  assert.ok(Score.score("exact", "answer") > Score.score("exact", "app"));
+  assert.ok(Score.score("prefix", "hint") < Score.score("keyword", "app"), "a hint never beats an app it names");
+});
+
+test("habit: up to six points, decaying after a week", () => {
+  const now = Date.UTC(2026, 9, 2);
+  const day = 86400000;
+  assert.equal(Score.habit(undefined, now), 0);
+  const fresh = Score.habit({ n: 10, t: now }, now);
+  assert.ok(fresh > 1 && fresh <= Score.HABIT_MAX, String(fresh));
+  assert.equal(Score.habit({ n: 1000, t: now }, now), Score.HABIT_MAX);
+  assert.equal(Score.habit({ n: 10, t: now - 6 * day }, now), fresh, "full for a week");
+  assert.ok(Score.habit({ n: 10, t: now - 30 * day }, now) < fresh);
+  assert.ok(Score.habit({ n: 10, t: now - 400 * day }, now) > 0, "never to nothing");
+  // Under the smallest gap of either table: habit orders equals, nothing else.
+  const gaps = [];
+  for (const table of [Score.TIER, Score.KIND]) {
+    const v = Object.values(table).sort((a, b) => b - a);
+    for (let i = 1; i < v.length; i++) if (v[i - 1] !== v[i]) gaps.push(v[i - 1] - v[i]);
+  }
+  assert.ok(Score.HABIT_MAX < Math.min(...gaps), "habit " + Score.HABIT_MAX + " against the smallest gap " + Math.min(...gaps));
+});
+
+test("answers keep their order and leave status rows alone", () => {
+  const rows = Score.answers([{ title: "a", score: 99 }, { title: "b", score: 98 }, { title: "Fetching", score: 40 }]);
+  assert.equal(rows[0].kind, "answer"); assert.equal(rows[0].tier, "exact");
+  assert.ok(rows[0].offset > rows[1].offset);
+  assert.equal(rows[2].score, 40); assert.equal(rows[2].kind, undefined);
+  assert.equal(Score.answers([{ title: "sun", score: 70 }], "keyword")[0].tier, "keyword");
+});
+
+test("history: record, prune, migrate, forget, round-trip", () => {
+  const now = 1790000000000;
+  let h = History.record({}, "app:foot", now);
+  h = History.record(h, "app:foot", now + 1);
+  assert.deepEqual(plain(h), { "app:foot": { n: 2, t: now + 1 } });
+  const picks = History.pick({}, "t", "app:foot", now);
+  assert.deepEqual(plain(History.load(History.serialize(h, picks))), { rows: plain(h), picks: plain(picks) });
+  assert.deepEqual(plain(History.load("not json")), { rows: {}, picks: {} });
+  assert.deepEqual(plain(History.load('{"rows":{"x":{"n":"1","t":2}}}')), { rows: {}, picks: {} }, "a malformed entry is dropped");
+  assert.deepEqual(plain(History.fromLaunches({ firefox: 12, "Disk Usage": 2, "../x": 3, "-x": 1, zero: 0 }, now)),
+                   { "app:firefox": { n: 12, t: now }, "app:Disk Usage": { n: 2, t: now } }, "an id as lib/Run.js allows one");
+  const f = History.forget(h, picks, "app:foot");
+  assert.deepEqual(plain(f), { rows: {}, picks: {} });
+  assert.ok(History.knows(h, {}, "app:foot") && History.knows({}, picks, "app:foot") && !History.knows({}, {}, "app:foot"));
+  let big = {};
+  for (let i = 0; i < History.LIMIT + 5; i++) big["k" + i] = { n: 1, t: i };
+  const pruned = History.record(big, "new", 1e15);
+  assert.equal(Object.keys(pruned).length, History.LIMIT);
+  assert.ok(pruned.new && !pruned.k0, "the oldest go first");
+});
+
+test("picks: five rows a query, the oldest queries dropped", () => {
+  let p = {};
+  for (let i = 0; i < 7; i++) p = History.pick(p, "t", "k" + i, 1000 + i);
+  assert.deepEqual(Object.keys(p.t).sort(), ["k2", "k3", "k4", "k5", "k6"]);
+  for (let i = 0; i < History.QUERIES + 3; i++) p = History.pick(p, "q" + i, "k", 2000 + i);
+  assert.equal(Object.keys(p).length, History.QUERIES);
+  assert.ok(!p.t && !p.q0 && p["q" + (History.QUERIES + 2)]);
+});
+
+test("recall: the same query in full, a shorter one at seven tenths, decaying", () => {
+  const now = Date.UTC(2026, 9, 2), day = 86400000;
+  const picks = History.pick({}, "t", "app:foot", now);
+  const full = Score.recall(picks, "t", "app:foot", now);
+  assert.ok(full >= 6 && full <= Score.PICK_MAX, String(full));
+  assert.equal(Score.recall(picks, "te", "app:foot", now), full * 0.7, "\"t\" remembered while \"te\" is typed");
+  assert.equal(Score.recall(picks, "x", "app:foot", now), 0);
+  assert.equal(Score.recall(picks, "t", "app:other", now), 0);
+  assert.ok(Score.recall(picks, "t", "app:foot", now + 60 * day) < full);
+  assert.ok(Score.score("fuzzy", "app") + Score.PICK_MAX < Score.score("exact", "app"), "a remembered typo never beats an exact name");
+});
+
+test("snapshots: what an empty bar needs to run a row again", () => {
+  const Rows = load("lib/Rows.js");
+  const Run = load("lib/Run.js");
+  const row = Rows.normalize({ key: "menu:x", title: "Screenshot", subtitle: "Trigger > Capture", icon: "S", kind: "action", tier: "exact", run: Run.shell("omarchy-capture-screenshot") }, { id: "menu", name: "Omarchy" }, 0, 0);
+  const s = History.snapshot(row);
+  assert.equal(s.title, "Screenshot"); assert.equal(s.provider, "menu"); assert.deepEqual(plain(s.run), { kind: "shell", script: "omarchy-capture-screenshot" });
+  assert.equal(History.snapshot(Rows.normalize({ title: "4", copy: "4" }, { id: "math", name: "Calculator" }, 0, 0)), null, "nothing to run, nothing to offer");
+  const h = History.record({}, "menu:x", 5, s);
+  assert.equal(History.record(h, "menu:x", 6)["menu:x"].s.title, "Screenshot", "a later run without a snapshot keeps the old one");
+  assert.equal(History.load(History.serialize(h, {})).rows["menu:x"].s.title, "Screenshot");
+});
+
+test("a query or key named like a prototype is stored like any other", () => {
+  let picks = {};
+  for (const q of ["__proto__", "constructor", "toString"]) picks = History.pick(picks, q, "app:x", 1000);
+  assert.deepEqual(Object.keys(picks), ["__proto__", "constructor", "toString"]);
+  const back = History.load(History.serialize({}, picks)).picks;
+  assert.deepEqual(Object.keys(back), ["__proto__", "constructor", "toString"]);
+  assert.ok(Score.recall(back, "__proto__", "app:x", 1000) > 0);
+  assert.equal(Score.recall({}, "constructor", "name", 1000), 0, "nothing borrowed from Object");
+  assert.equal(History.knows({}, {}, "constructor"), false);
+  const rows = History.record({}, "__proto__", 1000);
+  assert.deepEqual(Object.keys(rows), ["__proto__"]);
+});
+
+test("a generic name takes words, not digits: 2+2 is not a 2D graphics editor", () => {
+  const m = { name: "Pinta", generic: "2D graphics editor" };
+  assert.equal(Score.tier("2+2", m), "");
+  assert.equal(Score.tier("graph", m), "words");
+});
+
+test("a word split by its case is matched whole too", () => {
+  const Match = load("lib/Match.js");
+  assert.deepEqual(plain(Match.words("GitHub - Brave")), ["git", "hub", "brave", "github"]);
+  assert.deepEqual(plain(Match.words("org.gnome.Nautilus")), ["org", "gnome", "nautilus"], "nothing added where nothing was split");
+  assert.equal(Score.tier("github", { name: "Pull requests on GitHub", whole: true }), "words");
+  assert.equal(Score.tier("youtube", { name: "Search YouTube" }), "words");
+  assert.equal(Score.tier("hub", { name: "GitHub Desktop" }), "words", "the parts still name it");
+  assert.equal(Score.tier("ghd", { name: "GitHub Desktop" }), "acronym", "the old initials still start the new ones");
+  assert.equal(Score.tier("gihtub", { name: "Open GitHub" }), "fuzzy", "a typo of the whole word");
+});
+

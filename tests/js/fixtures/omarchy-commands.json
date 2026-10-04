@@ -1,0 +1,450 @@
+{
+  "ok": true,
+  "commands": [
+    {
+      "route": "omarchy agent",
+      "binary": "omarchy-agent",
+      "group": "agent",
+      "name": "",
+      "summary": "Launch the default coding agent in a terminal",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "[--inline] [--pick]",
+      "examples": [
+        "omarchy agent",
+        "omarchy agent --inline"
+      ],
+      "aliases": [],
+      "filename_route": "omarchy agent",
+      "routes": [
+        "omarchy agent"
+      ]
+    },
+    {
+      "route": "omarchy capture text",
+      "binary": "omarchy-capture-text",
+      "group": "capture",
+      "name": "text",
+      "summary": "Extract text from a screenshot region with OCR",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [
+        "omarchy capture text"
+      ],
+      "aliases": [],
+      "filename_route": "omarchy capture text",
+      "routes": [
+        "omarchy capture text"
+      ]
+    },
+    {
+      "route": "omarchy cmd present",
+      "binary": "omarchy-cmd-present",
+      "group": "cmd",
+      "name": "present",
+      "summary": "Check whether all required commands are available",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy cmd present",
+      "routes": [
+        "omarchy cmd present"
+      ]
+    },
+    {
+      "route": "omarchy hw laptop",
+      "binary": "omarchy-hw-laptop",
+      "group": "hw",
+      "name": "laptop",
+      "summary": "Returns true when running on a laptop (has a lid or laptop chassis).",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy hw laptop",
+      "routes": [
+        "omarchy hw laptop"
+      ]
+    },
+    {
+      "route": "omarchy hyprland window close all",
+      "binary": "omarchy-hyprland-window-close-all",
+      "group": "hyprland",
+      "name": "window close all",
+      "summary": "Close all open windows",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy hyprland window close all",
+      "routes": [
+        "omarchy hyprland window close all"
+      ]
+    },
+    {
+      "route": "omarchy install app",
+      "binary": "omarchy-install-app",
+      "group": "install",
+      "name": "app",
+      "summary": "Install a packaged app, surfacing the install in a floating terminal",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "<display-name> <packages>",
+      "examples": [
+        "omarchy install app 'LM Studio' lmstudio-bin"
+      ],
+      "aliases": [],
+      "filename_route": "omarchy install app",
+      "routes": [
+        "omarchy install app"
+      ]
+    },
+    {
+      "route": "omarchy refresh sddm",
+      "binary": "omarchy-refresh-sddm",
+      "group": "refresh",
+      "name": "sddm",
+      "summary": "Refresh the SDDM theme from default",
+      "requires_sudo": true,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy refresh sddm",
+      "routes": [
+        "omarchy refresh sddm"
+      ]
+    },
+    {
+      "route": "omarchy restart wifi",
+      "binary": "omarchy-restart-wifi",
+      "group": "restart",
+      "name": "wifi",
+      "summary": "Unblock and restart the Wi-Fi service.",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy restart wifi",
+      "routes": [
+        "omarchy restart wifi"
+      ]
+    },
+    {
+      "route": "omarchy theme set",
+      "binary": "omarchy-theme-set",
+      "group": "theme",
+      "name": "set",
+      "summary": "Apply an Omarchy theme",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "<theme-name>",
+      "examples": [
+        "omarchy theme list",
+        "omarchy theme set \"Tokyo Night\""
+      ],
+      "aliases": [],
+      "filename_route": "omarchy theme set",
+      "routes": [
+        "omarchy theme set"
+      ]
+    },
+    {
+      "route": "omarchy update",
+      "binary": "omarchy-update",
+      "group": "update",
+      "name": "",
+      "summary": "Update Omarchy and system packages",
+      "requires_sudo": true,
+      "hidden": false,
+      "args": "[-y]",
+      "examples": [
+        "omarchy update",
+        "omarchy update -y"
+      ],
+      "aliases": [],
+      "filename_route": "omarchy update",
+      "routes": [
+        "omarchy update"
+      ]
+    },
+    {
+      "route": "omarchy weather status",
+      "binary": "omarchy-weather-status",
+      "group": "weather",
+      "name": "status",
+      "summary": "Returns a formatted weather status string with temperature and wind speed.",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy weather status",
+      "routes": [
+        "omarchy weather status"
+      ]
+    },
+    {
+      "route": "omarchy network status",
+      "binary": "omarchy-network-status",
+      "group": "network",
+      "name": "status",
+      "summary": "Print active network status for the shell.",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "[--verbose]",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy network status",
+      "routes": [
+        "omarchy network status"
+      ]
+    },
+    {
+      "route": "omarchy version",
+      "binary": "omarchy-version",
+      "group": "version",
+      "name": "",
+      "summary": "Print the installed Omarchy version",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy version",
+      "routes": [
+        "omarchy version"
+      ]
+    },
+    {
+      "route": "omarchy audio input mute",
+      "binary": "omarchy-audio-input-mute",
+      "group": "audio",
+      "name": "input mute",
+      "summary": "Toggle microphone mute. Drives the hardware mic-mute LED on laptops that expose one.",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy audio input mute",
+      "routes": [
+        "omarchy audio input mute"
+      ]
+    },
+    {
+      "route": "omarchy menu select",
+      "binary": "omarchy-menu-select",
+      "group": "menu",
+      "name": "select",
+      "summary": "Pick one option from a menu",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "prompt [option...] [--multi]",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy menu select",
+      "routes": [
+        "omarchy menu select"
+      ]
+    },
+    {
+      "route": "omarchy capture screenshot",
+      "binary": "omarchy-capture-screenshot",
+      "group": "capture",
+      "name": "screenshot",
+      "summary": "Take a screenshot",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "[smart|region|windows|fullscreen]",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy capture screenshot",
+      "routes": [
+        "omarchy capture screenshot"
+      ]
+    },
+    {
+      "route": "omarchy install ai chatgpt",
+      "binary": "omarchy-install-ai-chatgpt",
+      "group": "install",
+      "name": "ai chatgpt",
+      "summary": "Install the ChatGPT desktop app",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy install ai chatgpt",
+      "routes": [
+        "omarchy install ai chatgpt"
+      ]
+    },
+    {
+      "route": "omarchy remove ai chatgpt",
+      "binary": "omarchy-remove-ai-chatgpt",
+      "group": "remove",
+      "name": "ai chatgpt",
+      "summary": "Remove the ChatGPT desktop app",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy remove ai chatgpt",
+      "routes": [
+        "omarchy remove ai chatgpt"
+      ]
+    },
+    {
+      "route": "omarchy reinstall pkgs",
+      "binary": "omarchy-reinstall-pkgs",
+      "group": "reinstall",
+      "name": "pkgs",
+      "summary": "Reinstall all default Omarchy packages from the stable channel",
+      "requires_sudo": true,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy reinstall pkgs",
+      "routes": [
+        "omarchy reinstall pkgs"
+      ]
+    },
+    {
+      "route": "omarchy power present",
+      "binary": "omarchy-power-present",
+      "group": "power",
+      "name": "present",
+      "summary": "Returns true if external power is connected.",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy power present",
+      "routes": [
+        "omarchy power present"
+      ]
+    },
+    {
+      "route": "omarchy update available",
+      "binary": "omarchy-update-available",
+      "group": "update",
+      "name": "available",
+      "summary": "Check whether Omarchy updates are available.",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy update available",
+      "routes": [
+        "omarchy update available"
+      ]
+    },
+    {
+      "route": "omarchy system reboot",
+      "binary": "omarchy-system-reboot",
+      "group": "system",
+      "name": "reboot",
+      "summary": "Reboot after closing application windows",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy system reboot",
+      "routes": [
+        "omarchy system reboot"
+      ]
+    },
+    {
+      "route": "omarchy default editor",
+      "binary": "omarchy-default-editor",
+      "group": "default",
+      "name": "editor",
+      "summary": "Set the default editor used by omarchy-launch-editor",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "[editor]",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy default editor",
+      "routes": [
+        "omarchy default editor"
+      ]
+    },
+    {
+      "route": "omarchy restart btop",
+      "binary": "omarchy-restart-btop",
+      "group": "restart",
+      "name": "btop",
+      "summary": "Reload btop configuration (used by the Omarchy theme switching)",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy restart btop",
+      "routes": [
+        "omarchy restart btop"
+      ]
+    },
+    {
+      "route": "omarchy webapp remove all",
+      "binary": "omarchy-webapp-remove-all",
+      "group": "webapp",
+      "name": "remove all",
+      "summary": "Remove all web apps installed via omarchy-webapp-install",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy webapp remove all",
+      "routes": [
+        "omarchy webapp remove all"
+      ]
+    },
+    {
+      "route": "omarchy disk speedtest",
+      "binary": "omarchy-disk-speedtest",
+      "group": "disk",
+      "name": "speedtest",
+      "summary": "Measure live disk read and write speed",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "[target-dir]",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy disk speedtest",
+      "routes": [
+        "omarchy disk speedtest"
+      ]
+    },
+    {
+      "route": "omarchy plugin add",
+      "binary": "omarchy-plugin-add",
+      "group": "plugin",
+      "name": "add",
+      "summary": "Add a shell plugin from git",
+      "requires_sudo": false,
+      "hidden": false,
+      "args": "[git-url]",
+      "examples": [],
+      "aliases": [],
+      "filename_route": "omarchy plugin add",
+      "routes": [
+        "omarchy plugin add"
+      ]
+    }
+  ]
+}
