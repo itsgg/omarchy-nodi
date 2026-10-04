@@ -27,7 +27,9 @@ const keybindings = Sources.keybindings(fixture("keybindings.records"));
 const home = process.env.HOME;
 const themeName = (() => { try { return readFileSync(join(home, ".local/state/omarchy/current/theme/icons.theme"), "utf8").trim(); } catch { return ""; } })();
 const roots = [themeName, themeName.replace(/-[a-z]+(-dark)?$/, "$1").replace(/-$/, ""), "Yaru", "Adwaita", "hicolor"]
-  .filter((v, i, a) => v && a.indexOf(v) === i).map(n => "/usr/share/icons/" + n).concat(["/usr/share/pixmaps"]);
+  .filter((v, i, a) => v && a.indexOf(v) === i).map(n => "/usr/share/icons/" + n)
+  // Omarchy puts its web apps' icons in the user's hicolor.
+  .concat(["/usr/share/pixmaps", join(home, ".local/share/icons/hicolor")]);
 const index = new Map();
 function walk(dir, depth) {
   let entries;
@@ -88,6 +90,32 @@ const scriptsDir = join(root, "tests/js/fixtures/scripts");
 const listing = ScriptsProvider.provider.sources.scripts.argv(scriptsDir);
 const scripts = ScriptsProvider.parseScripts(execFileSync(listing[0], listing.slice(1), { env: { PATH: "/usr/bin:/bin" } }).toString());
 
+// The README's pictures (make docs): apps as Omarchy installs them, their
+// entries' own words, rows built by the engine as everywhere else.
+const desk = (id, name, generic, comment, icon, exec, actions) => ({ id, name, generic, comment, keywords: [], icon, wmclass: "",
+  actions: (actions || []).map((n, i) => ({ index: i, name: n })), exec, terminal: false });
+const docsApps = [
+  desk("chromium", "Chromium", "Web Browser", "Access the Internet", "chromium", "chromium %U", ["New Window", "New Incognito Window"]),
+  desk("Discord", "Discord", "", "Discord", "discord", 'omarchy-launch-webapp "https://discord.com/channels/@me"'),
+  desk("1password", "1Password", "", "Password manager and secure wallet", "1password", "1password %U"),
+  desk("localsend", "LocalSend", "", "An open source cross-platform alternative to AirDrop", "localsend", "localsend_app"),
+  desk("omacalc", "Omacalc", "Calculator", "Dead-simple calculator", "omacalc", "omacalc")
+];
+const docsBase = Object.assign({}, base, { apps: docsApps, toggleStates: Object.assign({}, base.toggleStates, { wifi: { on: true, value: "1" } }) });
+const docsRow = (q, key) => {
+  const rows = Engine.run(q, config, services(docsBase));
+  const row = rows.find(r => r.key === key);
+  if (!row) throw new Error("no row " + key + " for " + q + ": " + rows.map(r => r.key).join(", "));
+  return row;
+};
+let docsHistory = {};
+for (const [q, key, n] of [["chromium", "app:chromium", 40], ["discord", "app:Discord", 30], ["1password", "app:1password", 22],
+                           ["screenshot", "menu:trigger.capture.screenshot", 15], ["wifi", "toggle:wifi", 10],
+                           ["localsend", "app:localsend", 7], ["omacalc", "app:omacalc", 5]]) {
+  const row = docsRow(q, key);
+  for (let i = 0; i < n; i++) docsHistory = History.record(docsHistory, row.key, now - i * 3600e3, History.snapshot(row));
+}
+
 const scenes = [
   scene("01-home", "", { history }),
   scene("02-sum", "2+2"),
@@ -133,6 +161,7 @@ const scenes = [
   scene("27-themes", "theme ", { themes: { current: "Tokyo Night", list: ["Tokyo Night", "Catppuccin Latte", "Rose Pine", "Kanagawa"].map(name => (
     { name, preview: "/usr/share/omarchy/themes/" + name.toLowerCase().replace(/ /g, "-") + "/preview.png" })) } }),
   scene("23-scripts", "scripts ", { scripts, scriptOutput: { [join(scriptsDir, "uptime.sh")]: "up 3 days, 4 hours" } }),
+  scene("docs-home", "", Object.assign({}, docsBase, { history: docsHistory })),
   (() => {
     const firefox = plain(Engine.run("firefox", config, services(base)))[0];
     return { name: "18-alias-prompt", query: "ff", rows: plain(Engine.aliasPrompt("ff", firefox)), mode: { label: "Alias", icon: "󰌌" }, aliasRow: firefox,

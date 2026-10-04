@@ -5,9 +5,18 @@ windows, runs anything in Omarchy's menu, answers sums and conversions,
 and finds emoji, clipboard entries, files and more. Nodi is Tamil for an
 instant.
 
-![Themes, with the selected one's preview beside the list](docs/themes.png)
+![Nodi opened empty: the apps, actions and toggles you use most](docs/home.png)
 
-![A quick answer from Claude](docs/ask.png)
+<table>
+<tr>
+<td><img src="docs/themes.png" alt="Themes, with the selected one's preview beside the list"></td>
+<td><img src="docs/ask.png" alt="A quick answer from Claude"></td>
+</tr>
+<tr>
+<td><img src="docs/files.png" alt="A file's details and first lines"></td>
+<td><img src="docs/clipboard.png" alt="Clipboard history, the whole entry beside the list"></td>
+</tr>
+</table>
 
 ## Install
 

@@ -1,5 +1,5 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test lint compile qstest shots themes bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
@@ -44,6 +44,16 @@ themes:
 	NODI_ROUNDING=10 NODI_THEME_DIR=/usr/share/omarchy/themes/tokyo-night tools/render.sh shots/themes/tokyo-night-rounded > shots/themes-rounded.log 2>&1 || fail=1; \
 	sed "s/^/rounded: /" shots/themes-rounded.log; \
 	exit $$fail
+
+# The README's pictures, drawn offscreen in the live theme: the home view
+# and four with the preview pane.
+docs: shots
+	@cp shots/docs-home.png docs/home.png
+	@cp shots/27-themes.png docs/themes.png
+	@cp shots/19-ask-answer.png docs/ask.png
+	@cp shots/29-file-text.png docs/files.png
+	@cp shots/26-clipboard.png docs/clipboard.png
+	@echo "docs: five pictures in docs/"
 
 # How long a keystroke takes, on node and in Qt's own engine, over a full
 # machine's data; a measure to read, so not in `check`.
