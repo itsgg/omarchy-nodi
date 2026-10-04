@@ -26,7 +26,8 @@ test("volume", () => {
   assert.deepEqual(plain(top("vol +10", levels).run.argv), ["omarchy-audio-output-volume", "+10"]);
   assert.deepEqual(plain(top("vol -15%", levels).run.argv), ["omarchy-audio-output-volume", "-15"]);
   assert.deepEqual(plain(top("vol up", levels).run.argv), ["omarchy-audio-output-volume", "+5"]);
-  assert.deepEqual(plain(top("vol mute", levels).run.argv), ["omarchy-audio-output-volume", "mute-toggle"]);
+  assert.deepEqual(plain(top("vol toggle", levels).run.argv), ["omarchy-audio-output-volume", "mute-toggle"]);
+  assert.equal(top("vol mute", levels).title, "Mute Sound"); assert.equal(top("vol unmute", levels).title, "Unmute Sound");
   const set = top("volume 150", levels);
   assert.equal(set.title, "Volume"); assert.equal(set.badge, "100%", "clamped, shown once");
   assert.equal(set.run.argv[4], "100", "the level is an argument, clamped");
@@ -44,6 +45,24 @@ test("the absolute volume script uses the resolved sink and Omarchy's OSD", () =
   const argv = top("volume 60", levels).run.argv;
   execFileSync(argv[0], argv.slice(1), { env: { PATH: bin + ":/usr/bin:/bin" } });
   assert.equal(readFileSync(log, "utf8"), "pactl set-sink-mute alsa_output.speaker 0\npactl set-sink-volume alsa_output.speaker 60%\nosd -i volume-high -p 60\n");
+  rmSync(bin, { recursive: true, force: true });
+});
+
+test("mute and unmute set the state asked for, never toggle it", () => {
+  const bin = mkdtempSync(join(tmpdir(), "nodi-mute-"));
+  const log = join(bin, "log");
+  for (const [name, body] of [["omarchy-audio-output-sink", "echo alsa_output.speaker"],
+                              ["pactl", `echo "pactl $*" >> ${log}; [ "$1" = get-sink-volume ] && echo "Volume: front-left: 26214 /  40% / -23.88 dB"; true`],
+                              ["omarchy-osd", `echo "osd $*" >> ${log}`]]) {
+    writeFileSync(join(bin, name), "#!/bin/bash\n" + body + "\n"); chmodSync(join(bin, name), 0o755);
+  }
+  for (const [q, want] of [["vol mute", "pactl set-sink-mute alsa_output.speaker 1\npactl get-sink-volume alsa_output.speaker\nosd -i volume-muted -p 40\n"],
+                           ["vol unmute", "pactl set-sink-mute alsa_output.speaker 0\npactl get-sink-volume alsa_output.speaker\nosd -i volume-high -p 40\n"]]) {
+    writeFileSync(log, "");
+    const argv = top(q, levels).run.argv;
+    execFileSync(argv[0], argv.slice(1), { env: { PATH: bin + ":/usr/bin:/bin" } });
+    assert.equal(readFileSync(log, "utf8"), want, q);
+  }
   rmSync(bin, { recursive: true, force: true });
 });
 

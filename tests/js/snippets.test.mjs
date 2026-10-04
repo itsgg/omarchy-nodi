@@ -143,3 +143,12 @@ test("a run keyword taking {q}, typed alone, asks for it rather than running wit
   assert.equal(r.hint, "up <text>"); assert.ok(!r.run);
   assert.equal(top("up hello", {}, cfg).run.kind, "shell");
 });
+
+test("dates: an apostrophe in quoted text, and an offset out of range moves nothing", () => {
+  const P = load("lib/Placeholders.js");
+  const at = new Date(2026, 8, 23, 23, 0);
+  assert.equal(P.formatDate(at, "HH 'o''clock'"), "23 o'clock");
+  assert.equal(P.formatDate(at, "''yy"), "'26");
+  assert.equal(P.formatDate(new Date(NaN), "yyyy"), "", "a date out of range is nothing, not a throw");
+  assert.equal(P.fill('{date format="MMM" offset="+999999999d"}', "", { now: at }).text, "Sep");
+});

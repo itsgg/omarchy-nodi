@@ -375,3 +375,17 @@ test("the empty field suggests an example a provider that is on answers", () => 
   assert.equal(Engine.placeholder(Object.assign({}, config, { providers: [] }), 3), "Search");
 });
 
+
+test("a word named like an object's own property is a word (codex 2026-10-04)", () => {
+  const Menu = load("lib/Menu.js");
+  const items = Menu.parseItems('{ "root": { "label": "Omarchy" }, "tools.constructor": { "label": "Constructor", "action": "notify-send built" } }');
+  const merged = Menu.merge([items]);
+  const menu = { items: merged.items, order: merged.order, when: {}, checked: {} };
+  assert.ok(run("constructor", { menu, toggleStates: {} }).some(r => r.key === "menu:tools.constructor"), "not an installer gate");
+  const O = load("providers/omarchy.js");
+  const commands = O.parse(readFileSync(join(root, "tests/js/fixtures/omarchy-commands.json"), "utf8"));
+  assert.ok(run("omarchy version", { omarchyCommands: commands }).some(r => r.provider === "omarchy"));
+  const Sources = load("lib/Sources.js");
+  assert.deepEqual(plain(Sources.themes("constructor\t/p\ntoString\t\n").list.map(t => t.name)), ["Constructor", "ToString"]);
+  for (const q of ["constructor(2)", "10 constructor to usd", "valueOf 3"]) assert.ok(run(q).every(r => r.provider !== "math" && r.provider !== "currency"), q);
+});

@@ -22,7 +22,8 @@ Item {
     onPhaseChanged: test.phases.push(phase)
   }
 
-  Component.onCompleted: {
+  // Started by tools/qs-test.sh once it listens for `done`.
+  function start() {
     if (!Quickshell.env("NODI_TEST_ASK")) { Qt.callLater(function() { test.done(true, "skipped") }); return }
     ask.send("What is the capital of Australia? Answer with the one word.")
     deadline.start()

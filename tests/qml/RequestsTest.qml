@@ -44,7 +44,8 @@ Item {
     }
   }
 
-  Component.onCompleted: {
+  // Started by tools/qs-test.sh once it listens for `done`.
+  function start() {
     check(requests.request("echo").state === "pending", "a first ask is pending")
     requests.request("broken")
     requests.request("slow", "p1")

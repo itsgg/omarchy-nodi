@@ -55,14 +55,37 @@ function parseTmux(text) {
     .map(function(p) { return { id: p[0], name: p[1], windows: Number(p[2]) || 0, attached: Number(p[3]) > 0 } })
 }
 
-// The Host names of ~/.ssh/config, patterns left out.
+// The words of an ssh_config line as ssh(1) reads them: split on spaces,
+// a "quoted word" kept whole, a word starting with # ending the line.
+function sshWords(text) {
+  var out = []
+  var i = 0
+  while (i < text.length) {
+    while (i < text.length && /\s/.test(text.charAt(i))) i++
+    if (i >= text.length || text.charAt(i) === "#") break
+    var word = ""
+    if (text.charAt(i) === '"') {
+      var end = text.indexOf('"', i + 1)
+      if (end === -1) break
+      word = text.slice(i + 1, end)
+      i = end + 1
+    } else {
+      while (i < text.length && !/\s/.test(text.charAt(i))) word += text.charAt(i++)
+    }
+    out.push(word)
+  }
+  return out
+}
+
+// The Host names of ~/.ssh/config, patterns left out: "Host a b",
+// "Host=a", "Host \"a\"", "Host a # a comment" (codex 2026-10-04).
 function parseSsh(text) {
   var out = []
   var lines = String(text || "").split("\n")
   for (var i = 0; i < lines.length; i++) {
-    var m = lines[i].match(/^\s*Host\s+(.+)$/i)
+    var m = lines[i].match(/^\s*Host(?:\s*=\s*|\s+)(.*)$/i)
     if (!m) continue
-    var names = m[1].trim().split(/\s+/)
+    var names = sshWords(m[1])
     for (var j = 0; j < names.length; j++) if (names[j] && !/[*?!]/.test(names[j]) && out.indexOf(names[j]) === -1) out.push(names[j])
   }
   return out
@@ -154,9 +177,19 @@ function host(url) {
   return m ? m[1].replace(/^www\./, "") + (m[2] && m[2] !== "/" ? m[2] : "") : String(url)
 }
 
+// Where to open what listens: localhost for a wildcard or 127.0.0.1 (or ::1),
+// else the address itself, so a server on 192.168.1.20 alone or on
+// 127.0.0.53 is reached where it listens (codex 2026-10-04).
+function hostFor(addresses) {
+  var a = addresses || []
+  for (var i = 0; i < a.length; i++) if (/^(\*|0\.0\.0\.0|::|127\.0\.0\.1|::1|)$/.test(a[i])) return "localhost"
+  var first = String(a[0] || "localhost")
+  return first.indexOf(":") !== -1 ? "[" + first + "]" : first
+}
+
 function portRows(q, ctx) {
   var got = ctx.request ? ctx.request("ports") : { state: "pending" }
-  if (!got.value) return [{ title: "Reading ports...", subtitle: "Ports", score: 40, copy: "", remember: false }]
+  if (!got.value) return [{ title: got.state === "error" ? "Could not read ports" : "Reading ports...", subtitle: "Ports", score: 40, copy: "", remember: false }]
   var want = q.replace(/^:/, "")
   var out = []
   for (var i = 0; i < got.value.length; i++) {
@@ -164,11 +197,12 @@ function portRows(q, ctx) {
     if (want && String(p.port).indexOf(want) !== 0 && (p.name || "").toLowerCase().indexOf(want) !== 0) continue
     var held = p.name === "systemd" ? ", socket activated" : p.pids.length === 1 ? ", pid " + p.pids[0]
              : p.pids.length > 1 ? ", " + p.pids.length + " processes" : ", another user's"
+    var at = hostFor(p.addresses) + ":" + p.port
     var row = { key: "port:" + p.port + "/" + p.name, title: ":" + p.port + (p.name ? " " + p.name : ""),
       subtitle: where(p.addresses) + held, icon: "󰌘",
-      score: 97 - i * 0.01, copy: "localhost:" + p.port, remember: false, group: "Ports",
-      run: Run.open("http://localhost:" + p.port), actionLabel: "Open",
-      actions: [{ label: "Copy the address", icon: "󰆏", run: Run.copy("localhost:" + p.port) }] }
+      score: 97 - i * 0.01, copy: at, remember: false, group: "Ports",
+      run: Run.open("http://" + at), actionLabel: "Open",
+      actions: [{ label: "Copy the address", icon: "󰆏", run: Run.copy(at) }] }
     if (p.pids.length) row.actions.push({ label: "Stop " + (p.name || "the process"), icon: "󰅖", confirm: true,
                                           run: Run.exec(["kill", "-TERM", "--"].concat(p.pids.map(String))) })
     out.push(row)
@@ -178,7 +212,7 @@ function portRows(q, ctx) {
 
 function serviceRows(q, ctx) {
   var got = ctx.request ? ctx.request("services") : { state: "pending" }
-  if (!got.value) return [{ title: "Reading services...", subtitle: "Services", score: 40, copy: "", remember: false }]
+  if (!got.value) return [{ title: got.state === "error" ? "Could not read your services" : "Reading services...", subtitle: "Services", score: 40, copy: "", remember: false }]
   var out = []
   for (var i = 0; i < got.value.length; i++) {
     var s = got.value[i]
@@ -278,7 +312,9 @@ function tmuxRows(q, ctx, all) {
     out.push({
       key: "tmux:" + s.name, title: s.name, subtitle: "tmux, " + s.windows + (s.windows === 1 ? " window" : " windows") + (s.attached ? ", attached" : ""),
       icon: "󰆍", tier: t, kind: "item", copy: s.name, run: terminal("", ["tmux", "attach-session", "-t", s.id]),
-      actionLabel: "Attach", group: "tmux"
+      // Not remembered: a session id is tmux's for this server only, and a
+      // replay after a restart attached another session (codex 2026-10-04).
+      remember: false, actionLabel: "Attach", group: "tmux"
     })
   }
   return out
@@ -338,7 +374,12 @@ var provider = {
       timeoutMs: 3000
     },
     // The first Chromium-family history found, read without locking the
-    // browser that writes it (immutable=1), newest 3000 pages.
+    // browser that writes it (immutable=1), newest 3000 pages. A plain
+    // read-only open fails while Chromium runs, "database is locked", since
+    // it holds the file in exclusive locking mode, and so would a backup;
+    // a read that catches a page mid-write can show a stale or missing row
+    // until the next read, which history searched a minute later starts
+    // (codex 2026-10-04 asked for locking).
     "browser-history": {
       argv: function() {
         return ["/usr/bin/bash", "-c",
@@ -390,7 +431,7 @@ var provider = {
     if ((m = String(query).match(PRS))) return prRows(rest(m), ctx)
     var page = String(query).match(/^\s*(man|tldr)\s+([A-Za-z0-9._+-]+)(?:\s+([0-9a-z]+))?\s*$/)
     if (page) {
-      var cmd = page[1] === "man" ? (page[3] ? ["man", page[3], page[2]] : ["man", "--", page[2]]) : ["tldr", "--", page[2]]
+      var cmd = page[1] === "man" ? (page[3] ? ["man", "--", page[3], page[2]] : ["man", "--", page[2]]) : ["tldr", "--", page[2]]
       return [{ key: page[1] + ":" + page[2], title: (page[1] === "man" ? "Manual: " : "tldr: ") + page[2] + (page[3] ? "(" + page[3] + ")" : ""),
                 subtitle: "In a terminal", icon: "", score: 98, copy: page[2], run: terminal("", cmd), remember: false }]
     }
@@ -400,7 +441,11 @@ var provider = {
     else rows = rows.concat(tmuxRows(q, ctx, false))
     if (q === "ssh" || q.indexOf("ssh ") === 0) rows = rows.concat(sshRows(q.replace(/^ssh ?/, ""), ctx, q === "ssh"))
     else rows = rows.concat(sshRows(q, ctx, false))
-    rows = rows.concat(projectRows(q, ctx, home).slice(0, LIMIT))
+    // Ranked before the cut: the first eight found were not the best named
+    // (codex 2026-10-04).
+    var projects = projectRows(q, ctx, home)
+    projects.sort(function(a, b) { return (Score.score(b.tier, b.kind) + b.offset) - (Score.score(a.tier, a.kind) + a.offset) })
+    rows = rows.concat(projects.slice(0, LIMIT))
     return rows
   }
 }

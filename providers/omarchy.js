@@ -186,7 +186,8 @@ var provider = {
     if (list.length === 0 || (!whole && q.length < 2)) return []
     var inMenu = whole ? null : menuBinaries(ctx.menu)
     var first = q.split(" ")[0]
-    var gate = GATE_WORDS[first] || ""
+    // Own keys: "constructor" is a word, not an installer gate (codex 2026-10-04).
+    var gate = Object.prototype.hasOwnProperty.call(GATE_WORDS, first) ? GATE_WORDS[first] : ""
     if (gate && q === first && !whole) return []
     var text = gate ? gate + q.slice(first.length) : q
     var hits = []

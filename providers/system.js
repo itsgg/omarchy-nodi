@@ -20,6 +20,13 @@ var VOLUME_SCRIPT = 'sink=$(omarchy-audio-output-sink) && [ -n "$sink" ] || exit
   + 'pactl set-sink-mute "$sink" 0; pactl set-sink-volume "$sink" "$1%"; '
   + 'if [ "$1" -eq 0 ]; then icon=volume-muted; else icon=volume-high; fi; omarchy-osd -i "$icon" -p "$1"'
 
+// Mute ($1 = 1) or unmute ($1 = 0) the output as asked, then Omarchy's OSD:
+// Omarchy's own command only toggles, so "volume mute" unmuted a muted
+// output (codex 2026-10-04).
+var MUTE_SCRIPT = 'sink=$(omarchy-audio-output-sink) && [ -n "$sink" ] || exit 1; pactl set-sink-mute "$sink" "$1"; '
+  + 'p=$(pactl get-sink-volume "$sink" | grep -o "[0-9]*%" | head -n 1 | tr -d %); '
+  + 'if [ "$1" = 1 ]; then icon=volume-muted; else icon=volume-high; fi; omarchy-osd -i "$icon" -p "${p:-0}"'
+
 var EXTRAS = [
   { key: "reload-hyprland", title: "Reload Hyprland", subtitle: "Hyprland config", icon: "󰑓",
     keywords: "reload hyprland config compositor wm refresh", run: Run.exec(["hyprctl", "reload"]) },
@@ -81,7 +88,12 @@ function volumeRows(arg, ctx) {
   }
   if (/^(up|raise|louder)$/.test(arg)) return [step("Volume Up 5%", 5, 99)]
   if (/^(down|lower|quieter)$/.test(arg)) return [step("Volume Down 5%", -5, 99)]
-  if (/^(mute|unmute|toggle)$/.test(arg)) return [mute(99)]
+  if (arg === "toggle") return [mute(99)]
+  if (arg === "mute" || arg === "unmute") {
+    var on = arg === "mute"
+    return [{ key: "volume:" + arg, title: on ? "Mute Sound" : "Unmute Sound", subtitle: at || "Output volume", icon: on ? "󰖁" : "󰕾",
+              score: 99, copy: "", run: Run.exec(["bash", "-c", MUTE_SCRIPT, "nodi-mute", on ? "1" : "0"]) }]
+  }
   var m = arg.match(/^([+-])\s*(\d{1,3})\s*%?$/)
   if (m) {
     var d = clamp(parseInt(m[2], 10), 1, 100)

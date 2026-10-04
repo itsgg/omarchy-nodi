@@ -32,9 +32,11 @@ var TARGET_SEP = /\s+(?:to|in|into|as|->|=>|=)\s*$/
 function knownCode(word, rates) {
   if (!word) return null
   var w = word.toLowerCase()
-  if (SYMBOLS[word]) return SYMBOLS[word]
-  if (NAMES[w] === "RUPEE") return RUPEES.indexOf(homeCurrency) !== -1 ? homeCurrency : "INR"
-  if (NAMES[w]) return NAMES[w]
+  // Own keys only: "constructor" names no currency.
+  var has = function(table, k) { return Object.prototype.hasOwnProperty.call(table, k) }
+  if (has(SYMBOLS, word)) return SYMBOLS[word]
+  if (has(NAMES, w) && NAMES[w] === "RUPEE") return RUPEES.indexOf(homeCurrency) !== -1 ? homeCurrency : "INR"
+  if (has(NAMES, w)) return NAMES[w]
   var up = word.toUpperCase()
   if (!/^[A-Z]{3}$/.test(up)) return null
   if (rates && rates[up] !== undefined) return up
