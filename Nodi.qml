@@ -59,7 +59,8 @@ Item {
   readonly property string userConfigPath: home + "/.config/omarchy/extensions/nodi.json"
   readonly property string cacheDir: home + "/.cache/nodi"
   readonly property string stateDir: home + "/.local/state/nodi"
-  readonly property string toggleCommand: "omarchy-shell shell toggle " + pluginId
+  // The hotkey's Hyprland global shortcut, "appid:name" (lib/Hotkey.js plan).
+  readonly property string toggleShortcut: pluginId + ":toggle"
 
   // ---------------------------------------------------------------- data
 
@@ -161,6 +162,24 @@ Item {
     root.armedKey = ""
     root.paletteOpen = false
     root.lastPointer = Qt.point(-1, -1)
+    // The reads (windows, toggles, themes...) start 60 ms after, once the
+    // card is on screen: each start forks the shell, and started here they
+    // held the first frame back about 70 ms (161 ms from the key to the
+    // screen against 92, measured 2026-10-04). Quickshell's PanelWindow has
+    // no frame signal to wait for instead.
+    root.readsPending = true
+    readsAfterFrame.restart()
+    root.recompute()
+    var given = typeof payload.query === "string"
+    Qt.callLater(function() { input.forceActiveFocus(); if (!given) input.selectAll() })
+  }
+
+  property bool readsPending: false
+
+  function startReads() {
+    if (!root.readsPending) return
+    root.readsPending = false
+    readsAfterFrame.stop()
     root.refreshWindows()
     root.refreshToggles()
     root.refreshThemes()
@@ -168,10 +187,9 @@ Item {
     root.refreshZones()
     requests.request("omarchy-commands")
     if (Date.now() - root.guardsAt > 60 * 1000) root.evaluateGuards()
-    root.recompute()
-    var given = typeof payload.query === "string"
-    Qt.callLater(function() { input.forceActiveFocus(); if (!given) input.selectAll() })
   }
+
+  Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
 
   function close() {
     root.opened = false
@@ -579,6 +597,15 @@ Item {
   // unbound and bind it twice (codex 2026-10-02). A request during one runs
   // once after it.
   property bool hotkeyQueued: false
+  property bool hotkeyFresh: true         // this Nodi has not bound its key yet
+
+  // The hotkey, straight from Hyprland: no process is started for a press.
+  GlobalShortcut {
+    appid: root.pluginId
+    name: "toggle"
+    description: "Open or close Nodi"
+    onPressed: root.toggle()
+  }
   property string lastBinds: "[]"         // the binds as last read, for checking a chord being set
   property var boundRows: ({})            // combo -> the row key this Nodi bound it to
   property var rowConflictsWarned: ({})
@@ -606,7 +633,8 @@ Item {
         "\"" + hotkey + "\" is not a key combination. Write it as \"SUPER + SPACE\" in ~/.config/omarchy/extensions/nodi.json."])
     }
     root.lastBinds = bindsJson
-    var p = Hotkey.plan(bindsJson, hotkey, root.toggleCommand, { scrim: root.scrim.a, card: root.background.a })
+    var p = Hotkey.plan(bindsJson, hotkey, root.toggleShortcut, { scrim: root.scrim.a, card: root.background.a }, root.hotkeyFresh)
+    if (p.bound) root.hotkeyFresh = false
     // The rows' hotkeys (Ctrl+K, lib/Prefs.js) in the same eval.
     var rows = Hotkey.planRows(bindsJson, root.prefs.hotkeys, root.pluginId, root.boundRows)
     root.boundRows = rows.bound

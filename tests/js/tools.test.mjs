@@ -87,7 +87,7 @@ test("developer tools", () => {
 });
 
 test("hotkey plan", () => {
-  const cmd = "omarchy-shell shell toggle io.github.itsgg.nodi";
+  const cmd = "io.github.itsgg.nodi:toggle";
   const other = { modmask: 64, key: "K", description: "Keybindings", dispatcher: "__lua" };
   const mine = { modmask: 64, key: "SPACE", description: "Nodi", dispatcher: "__lua" };
   const old = { modmask: 64, key: "SPACE", description: "Command bar", dispatcher: "__lua" };
@@ -97,7 +97,7 @@ test("hotkey plan", () => {
   for (const c of ["SUPER", "SUPER +", "SUPER + +", "SUPER + SHIFT", "CTRL + ALT"]) assert.equal(Hotkey.parseCombo(c), null, c + " has no key but a modifier");
   const free = Hotkey.plan(j([other]), "SUPER + SPACE", cmd);
   assert.ok(free.bound);
-  assert.equal(free.lua[0], 'hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("' + cmd + '"), { description = "Nodi" })');
+  assert.equal(free.lua[0], 'hl.bind("SUPER + SPACE", hl.dsp.global("' + cmd + '"), { description = "Nodi" })', "a global shortcut, no process per press");
   assert.equal(free.lua[1], 'hl.layer_rule({ match = { namespace = "^nodi$" }, no_anim = true, animation = "none", blur = true, ignore_alpha = 0.72 })');
   assert.equal(Hotkey.plan(j([other, mine]), "SUPER + SPACE", cmd).lua.length, 0);
   const moved = Hotkey.plan(j([mine]), "SUPER + PERIOD", cmd);
@@ -106,7 +106,25 @@ test("hotkey plan", () => {
   assert.equal(taken.bound, false); assert.equal(taken.conflict, "Command bar"); assert.equal(taken.lua.length, 0);
   assert.equal(Hotkey.plan(j([other, mine]), "", cmd).lua.join(), 'hl.unbind("SUPER + SPACE")');
   assert.equal(Hotkey.luaString('a"b\\c'), '"a\\"b\\\\c"');
+  assert.equal(Hotkey.luaString("a\r\nb\u0007"), '"a\\013\\010b\\007"', "every control character escaped (codex 2026-10-04)");
+  // Hyprland reads code: and mouse: in lower case (codex 2026-10-04).
+  assert.deepEqual(plain(Hotkey.parseCombo("SUPER + code:20")), { mask: 64, key: "code:20" });
+  assert.deepEqual(plain(Hotkey.parseCombo("super + MOUSE:272")), { mask: 64, key: "mouse:272" });
+  assert.match(Hotkey.plan(j([]), "SUPER + code:20", cmd).lua[0], /^hl\.bind\("SUPER \+ code:20"/);
+  // A bind of another submap is no conflict; one of every submap is.
+  const resize = { modmask: 64, key: "SPACE", description: "Grow", submap: "resize" };
+  assert.ok(Hotkey.plan(j([resize]), "SUPER + SPACE", cmd).bound);
+  assert.equal(Hotkey.plan(j([Object.assign({}, resize, { submap_universal: "true" })]), "SUPER + SPACE", cmd).conflict, "Grow");
+  // A chord Nodi left is not unbound while something else holds it too.
+  const stale = { modmask: 64, key: "PERIOD", description: "Nodi" }, sharing = { modmask: 64, key: "PERIOD", description: "Other" };
+  assert.ok(!Hotkey.plan(j([stale, sharing]), "SUPER + SPACE", cmd).lua.some(l => /unbind\("SUPER \+ PERIOD"\)/.test(l)));
   assert.ok(Hotkey.plan("not json", "SUPER + SPACE", cmd).bound);
+  // A Nodi that has just loaded binds its key again: an older Nodi's bind may
+  // start a process for every press, and a bind cannot be read back.
+  const fresh = Hotkey.plan(j([other, mine]), "SUPER + SPACE", cmd, undefined, true);
+  assert.equal(fresh.lua[0], 'hl.unbind("SUPER + SPACE")'); assert.match(fresh.lua[1], /^hl\.bind\("SUPER \+ SPACE", hl\.dsp\.global/);
+  const shared = { modmask: 64, key: "SPACE", description: "Other app", dispatcher: "__lua" };
+  assert.equal(Hotkey.plan(j([mine, shared]), "SUPER + SPACE", cmd, undefined, true).lua.length, 0, "never unbind a key something else holds too");
 });
 
 test("JSONC", () => {
@@ -125,7 +143,7 @@ test("rows that name a moment are not learned from", () => {
 });
 
 test("hotkey plan: a key bound twice by a race is bound once again", () => {
-  const cmd = "omarchy-shell shell toggle io.github.itsgg.nodi";
+  const cmd = "io.github.itsgg.nodi:toggle";
   const mine = { modmask: 64, key: "SPACE", description: "Nodi", dispatcher: "__lua" };
   const p = Hotkey.plan(JSON.stringify([mine, mine]), "SUPER + SPACE", cmd);
   assert.ok(p.bound);
@@ -141,7 +159,9 @@ test("the key is released on unload only when no Nodi took this one's place", ()
   try {
     const log = join(dir, "hyprctl.log");
     const hyprctl = join(dir, "hyprctl");
-    writeFileSync(hyprctl, `#!/bin/bash\nprintf '%s\\n' "$*" >> "${log}"\n`, { mode: 0o755 });
+    // Answers `binds -j` with the binds in ${dir}/binds.json; logs evals.
+    writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "SPACE", description: "Nodi" }]));
+    writeFileSync(hyprctl, `#!/bin/bash\n[ "$1" = binds ] && { cat "${dir}/binds.json"; exit 0; }\nprintf '%s\\n' "$*" >> "${log}"\n`, { mode: 0o755 });
     const shell = answer => { const p = join(dir, "shell-" + answer); writeFileSync(p, `#!/bin/bash\n[ "$1 $2 $3" = "shell call io.github.itsgg.nodi" ] && [ "$4" = ping ] && echo ${answer}\n`, { mode: 0o755 }); return p; };
     const combo = Hotkey.parseCombo("SUPER + SPACE");
     const release = answer => { const a = Hotkey.releaseArgv(combo, "io.github.itsgg.nodi", shell(answer), hyprctl, 0); execFileSync(a[0], a.slice(1)); };
@@ -149,6 +169,15 @@ test("the key is released on unload only when no Nodi took this one's place", ()
     assert.ok(!existsSync(log), "a successor answered: the key stays");
     release("unknown");
     assert.equal(readFileSync(log, "utf8"), 'eval hl.unbind("SUPER + SPACE")\n', "none loaded: released");
+    // Something else bound the chord since: the unbind would take it too.
+    rmSync(log);
+    writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "SPACE", description: "Nodi" }, { modmask: 64, key: "SPACE", description: "Launcher" }]));
+    release("unknown");
+    assert.ok(!existsSync(log), "a chord another bind holds is left alone");
+    // A bind of another submap holds nothing in the default one.
+    writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "SPACE", description: "Nodi" }, { modmask: 64, key: "SPACE", description: "Resize", submap: "resize" }]));
+    release("unknown");
+    assert.equal(readFileSync(log, "utf8"), 'eval hl.unbind("SUPER + SPACE")\n');
     assert.equal(Hotkey.releaseArgv(null, "x", "y"), null, "nothing bound, nothing to release");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
