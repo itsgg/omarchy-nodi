@@ -1,0 +1,13 @@
+SUPER + RETURN                      → Terminal	exec	omarchy-launch-terminal
+SUPER + F                           → Full screen	lua	hl.dsp.window.fullscreen({ mode = "fullscreen" })
+SUPER + W                           → Close window	lua	hl.dsp.window.close()
+CTRL ALT + DELETE                   → Close all windows	exec	omarchy-hyprland-window-close-all
+SUPER + 3                           → Switch to workspace 3	lua	hl.dsp.focus({ workspace = "3" })
+SUPER SHIFT ALT + 3                 → Move window silently to workspace 3	lua	hl.dsp.window.move({ workspace = "3", follow = false })
+PRINT                               → Screenshot	exec	omarchy-capture-screenshot
+SUPER + C                           → Universal copy		
+SUPER CTRL + Z                      → Zoom in		
+SHIFT ALT + L                       → Copy URL from Web App	sendshortcut	SHIFT ALT,L,
+SUPER + SPACE                       → Nodi	exec	omarchy-shell shell toggle io.github.itsgg.nodi
+SUPER + X                           → Odd	lua	os.execute("rm -rf ~")
+XF86AUDIOPAUSE                      → Pause	exec	omarchy-shell media playPause

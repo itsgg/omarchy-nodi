@@ -1,0 +1,7 @@
+{
+  /* The user's extension: a new tree, an override, and an id no script should trust. */
+  "notes": {"icon":"","label":"Notes"},
+  "notes.today": {"icon":"","label":"Today's note","description":"Open the note for today","action":"xdg-open ~/notes/today.md"},
+  "system.lock": {"label":"Lock Screen"},
+  "notes.odd$(touch /tmp/nodi-pwned)": {"label":"Odd","when":"true","action":"true"},
+}

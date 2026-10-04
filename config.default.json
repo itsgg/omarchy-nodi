@@ -1,0 +1,21 @@
+{
+  "hotkey": "SUPER + PERIOD",
+  "providers": ["keywords", "snippets", "scripts", "ask", "shell", "math", "currency", "time", "units", "emoji", "processes", "clipboard", "files", "devtools", "system", "lists", "desktop", "notifications", "dev", "menu", "omarchy", "windows", "apps", "keys"],
+  "fallbacks": ["keywords", "find", "ask"],
+  "ask": { "model": "haiku" },
+  "apps": { "describe": false },
+  "math": { "precision": 10 },
+  "currency": { "home": "USD", "favorites": ["EUR", "GBP"] },
+  "emoji": { "onEnter": "paste" },
+  "time": { "zones": ["UTC", "America/New_York", "Europe/London"], "clock24": true },
+  "clipboard": { "limit": 30 },
+  "files": { "limit": 30 },
+  "snippets": [],
+  "scripts": { "dirs": ["~/.config/omarchy/nodi/scripts"] },
+  "keywords": [
+    { "keyword": "g", "title": "Search Google", "open": "https://www.google.com/search?q={q}" },
+    { "keyword": "yt", "title": "Search YouTube", "open": "https://www.youtube.com/results?search_query={q}" },
+    { "keyword": "gh", "title": "Search GitHub", "open": "https://github.com/search?q={q}" },
+    { "keyword": "wiki", "title": "Wikipedia", "open": "https://en.wikipedia.org/w/index.php?search={q}" }
+  ]
+}

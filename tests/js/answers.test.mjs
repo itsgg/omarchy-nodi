@@ -1,0 +1,377 @@
+// The ported providers: every case from omarchy-commandbar's suite, adapted
+// to Nodi's run contract and ASCII text.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { Engine, config, defaults, rates, zones, now, emojis, processes, apps, launches, windows, services, run, top, requester } from "./fixtures.mjs";
+import { plain, load, root } from "./load.mjs";
+
+const Rows = load("lib/Rows.js");
+
+function expectTop(query, want, extra) {
+  const row = top(query, extra);
+  const title = row ? row.title : null;
+  // "No rows" is nothing answering: the fallbacks (search instead) aside.
+  if (want === null) assert.equal(run(query, extra).filter(r => r.provider !== "fallback").length, 0, `${JSON.stringify(query)} should have no rows, got ${title}`);
+  else if (want instanceof RegExp) assert.match(String(title), want, JSON.stringify(query));
+  else assert.equal(title, want, JSON.stringify(query));
+}
+
+test("calculator", () => {
+  for (const [q, want] of [["2+3*4", "14"], ["2^10", "1,024"], ["15% of 200", "30"], ["200+10%", "220"], ["200 - 15%", "170"],
+    ["sqrt(16)", "4"], ["2pi", "6.283185307"], ["3(4+1)", "15"], ["3x4", "12"], ["10 % 3", "1"], ["10 mod 4", "2"], ["2 ^ 10 % 3", "1"], ["2^3%5", "3"], ["0x10", "16"], ["0xff + 1", "256"], ["-10 % 3", "2"], ["10 % 3 * 2", "2"],
+    ["0.1+0.2", "0.3"], ["1,000 * 3", "3,000"], ["max(1,5,3)", "5"], ["-2^2", "-4"], ["5!", "120"], ["1/0", "∞"], ["2e3+1", "2,001"]]) expectTop(q, want);
+  for (const q of ["hello", "42", "(1+2", ""]) expectTop(q, null);
+});
+
+test("currency", () => {
+  for (const [q, want] of [["100 usd to lkr", "30,050 LKR"], ["100usd in eur", "90 EUR"], ["$50", "15,025 LKR"], ["€20 to inr", /^1,848\.89 INR$/],
+    ["50 eur", /LKR$/], ["usd lkr", "300.5 LKR"], ["usd to lkr", "300.5 LKR"], ["12*50 usd", "180,300 LKR"], ["1 lkr", /USD$/]]) expectTop(q, want);
+  expectTop("usd", null);
+  assert.equal(top("100 usd to lkr").subtitle, "100 USD to LKR, rates as of " + Engine.formatDate(rates.updated));
+});
+
+test("time zones and dates", () => {
+  for (const [q, want] of [["time", /Colombo/], ["time in tokyo", /Tokyo/], ["tokyo time", /Tokyo/], ["3pm lkt to pst", "02:30 Los Angeles"],
+    ["15:30 in london", "11:00 London"], ["9am to tokyo", "12:30 Tokyo"], ["11pm to tokyo", "02:30 Tokyo (+1 day)"],
+    ["days until dec 25", /^93 days/], ["today + 45 days", "Sat, 7 Nov 2026"], ["2026-01-01 to 2026-09-23", /^265 days/],
+    ["next friday", "Fri, 25 Sep 2026"], ["days since jan 1", /^265 days/], ["in 2 weeks", "Wed, 7 Oct 2026"],
+    ["until christmas", /^93 days/], ["dec 25", "Fri, 25 Dec 2026"]]) expectTop(q, want);
+  // An offset past what a Date can hold is no date, not "NaN".
+  for (const q of ["in 99999999999 days", "9999999999 days from now", "today + 99999999999 days"])
+    assert.ok(!run(q).some(r => /NaN|undefined/.test(r.title + r.subtitle + r.copy)), q);
+  assert.match(top("3pm lkt to pst").subtitle, /^15:00 Colombo \(UTC\+5:30\) to Los Angeles \(UTC-7\)$/);
+});
+
+test("units", () => {
+  for (const [q, want] of [["5 km to mi", "3.1069 mi"], ["5km in miles", "3.1069 mi"], ["180 lb to kg", "81.6466 kg"], ["72f", "22.2222 °C"],
+    ["100 c to f", "212 °F"], ["0 k to c", "-273.15 °C"], ["5 ft 11 in to cm", "180.34 cm"], ["5 in to cm", "12.7 cm"],
+    ["2 cups in ml", "473.1765 mL"], ["90 min to hours", "1.5 h"], ["10 gb to mb", "10,000 MB"], ["1 gib in mb", "1,073.7418 MB"],
+    ["60 mph", "96.5606 km/h"], ["1,500 m to km", "1.5 km"], ["1 acre to m2", "4,046.8564 m²"]]) expectTop(q, want);
+  for (const q of ["5 min", "5 kg to km"]) expectTop(q, null);
+  const r = top("5 km");
+  assert.equal(r.title, "3.1069 mi"); assert.equal(r.copy, "3.1069"); assert.equal(r.subtitle, "5 km to mi, Length");
+  assert.equal(top("in 2 weeks").title, "Wed, 7 Oct 2026");
+  assert.equal(top("2026-01-01 to 2026-09-23").provider, "time");
+});
+
+test("keywords: open, run, and quoting", () => {
+  const g = top("g foo bar");
+  assert.equal(g.title, "Search Google: foo bar");
+  assert.equal(g.subtitle, "Opens google.com");
+  assert.deepEqual(plain(g.run), { kind: "open", target: "https://www.google.com/search?q=foo%20bar" });
+  assert.equal(top("g").title, "Search Google"); assert.equal(top("g").hint, "g <search>");
+  assert.equal(top("yt x").subtitle, "Opens youtube.com");
+  assert.equal(top("g foo & bar").run.target, "https://www.google.com/search?q=foo%20%26%20bar");
+
+  // A run keyword's {q} arrives as $1, one word, quoted for where it stands:
+  // what you type cannot change the command, be split or be globbed.
+  const say = (template, q) => {
+    const cfg = { providers: ["keywords"], keywords: [{ keyword: "x", run: template }] };
+    const row = Engine.run("x " + q, cfg, {})[0];
+    assert.equal(row.run.kind, "shell");
+    assert.equal(row.remember, false, "a search is not learned");
+    assert.equal(row.subtitle, "Runs " + template);
+    return execFileSync("bash", ["-c", row.run.script, "nodi", ...row.run.args], { cwd: root }).toString();
+  };
+  const nasty = "$(echo pwned) `id` \"x\" it's  two  *";
+  const args = "printf '<%s>' ";
+  for (const t of ["{q}", '"{q}"', "'{q}'", '"a {q} b"', "'a {q} b'", "''{q}''", "\"'{q}'\""]) {
+    const want = { "{q}": nasty, '"{q}"': nasty, "'{q}'": nasty, '"a {q} b"': "a " + nasty + " b", "'a {q} b'": "a " + nasty + " b", "''{q}''": nasty, "\"'{q}'\"": "'" + nasty + "'" }[t];
+    assert.equal(say(args + t, nasty), "<" + want + ">", t);
+  }
+  // Inside $( and backticks, the quotes inside them decide (Fable 2026-10-02).
+  for (const t of ['"$(echo "{q}")"', '"$(printf "%s" "$(echo "{q}")")"', '"$(echo {q})"', '"`echo "{q}"`"', '"$(echo $((1+1)) "{q}")"', '"$(echo \')\' "{q}")"'])
+    assert.equal(say("printf '<%s>' " + t, nasty), "<" + (t.includes("1+1") ? "2 " : t.includes("')'") ? ") " : "") + nasty + ">", t);
+  assert.equal(say(args + '"${q}"', nasty), "<" + nasty + ">", "${q} is read as {q}");
+  assert.equal(say(args + "$'a\\'{q}'", nasty), "<a'" + nasty + ">", "ANSI-C quoting with an escaped quote");
+  assert.equal(say(args + "{q} # it's\nprintf '<%s>' {q}", "a b"), "<a b><a b>", "an apostrophe in a comment ends with the line");
+  assert.equal(say(args + "'{q}{q}'", "a b"), "<a ba b>");
+  assert.equal(say(args + "\\{q} {q}", "*"), "<{q}><*>", "an escaped brace is text");
+});
+
+test("emoji", () => {
+  expectTop(":fire", /fire/); expectTop("emoji thumbs up", /thumbs up/); expectTop(":", "Emoji");
+  assert.equal(run(":")[0].hint, ":<word>", "the pattern sits under the field, not in a row");
+  // A colon query never falls through to the rest of Nodi, where Enter on
+  // ":screenshot" would take a screenshot.
+  expectTop(":zzqx", "No emoji matches \"zzqx\"");
+  assert.ok(run(":screenshot").every(r => r.provider === "emoji" && !r.run));
+  const r = top(":fire");
+  assert.equal(r.icon, "🔥"); assert.equal(r.copy, "🔥");
+  assert.deepEqual(plain(r.run), { kind: "exec", argv: ["omarchy-menu-emoji-insert", "🔥"] });
+  const c = Engine.run(":fire", { providers: ["emoji"], emoji: { onEnter: "copy" } }, { emojis })[0];
+  assert.equal(c.run, null); assert.equal(c.copy, "🔥");
+});
+
+test("processes", () => {
+  const extra = { asked: [] };
+  expectTop("kill", "Quit node", extra); expectTop("kill chrome", "Quit all 2 \"chrome\" processes", extra);
+  expectTop("kill web", "Quit Web Content", extra); expectTop("kill zzz", /^No process/, extra);
+  expectTop("kill -9 node", "Force quit node", extra); expectTop("killer", null, extra);
+  // Named, one Enter; not named (the busiest, or found by its arguments), two.
+  assert.equal(top("kill node", extra).confirm, false);
+  assert.equal(top("kill", extra).confirm, true);
+  assert.equal(top("kill server.js", extra).title, "Quit node");
+  assert.equal(top("kill server.js", extra).confirm, true, "found only in its arguments");
+  assert.equal(top("kill chrome", extra).confirm, false, "a group you named");
+  assert.equal(top("kill n", extra).confirm, true, "one letter names nothing");
+  assert.equal(top("kill nod", extra).confirm, false, "three letters of its name do");
+  const shells = processes.concat([
+    { pid: 201, rss: 4000, cpu: 0.1, name: "bash", args: "bash -c 'echo zoom'" },
+    { pid: 202, rss: 4000, cpu: 0.1, name: "bash", args: "bash -c 'sleep; zoom'" }]);
+  const g = top("kill zoom", { processes: shells });
+  assert.match(g.title, /^Quit all 2 "bash"/);
+  assert.equal(g.confirm, true, "a group found only through its arguments asks twice");
+  const rows = run("kill chrome", extra);
+  assert.deepEqual(plain(rows[0].run.argv), ["kill", "-TERM", "101", "102"]);
+  assert.deepEqual(plain(rows[1].run.argv), ["kill", "-TERM", "101"]);
+  assert.deepEqual(plain(top("kill -9 node", extra).run.argv), ["kill", "-KILL", "104"]);
+  assert.ok(extra.asked.includes("processes"));
+  assert.equal(Engine.run("kill x", { providers: ["processes"] }, { request: requester({}) })[0].title, "Reading your processes...");
+  assert.equal(Engine.run("kill x", { providers: ["processes"] }, { request: requester({ failed: { processes: "ps failed" } }) })[0].title, "Could not list your processes");
+  // Every kill target is "kill -SIG" and pids, nothing from names or args.
+  const all = ["kill", "kill chrome", "kill web", "kill -9 chrome"].flatMap(x => run(x, extra)).filter(r => r.run);
+  assert.ok(all.length > 0 && all.every(r => r.run.argv[0] === "kill" && /^-(TERM|KILL)$/.test(r.run.argv[1]) && r.run.argv.slice(2).every(p => /^\d+$/.test(p))));
+  // Force quit is one Ctrl+K away, after the row's own Quit.
+  const labels = Rows.actionsFor(top("kill node", extra), {}).map(a => a.label);
+  assert.deepEqual(plain(labels.slice(0, 2)), ["Quit", "Force quit"]);
+  assert.deepEqual(plain(Rows.actionsFor(top("kill node", extra), {})[1].run.argv), ["kill", "-KILL", "104"]);
+});
+
+test("apps", () => {
+  for (const [q, want] of [["brave", "Brave"], ["firefox", "Firefox"], ["fire", "Firefox"], ["ff", "Firefox"], ["files", "Files"],
+    ["nautilus", "Files"], ["term", "Alacritty"], ["vsc", "Visual Studio Code"], ["studio code", "Visual Studio Code"], ["local", "LocalSend"],
+    ["brave new window", "New Window"], ["firefox priv", "New Private Window"], ["frfx", "Firefox"]]) expectTop(q, want);
+  expectTop("zzzq", null);
+  const rows = run("brave");
+  assert.deepEqual(plain(rows[0].run), { kind: "app", id: "brave-browser" });
+  assert.equal(rows[1].title, "New Window"); assert.deepEqual(plain(rows[1].run), { kind: "app", id: "brave-browser", action: 0 });
+  assert.equal(rows[2].title, "New Private Window"); assert.equal(rows[0].image, "brave-browser");
+  const f = run("f").map(r => r.title);
+  assert.equal(f[0], "Firefox", "launch history orders equal matches"); assert.ok(f.includes("Files"));
+  assert.deepEqual(plain(run("web browser").map(r => r.title).slice(0, 2).sort()), ["Brave", "Firefox"]);
+  assert.equal(run("2+2").length, 1);
+  // A bare "volume" is a normal search, so an app called Volume Control is
+  // still found; so is "volume control", which the Volume mode cannot answer.
+  assert.ok(run("volume").some(r => r.title === "Volume Control"));
+  assert.equal(top("volume control").title, "Volume Control");
+  assert.equal(top("file manager").title, "Files", "a prefix mode with no answer gives the query back");
+  assert.equal(top("f report", { files: [{ path: "/home/u/report.pdf", name: "report.pdf" }] }).title, "report.pdf");
+});
+
+test("windows", () => {
+  const extra = { windows };
+  const r = run("brave", extra);
+  assert.equal(r[0].run.kind, "window"); assert.equal(r[0].run.address, "0xb1"); assert.equal(r[1].run.address, "0xb2");
+  assert.equal(r[2].run.kind, "app"); assert.equal(r[2].actionLabel, "Open new"); assert.equal(r[0].image, "brave-browser");
+  for (const [q, want] of [["netflix", "Netflix - Brave"], ["images", "Images"], ["nautilus", "Images"], ["ghostty", "~/Code"], ["w git", "GitHub - Brave"], ["w github", "GitHub - Brave"], ["w zzz", /^No window/]]) expectTop(q, want, extra);
+  assert.ok(run("github", extra).some(x => x.run && x.run.address === "0xb2"), "a title's camel-case word, whole");
+  const w = run("w ", extra);
+  assert.equal(w.map(x => x.run && x.run.address).join(), "0xb1,0xc1,0xb2,0xd1");
+  assert.equal(w[3].subtitle, "Ghostty, scratchpad");
+  assert.equal(run("firefox", extra)[0].run.kind, "app");
+  assert.ok(!run("mozilla", extra).some(x => x.run && x.run.kind === "window"), "the window you are in is not offered");
+  const all = ["w ", "evil", "w evil", "brave"].flatMap(x => run(x, extra)).filter(x => x.run && x.run.kind === "window");
+  assert.ok(all.every(x => /^0x[0-9a-f]+$/.test(x.run.address)), "window targets are hex addresses only");
+  assert.ok(run("w", extra).every(x => !x.run || x.run.kind !== "window"), "a bare w is a normal search");
+});
+
+test("windows: center and pin act on the window that had the focus", () => {
+  assert.deepEqual(plain(top("center window").run), { kind: "exec", argv: ["hyprctl", "dispatch", "hl.dsp.window.center()"] });
+  assert.deepEqual(plain(top("pin window").run), { kind: "exec", argv: ["hyprctl", "dispatch", "hl.dsp.window.pin()"] });
+  assert.equal(top("centre").title, "Center window");
+});
+
+test("windows: of many, the most recent are kept", () => {
+  // Hyprland lists windows in its own order, not by focus.
+  const many = Array.from({ length: 12 }, (_, i) => ({ address: "0xe" + i.toString(16), cls: "brave-browser", title: "Tab " + i, workspace: "1", focus: 12 - i }));
+  const kept = run("brave", { windows: many }).filter(x => x.run && x.run.kind === "window").map(x => x.run.address);
+  assert.equal(kept.length, 8);
+  assert.equal(kept[0], "0xeb", "the most recent first");
+  assert.ok(!kept.includes("0xe0"), "the least recent left out");
+});
+
+test("commands are found from the search box", () => {
+  for (const [q, want] of [["emo", "Search emoji"], ["curr", "Convert currency"], ["goo", "Search Google"], ["kil", "Kill a process"],
+    ["date", "Date calculator"], ["help", "Show everything"], ["exchange", "Convert currency"]]) expectTop(q, want);
+  const clock = run("clock");
+  assert.match(clock[0].title, /Colombo/); assert.ok(clock.some(r => r.title === "World clock" && r.complete === "time"));
+  const c = top("curr");
+  assert.equal(c.complete, "100 usd to lkr"); assert.equal(c.select, true); assert.equal(c.copy, ""); assert.equal(c.run, null);
+  assert.ok(run("kill").every(r => r.title !== "Kill a process"), "no command row for the mode you are in");
+  assert.equal(top("2+2").title, "4"); assert.equal(run("2+2").length, 1);
+});
+
+test("layout: sections, hero answers, mode chips", () => {
+  const b = run("brave", { windows }), sums = run("2+2"), fx = run("50 eur");
+  assert.equal(b[0].section, "Windows"); assert.equal(b[1].section, ""); assert.equal(b[2].section, "Apps"); assert.equal(b[0].hero, false);
+  assert.ok(sums[0].hero); assert.equal(sums[0].section, "");
+  assert.ok(fx[0].hero); assert.equal(fx[1].section, "Currency");
+  const m = x => (Engine.mode(x, config) || {}).label || "";
+  assert.equal(m(":fire"), "Emoji"); assert.equal(m("kill "), "Processes"); assert.equal(m("w git"), "Windows");
+  assert.equal(m("g cats"), "Search Google"); assert.equal(m("2+2"), ""); assert.equal(m("w"), "");
+  assert.equal(m("volume 50"), "Volume"); assert.equal(m("volume"), ""); assert.equal(m("cb "), "Clipboard"); assert.equal(m("f x"), "Files");
+  assert.equal(m("~/"), "Path"); assert.equal(m("f"), "");
+});
+
+test("neutral defaults: USD, the system zone", () => {
+  const svc = { zones, now, localZone: "Europe/London", emojis, request: requester({ rates, processes }) };
+  const eur = Engine.run("50 eur", defaults, svc).map(r => r.title);
+  assert.match(eur[0], /USD$/); assert.match(eur[1], /GBP$/);
+  assert.match(Engine.run("time", defaults, svc)[0].title, /London/);
+  assert.equal(Engine.run("curr", defaults, svc)[0].complete, "100 eur to usd");
+  assert.ok(!JSON.stringify(defaults).includes("LKR"));
+  assert.match(Engine.run("100 rupees", defaults, { request: requester({ rates }) })[0].subtitle, /INR to USD/);
+  assert.match(run("100 rupees")[0].subtitle, /^100 LKR/);
+  assert.match(run("rs 500 to usd")[0].subtitle, /^500 LKR to USD/);
+});
+
+test("the exchange-rate API is asked only by currency queries", () => {
+  const asked = [];
+  const svc = q => { const log = []; return { rates, zones, now, emojis, processes, request: (n, p, o) => { const r = requester({ rates, processes }, log)(n, p, o); if (log.includes("rates")) asked.push(q); log.length = 0; return r; } }; };
+  const yes = ["100 usd to eur", "$50", "50 eur", "usd lkr", "12*50 usd"];
+  const no = ["2+2", "time", "hello", "?", ":fire", "curr", "kill", "g usd", "days until dec 25", ""];
+  for (const x of yes.concat(no)) Engine.run(x, config, svc(x));
+  // With no rates held, a conversion says it is fetching, or why it cannot.
+  assert.equal(Engine.run("100 usd to eur", config, { zones, now, request: requester({}) })[0].title, "Fetching exchange rates...");
+  const down = Engine.run("100 usd to eur", config, { zones, now, request: requester({ failed: { rates: "Could not reach open.er-api.com" } }) })[0];
+  assert.equal(down.title, "Could not fetch exchange rates"); assert.equal(down.subtitle, "Could not reach open.er-api.com");
+  assert.ok(yes.every(x => asked.includes(x)), "asked for " + asked.join(" | "));
+  assert.ok(no.every(x => !asked.includes(x)));
+});
+
+test("help", () => {
+  const topics = run("?").map(r => r.title);
+  assert.deepEqual(plain(topics.slice(0, 4)), ["Open an app", "Switch window", "Omarchy menu", "Toggles"]);
+  assert.equal(topics[topics.length - 1], "Keywords");
+  assert.ok(run("?").every(r => r.help && !r.run && !r.copy && r.actionLabel === "Show"));
+  const u = run("?units");
+  assert.equal(u[0].section, "Units"); assert.equal(u[0].title, "5 km to mi"); assert.equal(u[0].subtitle, "= 3.1069 mi"); assert.ok(u[0].select);
+  const k = run("?kill");
+  assert.equal(k[0].subtitle, "Your processes, busiest first"); assert.equal(k[0].select, false); assert.equal(k[0].complete, "kill ");
+  assert.match(run("?emoji")[1].subtitle, /^= 🔥 fire/);
+  const kw = run("?keywords");
+  assert.equal(kw[0].title, "g"); assert.equal(kw[0].subtitle, "Search Google. Opens google.com");
+  const asked = [];
+  const svc = { rates, zones, now, emojis, processes, apps, windows: [], launches, request: requester({ rates, processes }, asked) };
+  for (const x of ["?", "?kill", "?currency", "?units", "?time", "?money"]) Engine.run(x, config, svc);
+  assert.deepEqual(asked, [], "browsing help reads nothing");
+  assert.ok(run("?money").some(r => r.helpTopic === "currency"), "help finds a topic by its command keywords");
+  const m = run("?in"), none = run("?zzqx");
+  assert.ok(m.some(r => r.helpTopic === "time") && m.some(r => r.helpTopic === "units"));
+  assert.equal(none.length, 1); assert.match(none[0].title, /^No topic matches/);
+  const chip = x => (Engine.mode(x, config) || {}).label;
+  assert.equal(chip("?"), "Help"); assert.equal(chip("?units"), "Help: Units");
+  assert.equal(top(" ? ").title, "Open an app");
+});
+
+test("home: an empty bar shows the rows run most, then reminders", () => {
+  const Run = load("lib/Run.js");
+  const t = now().getTime();
+  const snap = (title, extra) => Object.assign({ title, subtitle: "", icon: "", kind: "app", provider: "apps", run: Run.app(title.toLowerCase()) }, extra || {});
+  const history = {
+    "app:firefox": { n: 20, t, s: snap("Firefox") },
+    "app:foot": { n: 3, t, s: snap("Foot") },
+    "app:old": { n: 50, t: t - 200 * 86400000, s: snap("Old") },
+    "app:nosnap": { n: 99, t },
+    "toggle:wifi": { n: 6, t, s: snap("Wi-Fi", { kind: "toggle", provider: "system", toggle: "wifi", run: Run.exec(["true"]) }) },
+    "bad": { n: 9, t, s: snap("Bad", { run: { kind: "exec", argv: [] } }) }
+  };
+  const reminders = [{ unit: "r1", label: "Tea", remaining: "5m", atTime: "17:05", seconds: 300 }, { unit: "r2", label: "Stretch", remaining: "40m", atTime: "17:40", seconds: 2400 }];
+  const rows = run("", { history, reminders, toggleStates: { wifi: { on: false, value: "0" } } });
+  // Firefox 20 runs; Wi-Fi 6; Old 50 runs two hundred days ago, weighted a tenth; Foot 3.
+  assert.deepEqual(plain(rows.map(r => r.title)), ["Firefox", "Wi-Fi", "Old", "Foot", "Tea", "Stretch"]);
+  assert.equal(rows.find(r => r.title === "Wi-Fi").badge, "OFF", "toggles show their state now, not when they were run");
+  assert.equal(rows[0].section, "Recent");
+  assert.equal(rows[4].section, "Reminders");
+  assert.deepEqual(plain(rows[4].run.argv), ["omarchy-reminder", "show"]);
+  assert.equal(run("", {}).length, 0, "nothing run yet, nothing shown");
+});
+
+test("a city is looked up as the table's own key, never an Object method", () => {
+  assert.ok(!run("constructor time").some(r => r.provider === "time" && /Looking up/.test(r.title)));
+});
+
+test("a section header only over a group of more than one row", () => {
+  const rows = Engine.group([{ group: "A", title: "a1" }, { group: "B", title: "b1" }, { group: "B", title: "b2" }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(rows.map(r => r.section))), ["", "B", ""]);
+});
+
+test("a theme's preview fills its tile, where an app's icon sits inset", () => {
+  const r = run("theme ", { themes: { list: [{ name: "Tokyo Night", preview: "/x/preview.png" }], current: "Tokyo Night" } })[0];
+  assert.equal(r.imageFill, true);
+  assert.equal(run("firefox")[0].imageFill, false);
+});
+
+test("a mode's words show under the field: the chip carries them", () => {
+  assert.match(Engine.mode("vol 60", config).hint, /^volume <0-100>/);
+  assert.equal(Engine.mode(":fi", config).hint, ":<word>");
+  assert.equal(Engine.mode("firefox", config), null);
+});
+
+test("an app's subtitle says what it is, never its name again", () => {
+  const entry = (name, fields) => Object.assign({ id: name, name, generic: "", comment: "", keywords: [], icon: "", wmclass: "", actions: [], exec: "", terminal: false }, fields);
+  const list = [
+    entry("Netflix", { comment: "Netflix", exec: 'omarchy-launch-webapp "https://www.netflix.com"' }),
+    entry("Slack", { comment: "Slack", exec: 'omarchy-launch-webapp "https://app.slack.com/client/T0/C0"' }),
+    entry("HEY", { comment: "HEY", exec: "omarchy-webapp-handler-hey %u" }),
+    entry("Disk Usage", { exec: 'xdg-terminal-exec --app-id=TUI.float -e bash -c "dua i /"' }),
+    entry("Htop", { comment: "htop", exec: "htop", terminal: true }),
+    entry("REAPER", { comment: "REAPER", exec: '"/home/u/.local/opt/REAPER/reaper" %F' }),
+    entry("Neovim", { generic: "Text Editor", comment: "Edit text files", exec: "nvim %F", terminal: true }),
+    entry("Stremio", { comment: "Freedom To Stream" }),
+    entry("Intranet", { comment: "Intranet", exec: 'omarchy-launch-webapp "https://me:secret@intra.example.com:8443/home"' }),
+    entry("Local", { comment: "Local", exec: "/usr/share/omarchy/bin/omarchy-launch-webapp 'HTTP://[::1]:8080/'" }),
+    entry("Bare", { comment: "Bare", exec: "omarchy-launch-webapp https://WWW.Example.org" })
+  ];
+  const said = name => Engine.run(name, config, services({ apps: list })).find(r => r.key === "app:" + name).subtitle;
+  assert.equal(said("Netflix"), "Web app, netflix.com");
+  assert.equal(said("Slack"), "Web app, app.slack.com", "the host only, not the page");
+  assert.equal(said("HEY"), "Email, web app", "Omarchy's own, described without a model");
+  assert.equal(said("Disk Usage"), "Disk usage explorer, terminal app");
+  assert.equal(said("Htop"), "Terminal app", "a comment that is the name in another case is no description");
+  assert.equal(said("REAPER"), "Application");
+  assert.equal(said("Neovim"), "Text Editor");
+  assert.equal(said("Stremio"), "Freedom To Stream");
+  assert.equal(said("Intranet"), "Web app, intra.example.com", "never the user or password before the host");
+  assert.equal(said("Local"), "Web app, [::1]");
+  assert.equal(said("Bare"), "Web app, example.org");
+
+  // What a model wrote, for the apps whose entry says nothing (lib/Describe.js).
+  const Describe = load("lib/Describe.js");
+  const asked = Describe.wanted(list, {}, a => !a.generic && (!a.comment || a.comment.toLowerCase() === a.name.toLowerCase()));
+  const descriptions = Describe.parse('{"Netflix": "Streaming films and series", "REAPER": "Digital audio workstation", "Htop": "Process viewer"}', asked);
+  const told = name => Engine.run(name, config, services({ apps: list, descriptions })).find(r => r.key === "app:" + name).subtitle;
+  assert.equal(told("Netflix"), "Streaming films and series, netflix.com");
+  assert.equal(told("REAPER"), "Digital audio workstation");
+  assert.equal(told("Htop"), "Process viewer, terminal app");
+  assert.equal(told("Neovim"), "Text Editor", "an entry's own description first");
+  assert.equal(told("Slack"), "Web app, app.slack.com", "nothing written for it: the site alone");
+});
+
+test("the empty field suggests an example a provider that is on answers", () => {
+  const Menu = load("lib/Menu.js");
+  const merged = Menu.merge([Menu.parseItems(readFileSync(join(root, "tests/js/fixtures/menu.jsonc"), "utf8"))]);
+  const menu = { items: merged.items, order: merged.order, when: {}, checked: {} };
+  const Dev = load("providers/dev.js");
+  const ports = Dev.parsePorts('LISTEN 0 511 127.0.0.1:5173 0.0.0.0:* users:(("node",pid=4211,fd=20))');
+  const extra = { menu, toggleStates: {}, ports };
+  const seen = new Set();
+  for (let n = 0; n < 40; n++) {
+    const text = Engine.placeholder(config, n);
+    const q = text.match(/^Search, or try "(.*)"$/)[1];
+    if (seen.has(q)) continue;
+    seen.add(q);
+    const want = Engine.EXAMPLES.find(e => e.q === q).provider;
+    assert.equal(run(q, extra)[0].provider, want, q);
+  }
+  assert.equal(seen.size, Engine.EXAMPLES.length, "every example comes round");
+  const noCurrency = Object.assign({}, config, { providers: config.providers.filter(p => p !== "currency") });
+  for (let n = 0; n < 40; n++) assert.ok(!Engine.placeholder(noCurrency, n).includes("usd"), "never a provider that is off");
+  assert.equal(Engine.placeholder(Object.assign({}, config, { providers: [] }), 3), "Search");
+});
+
