@@ -506,7 +506,8 @@ Item {
     if (root.captureRow) return repeat ? true : root.captureKey(key, modifiers)
     var name = root.keyName(key)
     if (!name) return false
-    var act = NodiKeys.decide({ name: name, ctrl: (modifiers & Qt.ControlModifier) !== 0, repeat: !!repeat }, root.keyView())
+    var act = NodiKeys.decide({ name: name, ctrl: (modifiers & Qt.ControlModifier) !== 0, shift: (modifiers & Qt.ShiftModifier) !== 0,
+                               repeat: !!repeat }, root.keyView())
     if (!act) return false
     root.perform(act)
     return true
@@ -526,6 +527,10 @@ Item {
     case Qt.Key_K: return "K"
     case Qt.Key_N: return "N"
     case Qt.Key_P: return "P"
+    case Qt.Key_D: return "D"
+    case Qt.Key_U: return "U"
+    case Qt.Key_PageUp: return "PageUp"
+    case Qt.Key_PageDown: return "PageDown"
     }
     return key >= Qt.Key_1 && key <= Qt.Key_9 ? String(key - Qt.Key_1 + 1) : ""
   }
@@ -541,13 +546,18 @@ Item {
       text: input.text,
       aliasing: !!root.aliasRow,
       rows: root.rows.length,
-      selected: root.selectedIndex
+      selected: root.selectedIndex,
+      page: Math.max(1, Math.floor(list.height / Math.max(1, root.rowHeight))),
+      pane: card.paneScrolls
     }
   }
 
   function perform(act) {
     switch (act.do) {
     case "move": root.move(act.by); break
+    case "select": root.armedKey = ""; root.selectedIndex = act.index; list.positionViewAtIndex(act.index, ListView.Contain); break
+    case "paneScroll": card.scrollPane(act.lines, 0); break
+    case "panePage": card.scrollPane(0, act.by); break
     case "activate": root.selectedIndex = act.index; root.activate(act.index); break
     case "complete":
       // Tab fills in what the row offers; with nothing to fill in, it asks

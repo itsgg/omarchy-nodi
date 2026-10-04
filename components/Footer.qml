@@ -6,6 +6,7 @@ import "../lib/Rows.js" as Rows
 Item {
   id: footer
   property var nodi
+  property bool scrollable: false   // the pane holds more than it shows
   height: nodi.footerHeight
 
   function headed(row) {
@@ -49,6 +50,11 @@ Item {
     Text { visible: parent.back; anchors.verticalCenter: parent.verticalCenter; text: "Back"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
     Keycap { visible: parent.back; label: "Esc"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
     Item { visible: parent.back; width: Style.space(8); height: 1 }
+
+    // Only while there is more to see: the keys are fzf's, not a launcher's.
+    Text { visible: footer.scrollable && !nodi.paletteOpen; anchors.verticalCenter: parent.verticalCenter; text: "Scroll"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
+    Keycap { visible: footer.scrollable && !nodi.paletteOpen; label: "Shift 󰁝󰁅"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
+    Item { visible: footer.scrollable && !nodi.paletteOpen; width: Style.space(8); height: 1 }
 
     Text { visible: parent.more; anchors.verticalCenter: parent.verticalCenter; text: "Actions"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
     Keycap { visible: parent.more; label: "Ctrl K"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
