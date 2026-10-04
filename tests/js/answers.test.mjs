@@ -246,7 +246,11 @@ test("the exchange-rate API is asked only by currency queries", () => {
 
 test("help", () => {
   const topics = run("?").map(r => r.title);
-  assert.deepEqual(plain(topics.slice(0, 4)), ["Open an app", "Switch window", "Omarchy menu", "Toggles"]);
+  assert.deepEqual(plain(topics.slice(0, 4)), ["Keys", "Open an app", "Switch window", "Omarchy menu"], "Nodi's own keys first");
+  const keysTopic = run("?shortcuts");
+  assert.deepEqual(plain(keysTopic.map(r => r.badge)).slice(-5), ["PgUp PgDn", "Shift 󰁝 󰁅", "Shift PgUp PgDn", "Ctrl D U", "Esc"]);
+  assert.ok(keysTopic.every(r => r.help && !r.run && !r.complete), "a key is said, not filled in");
+  assert.equal(run("?shortcuts")[0].section, "Keys");
   assert.equal(topics[topics.length - 1], "Keywords");
   assert.ok(run("?").every(r => r.help && !r.run && !r.copy && r.actionLabel === "Show"));
   const u = run("?units");
@@ -266,7 +270,7 @@ test("help", () => {
   assert.equal(none.length, 1); assert.match(none[0].title, /^No topic matches/);
   const chip = x => (Engine.mode(x, config) || {}).label;
   assert.equal(chip("?"), "Help"); assert.equal(chip("?units"), "Help: Units");
-  assert.equal(top(" ? ").title, "Open an app");
+  assert.equal(top(" ? ").title, "Keys");
 });
 
 test("home: an empty bar shows the rows run most, then reminders", () => {

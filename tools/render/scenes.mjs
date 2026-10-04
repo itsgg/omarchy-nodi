@@ -170,6 +170,9 @@ const scenes = [
     { name, preview: "/usr/share/omarchy/themes/" + name.toLowerCase().replace(/ /g, "-") + "/preview.png" })) } }),
   scene("23-scripts", "scripts ", { scripts, scriptOutput: { [join(scriptsDir, "uptime.sh")]: "up 3 days, 4 hours" } }),
   scene("docs-home", "", Object.assign({}, docsBase, { history: docsHistory })),
+  scene("31-pane-overflow", "cb ", { clipboard: [
+    { type: "text", text: Array.from({ length: 40 }, (_, i) => "line " + (i + 1) + " of a long entry, more than the pane shows").join("\n") } ] }),
+  scene("32-keys-help", "?shortcuts"),
   scene("30-filter-markdown", "n meet", { filter: () => Filters.parse(filterOutput, { keyword: "n", title: "Notes", icon: "󰎞" }) }, null, withFilter),
   (() => {
     const firefox = plain(Engine.run("firefox", config, services(base)))[0];

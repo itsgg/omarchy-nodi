@@ -15,9 +15,33 @@ Rectangle {
   property var preview: null
 
   readonly property var p: preview || ({})
+  // Another preview starts at its top, or follows an answer as it streams.
+  // By the row and what it shows, not by the object: the preview is made
+  // again on every recompute and at every word of an answer, which kept
+  // nothing scrolled; and a preview of Markdown alone has no title, which
+  // carried one row's scroll to the next (Fable 2026-10-04). An answer is
+  // one pane for all its rows (Paste, Copy, Again...), so not by the row:
+  // it kept its place as it finished and as the rows were arrowed through.
+  readonly property string ident: (p.follow ? "answer" : (nodi.selectedRow ? nodi.selectedRow.key : ""))
+    + "\n" + (p.title || "") + "\n" + (p.subtitle || "") + "\n" + (p.image || "")
+  onIdentChanged: { body.scrolled = false; body.contentY = 0 }
+
+  // By lines or pages (a page is the text's height), kept in bounds; from
+  // the keyboard (lib/Keys.js: Shift with the arrows or PageUp and
+  // PageDown, and Ctrl+D and Ctrl+U). Scrolling an answer that streams
+  // stops it following its newest words.
+  function scroll(lines, pages) {
+    if (!body.visible) return
+    var line = bodyText.font.pixelSize * bodyText.lineHeight
+    var to = body.contentY + lines * line + pages * body.height
+    body.contentY = Math.max(0, Math.min(to, Math.max(0, body.contentHeight - body.height)))
+    body.scrolled = true
+  }
   readonly property bool hasImage: !!p.image
   readonly property bool hasMarkdown: !hasImage && typeof p.markdown === "string" && p.markdown !== ""
   readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text)
+  // More text than the pane shows: the footer says how to scroll it.
+  readonly property bool overflows: visible && body.visible && body.contentHeight > body.height + 1
 
   // No fill: secondary text is chosen to read on the card itself, and a
   // tint under it took four themes just under 4.5:1 (Fable 2026-10-04).
@@ -125,8 +149,11 @@ Rectangle {
     contentHeight: bodyText.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
-    // An answer as it streams keeps its newest words in view.
-    onContentHeightChanged: if (pane.p.follow && contentHeight > height) contentY = contentHeight - height
+    property bool scrolled: false
+    // An answer as it streams keeps its newest words in view, until it is
+    // scrolled by hand.
+    onContentHeightChanged: if (pane.p.follow && !scrolled && contentHeight > height) contentY = contentHeight - height
+    onMovementStarted: scrolled = true
 
     Text {
       id: bodyText

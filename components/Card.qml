@@ -22,6 +22,12 @@ BorderSurface {
 
   MouseArea { anchors.fill: parent; onClicked: {} }
 
+  // The pane beside the list, by lines or pages, from the keyboard.
+  function scrollPane(lines, pages) { pane.scroll(lines, pages) }
+  // Whether the pane holds text to scroll: a picture or a title alone does
+  // not, and Shift+Down there moves the list as it did.
+  readonly property bool paneScrolls: pane.visible && pane.hasText
+
   Column {
     id: layout
     anchors.left: parent.left
@@ -250,6 +256,7 @@ BorderSurface {
       }
 
       PreviewPane {
+        id: pane
         visible: !!nodi.preview
         nodi: card.nodi
         preview: nodi.preview
@@ -264,6 +271,7 @@ BorderSurface {
     // ---------- footer: what the selected row is, and what the keys do ----------
     Footer {
       nodi: card.nodi
+      scrollable: pane.overflows
       width: parent.width
       visible: nodi.paletteOpen || nodi.rows.length > 0
     }

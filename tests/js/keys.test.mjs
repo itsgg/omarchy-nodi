@@ -104,3 +104,28 @@ test("a held key moves the selection and does nothing else: Enter held never con
   assert.equal(held("Backspace"), null, "a held Backspace still deletes text");
   assert.deepEqual(JSON.parse(JSON.stringify(Keys.decide({ name: "Return", ctrl: false }, view))), { do: "activate", index: 0 }, "a press still activates");
 });
+
+test("the pane scrolls with Shift, the list pages with PageUp and PageDown", () => {
+  const v = (extra) => Object.assign({ palette: null, armed: false, helpTopic: false, backToTopics: false, text: "x", aliasing: false, rows: 30, selected: 10, page: 8, pane: true }, extra || {});
+  const k = (name, shift, extra, repeat) => JSON.parse(JSON.stringify(Keys.decide({ name, ctrl: false, shift: !!shift, repeat: !!repeat }, v(extra))));
+  assert.deepEqual(k("Down", true), { do: "paneScroll", lines: 3 });
+  assert.deepEqual(k("Up", true), { do: "paneScroll", lines: -3 });
+  assert.deepEqual(k("PageDown", true), { do: "panePage", by: 1 });
+  assert.deepEqual(k("PageUp", true), { do: "panePage", by: -1 });
+  assert.deepEqual(JSON.parse(JSON.stringify(Keys.decide({ name: "Down", shift: true }, v({ pane: false })))), { do: "move", by: 1 }, "no pane: Shift+Down moves the list, as before");
+  assert.deepEqual(JSON.parse(JSON.stringify(Keys.decide({ name: "Return", shift: true }, v()))), { do: "activate", index: 10 }, "Shift+Enter runs the row, pane or not");
+  assert.deepEqual(k("PageDown"), { do: "select", index: 17 }, "a page is the rows shown, less one kept for context");
+  assert.deepEqual(k("PageUp"), { do: "select", index: 3 });
+  assert.deepEqual(k("PageDown", false, { selected: 27 }), { do: "select", index: 29 }, "no wrap at the end");
+  assert.deepEqual(k("PageUp", false, { selected: 2 }), { do: "select", index: 0 });
+  assert.deepEqual(k("PageDown", false, { rows: 0 }), { do: "nothing" });
+  assert.deepEqual(k("Down", true, {}, true), { do: "paneScroll", lines: 3 }, "held, it keeps scrolling");
+  assert.deepEqual(k("PageDown", false, {}, true), { do: "select", index: 17 }, "held, it keeps paging");
+  assert.deepEqual(k("Down", false), { do: "move", by: 1 }, "Down alone still moves");
+  const ctrl = (name, extra) => JSON.parse(JSON.stringify(Keys.decide({ name, ctrl: true }, v(extra))));
+  assert.deepEqual(ctrl("D"), { do: "panePage", by: 0.5 }, "vim's Ctrl+D, half a page");
+  assert.deepEqual(ctrl("U"), { do: "panePage", by: -0.5 });
+  assert.equal(Keys.decide({ name: "U", ctrl: true }, v({ pane: false })), null, "no pane: Ctrl+U clears the field, as it does");
+  assert.equal(Keys.decide({ name: "D", ctrl: true }, v({ pane: false })), null);
+});
+
