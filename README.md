@@ -2,8 +2,10 @@
 
 A command bar for Omarchy: press a key, type, press Enter. It opens apps and
 windows, runs anything in Omarchy's menu, answers sums and conversions,
-and finds emoji, clipboard entries, files and more. Nodi is Tamil for an
-instant.
+and finds emoji, clipboard entries, files and more.
+
+Nodi (நொடி, said NO-dee) is Tamil for an instant: the time a snap of the
+fingers takes, which is how long it should take to find anything.
 
 ![Nodi opened empty: the apps, actions and toggles you use most](docs/home.png)
 
