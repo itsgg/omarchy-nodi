@@ -201,6 +201,8 @@ link is set.
     between opens if the layer protocol allows it. Q 6. Check: key to
     openlayer, 84 to 97 ms before (measured), measured after; no first
     frame larger than the card.
+    The stamps landed 2026-10-05, kept as he uses the bar (`make opens`);
+    the cuts wait for their numbers.
 31. **The list updated in place**: a model diffed by row key instead of an
     array replaced on every keystroke. Q 5. Check: a bench of a
     keystroke's view cost, about 10.5 ms before.

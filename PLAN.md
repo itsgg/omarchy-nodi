@@ -20,7 +20,7 @@ the Omarchy plugin marketplace (4,712 listings in `registry.json`, checked
 | Plugin id | `io.github.itsgg.nodi` (permanent once listed) |
 | Repository | `~/Work/GG/omarchy-nodi`, later `github.com/itsgg/omarchy-nodi` |
 | User config | `~/.config/omarchy/extensions/nodi.json` (JSONC) |
-| Cache | `~/.cache/nodi/` (rates, last query, launch counts) |
+| Cache | `~/.cache/nodi/` (rates, last query, launch counts, open times) |
 | Open it | `omarchy-shell shell toggle io.github.itsgg.nodi` |
 
 ## Language
@@ -101,6 +101,8 @@ lib/
                         is built
   Match.js, Score.js    word prefixes, acronyms, typos; the one scoring table
   History.js            what was run, how often and when (~/.cache/nodi)
+  Opens.js              how long each open took, phase by phase
+                        (~/.cache/nodi/opens.json, make opens)
   Prefs.js              aliases, favourites, hidden rows, row hotkeys
                         (~/.local/state/nodi)
   Requests.js           when a provider's read is due, and what it keeps

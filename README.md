@@ -253,8 +253,9 @@ not read) or the command is misused, and 3 when Nodi cannot be reached
   through Claude Code's `claude` command, under `ask` and, if turned on, to describe
   apps. That Claude session has no tools, no MCP servers and none of your
   Claude settings, and saves nothing.
-- It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`. It
-  binds its hotkey in the running Hyprland and edits no config file.
+- It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`.
+  Among the cache is how long its last 300 opens took (`opens.json`, read
+  by `make opens`), with nothing of what was typed. It binds its hotkey in the running Hyprland and edits no config file.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 
