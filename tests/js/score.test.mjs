@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { load, plain } from "./load.mjs";
+import { run } from "./fixtures.mjs";
 
 const Score = load("lib/Score.js");
 const History = load("lib/History.js");
@@ -130,6 +131,28 @@ test("recall: the same query in full, a shorter one at seven tenths, decaying", 
   assert.equal(Score.recall(picks, "t", "app:other", now), 0);
   assert.ok(Score.recall(picks, "t", "app:foot", now + 60 * day) < full);
   assert.ok(Score.score("fuzzy", "app") + Score.PICK_MAX < Score.score("exact", "app"), "a remembered typo never beats an exact name");
+});
+
+test("recall: a longer query remembered lifts the shorter one typed, by half and less the less typed (ROADMAP 34)", () => {
+  const now = Date.UTC(2026, 9, 2);
+  let picks = History.pick({}, "spotify", "app:spotify", now);
+  const full = Score.recall(picks, "spotify", "app:spotify", now);
+  const sp = Score.recall(picks, "sp", "app:spotify", now), s = Score.recall(picks, "s", "app:spotify", now);
+  assert.ok(Math.abs(sp - full * 0.5 * (0.5 + 0.5 * 2 / 7)) < 1e-9, String(sp));
+  assert.ok(s > full / 4 && s < sp && sp < full / 2, "half at most, a quarter at least, more the more typed");
+  assert.equal(Score.recall(picks, "sx", "app:spotify", now), 0, "only queries the stored one starts with");
+  picks = History.pick(picks, "s", "app:spotify", now);
+  assert.equal(Score.recall(picks, "s", "app:spotify", now), Score.recall(picks, "s", "app:spotify", now), "kept per keystroke");
+  assert.ok(Score.recall(picks, "s", "app:spotify", now) >= full * 0.9, "picked for the query itself: the exact pick's full worth wins");
+});
+
+test("learning reaches the first letters: an app picked by its whole name comes first sooner", () => {
+  const apps = [{ id: "slack", name: "Slack", generic: "", comment: "", keywords: [], icon: "", wmclass: "", actions: [] },
+                { id: "spotify", name: "Spotify", generic: "", comment: "", keywords: [], icon: "", wmclass: "", actions: [] }];
+  const top = (q, picks) => run(q, { apps, history: {}, picks })[0].key;
+  assert.equal(top("s", {}), "app:slack", "alphabetical with nothing learnt");
+  const now = new Date(2026, 8, 23, 14, 0).getTime();
+  assert.equal(top("s", { spotify: { "app:spotify": { n: 2, t: now } } }), "app:spotify", "picked twice as \"spotify\": first at \"s\"");
 });
 
 test("snapshots: what an empty bar needs to run a row again", () => {

@@ -224,6 +224,9 @@ baseline query loses rank.
     past ASCII in the bench.
 34. **Picks lift shorter queries**: a pick stored for "spotify" counts for
     "sp", weighted by how much of it was typed. Q 3.
+    Done 2026-10-05: an app picked once by its whole name comes first
+    after a median of 1 letter, 2 before (mean 3.5 to 1.4), which the
+    harness now measures.
 35. **The words a row shows are searched**: an app's comment and written
     description, a row's subtitle source. Q 4.
     Done 2026-10-05: the description queries from 2 of 8 first to 8 of 8,

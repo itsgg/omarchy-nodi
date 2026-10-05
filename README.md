@@ -56,7 +56,8 @@ text already typed:
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
 favourite, a hotkey, hide), Ctrl+1 to Ctrl+9 run a row directly, Tab fills
 in, Esc closes, or first steps back from Ctrl+K, a prompt or a help topic. A row you pick for a query comes first for
-it after a pick or two. Logging out, rebooting, clearing a history and
+it after a pick or two, and sooner for the start of it: picked as
+"spotify", Spotify comes first at "s". Logging out, rebooting, clearing a history and
 quitting a process you did not name ask for a second Enter. Opened empty, Nodi shows your favourites, what you run most
 and your reminders.
 
