@@ -99,16 +99,20 @@ test("kind decides between rows named equally well", () => {
   assert.ok(Score.score("prefix", "hint") < Score.score("keyword", "app"), "a hint never beats an app it names");
 });
 
-test("habit: up to six points, decaying after a week", () => {
+test("habit: a use that halves every 30 days, growing with its log up to HABIT_MAX (ROADMAP 38)", () => {
   const now = Date.UTC(2026, 9, 2);
   const day = 86400000;
   assert.equal(Score.habit(undefined, now), 0);
   const fresh = Score.habit({ n: 10, t: now }, now);
-  assert.ok(fresh > 1 && fresh <= Score.HABIT_MAX, String(fresh));
+  assert.ok(fresh > 0.5 && fresh < Score.HABIT_MAX, String(fresh));
+  assert.ok(Score.habit({ n: 13, t: now }, now) < Score.habit({ n: 900, t: now }, now), "13 runs and 900 differ (Q L3)");
   assert.equal(Score.habit({ n: 1000, t: now }, now), Score.HABIT_MAX);
-  assert.equal(Score.habit({ n: 10, t: now - 6 * day }, now), fresh, "full for a week");
-  assert.ok(Score.habit({ n: 10, t: now - 30 * day }, now) < fresh);
-  assert.ok(Score.habit({ n: 10, t: now - 400 * day }, now) > 0, "never to nothing");
+  assert.ok(Math.abs(Score.use({ n: 10, t: now - 30 * day }, now) - 5) < 1e-9, "half after 30 days");
+  assert.ok(Score.habit({ n: 900, t: now - 365 * day }, now) < Score.habit({ n: 5, t: now }, now), "heavy use a year ago under a little use now (Q L4)");
+  assert.equal(Score.use({ n: 10, f: 3, t: now }, now), 3, "the kept use, not the count, once there is one");
+  let e = null;
+  for (let i = 0; i < 4; i++) e = Score.bump(e, now - (3 - i) * 30 * day);
+  assert.ok(Math.abs(e.f - (1 + 0.5 + 0.25 + 0.125)) < 1e-9, "four runs a month apart: 1.875");
   // Under the smallest gap of either table: habit orders equals, nothing else.
   const gaps = [];
   for (const table of [Score.TIER, Score.KIND]) {
@@ -130,7 +134,8 @@ test("history: record, prune, migrate, forget, round-trip", () => {
   const now = 1790000000000;
   let h = History.record({}, "app:foot", now);
   h = History.record(h, "app:foot", now + 1);
-  assert.deepEqual(plain(h), { "app:foot": { n: 2, t: now + 1 } });
+  assert.deepEqual([h["app:foot"].n, h["app:foot"].t], [2, now + 1]);
+  assert.ok(Math.abs(h["app:foot"].f - 2) < 1e-6, "two runs a moment apart: a use of two");
   const picks = History.pick({}, "t", "app:foot", now);
   assert.deepEqual(plain(History.load(History.serialize(h, picks))), { rows: plain(h), picks: plain(picks) });
   assert.deepEqual(plain(History.load("not json")), { rows: {}, picks: {} });

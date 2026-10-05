@@ -256,6 +256,11 @@ baseline query loses rank.
     against 14.6 for its parent, both measured under load from other
     sessions.
 38. **A decaying frecency** in place of counts. Q 9.
+    Done 2026-10-05: one use per row, plus one a run and halving every 30
+    days, kept beside the count; habit grows with its log to 200, so 13
+    runs and 900 differ, and 900 runs a year ago fall under 5 today. The
+    home view now puts 3 runs today over 50 two hundred days ago. The
+    harness, with no history, does not move.
 39. **A group leads by at most three rows** before a stronger row of the
     next one (his call). Q 10. Check: the fourth row of a group waits for
     a stronger row of another (tests/js/ranking.test.mjs). "susp" is a
