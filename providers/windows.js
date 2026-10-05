@@ -89,6 +89,8 @@ var NAMED = { exact: true, prefix: true, words: true, acronym: true, substring: 
 
 var provider = {
   id: "windows",
+  // Its own order, by recency or place, stands over a closer title (lib/Rows.js).
+  keepsOrder: true,
   name: "Windows",
   icon: "󰖯",
   modes: [{ pattern: /^\s*w\s/i, label: "Windows", icon: "󰖯", exclusive: true, hint: "w [app or title]" }],

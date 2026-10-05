@@ -122,4 +122,6 @@ export const intended = [
 // finds the résumé window and two commands about resuming).
 // "ir" is no word start in "Document Viewer" or "firefox": letters in
 // order start at a word (Fable 2026-10-05 found a fold that broke it).
-export const noise = ["zzqx", "qwxz", "résumé", "wi fi", "tm", "ab", "ir"];
+// "abc": three letters that letters in order must not spread over a long
+// label (Fable 2026-10-05).
+export const noise = ["zzqx", "qwxz", "résumé", "wi fi", "tm", "ab", "ir", "abc"];

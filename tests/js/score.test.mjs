@@ -44,7 +44,8 @@ test("typos: one edit from five letters, two from eight, the first letter kept",
   assert.equal(Score.tier("bluetoth", { name: "Bluetooth" }), "typoName");
   assert.equal(Score.tier("chrme", { name: "Chrome" }), "typoName");
   assert.equal(Score.tier("night", { name: "Light" }), "", "not the first letter");
-  assert.equal(Score.tier("nght", { name: "Night" }), "", "too short for a typo");
+  assert.equal(Score.tier("nght", { name: "Night" }), "fuzzy", "too short for a typo, but its letters are in order (ROADMAP 37)");
+  assert.equal(Score.tier("ngt", { name: "Night", whole: true }), "", "a catalogue row takes no letters in order");
   assert.equal(Score.tier("screnshot region", { name: "Screenshot", keywords: ["region"] }), "fuzzy");
   assert.equal(Score.tier("remove steam", { name: "Moonlight", keywords: ["remote", "steam"] }), "", "a typo only in the name's own words");
   assert.equal(Score.tier("pass", { name: "1Password" }), "prefix", "leading numerals skipped");
@@ -71,10 +72,23 @@ test("a typo in the generic name or a keyword names a row too, under one in the 
   assert.equal(Score.loose("typoWord") && Score.loose("fuzzy") && !Score.loose("context"), true);
 });
 
-test("letters in order only where asked", () => {
-  assert.equal(Score.tier("frfx", { name: "Firefox", letters: true }), "fuzzy");
-  assert.equal(Score.tier("frfx", { name: "Firefox" }), "");
-  assert.equal(Score.tier("fire", { name: "Firmware" }), "");
+test("letters in order: an app's from two letters, any row's from three, a catalogue row's never (ROADMAP 37)", () => {
+  assert.equal(Score.tier("fx", { name: "Firefox", letters: true }), "fuzzy");
+  assert.equal(Score.tier("fx", { name: "Firefox" }), "", "two letters only where asked");
+  assert.equal(Score.tier("wfi", { name: "Wi-Fi" }), "fuzzy");
+  assert.equal(Score.tier("frfx", { name: "Firefox", whole: true }), "", "a catalogue row by whole words");
+  assert.equal(Score.tier("xfr", { name: "Firefox" }), "", "the first letter at a word start");
+  assert.ok(Score.score("fuzzy", "app") < Score.score("context", "app"), "under every clean match of its kind");
+});
+
+test("fit orders rows named as well: the closer title, whole words first, from three letters (ROADMAP 37)", () => {
+  assert.ok(Score.fit("susp", "Suspend") > Score.fit("susp", "Suspend in System Menu"));
+  assert.ok(Score.fit("obs", "OBS Studio") > Score.fit("obs", "Obsidian"), "a whole word over part of one");
+  assert.equal(Score.fit("writer", "Omawrite"), 0, "matched elsewhere than the title: no fit");
+  assert.equal(Score.fit("te", "Telegram"), 0, "two letters say nothing");
+  assert.equal(Score.fit("spotify", "Spotify"), 1);
+  assert.ok((Score.fit("susp", "Suspend") - Score.fit("susp", "Suspend in System Menu")) * Score.FIT_MAX > 0.01, "more than a provider's hundredths");
+  assert.ok(Score.FIT_MAX < 0.05 && Score.FIT_MAX < Score.HABIT_MAX, "less than a provider's demotion, and than habit");
 });
 
 test("kind decides between rows named equally well", () => {
