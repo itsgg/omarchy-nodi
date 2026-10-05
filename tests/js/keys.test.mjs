@@ -63,6 +63,12 @@ test("Escape steps back one thing at a time", () => {
   assert.deepEqual(d("Escape", { text: "" }), { do: "dismiss" }, "then the bar");
   assert.deepEqual(d("Backspace", { backToTopics: true }), { do: "helpBack" });
   assert.deepEqual(d("Escape", { prompting: true, armed: true }), { do: "cancelPrompt" }, "a prompt being typed (an alias, a confirm word) goes first");
+  // The bar reopens on the last query, selected: one Escape closes it until
+  // something is typed (his report 2026-10-05).
+  assert.deepEqual(d("Escape", { text: "firefox", typed: false }), { do: "dismiss" });
+  assert.deepEqual(d("Escape", { text: "?units", helpTopic: true, typed: false }), { do: "dismiss" });
+  assert.deepEqual(d("Escape", { text: "firefox", typed: true }), { do: "clear" }, "typed: clears first, as before");
+  assert.deepEqual(d("Escape", { text: "x", typed: false, armed: true }), { do: "disarm" }, "an armed row is disarmed first");
 });
 
 test("keys in Ctrl+K", () => {

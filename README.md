@@ -55,7 +55,7 @@ text already typed:
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
 favourite, a hotkey, hide), Ctrl+1 to Ctrl+9 run a row directly, Tab fills
-in, Esc clears and then closes. A row you pick for a query comes first for
+in, Esc closes (clearing first what you typed since it opened). A row you pick for a query comes first for
 it after a pick or two. Logging out, rebooting, clearing a history and
 quitting a process you did not name ask for a second Enter. Opened empty, Nodi shows your favourites, what you run most
 and your reminders.
