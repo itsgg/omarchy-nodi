@@ -270,6 +270,13 @@ baseline query loses rank.
     two rows; "wa" moves one place down.
 40. **Keywords written once by the model**, beside the descriptions
     lib/Describe.js has it write. Q 11.
+    Done 2026-10-05, written once and read rather than asked of a model at
+    each start: words for 45 of Omarchy's menu rows (providers/menu.js
+    SYNONYMS) and 34 common apps by desktop id (providers/apps.js
+    KEYWORDS), since the menu and those apps are the same on every
+    Omarchy. A user's own apps are covered by what Describe.js writes for
+    them, which item 35 made searchable. Of 20 queries in such words, 9
+    were first before and 20 after; "airdrop" stays on LocalSend.
 41. **A leading verb dropped** ("open", "launch", "start", "run"). Q 15.
     Done 2026-10-05: for apps, when the whole query names none; the verb
     queries 0 of 3 first to 3 of 3, 91 of 100 in all.

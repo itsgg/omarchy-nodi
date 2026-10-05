@@ -16,6 +16,52 @@ var LIMIT = 6
 var ACTIONS = 3
 var VERB = /^(?:open|launch|start|run)\s+(\S.*)$/
 
+// What people call common apps beyond what their desktop entries say,
+// matched as keywords, by desktop id in lower case (ROADMAP 40): written
+// once and read, for the apps Omarchy installs and the ones most desktops
+// have. A user's own app is described by Describe.js, if asked.
+var KEYWORDS = {
+  "com.github.pintaproject.pinta": ["photo editor", "paint", "image editing"],
+  "org.gnome.nautilus": ["file manager", "explorer", "folders", "finder"],
+  "org.gnome.evince": ["pdf", "pdf viewer", "document reader"],
+  "org.gnome.diskutility": ["disk manager", "partitions", "format drive"],
+  "org.kde.kdenlive": ["video editing", "edit video"],
+  "com.obsproject.studio": ["screen recording", "streaming", "record screen"],
+  "mpv": ["video player", "movies"],
+  "localsend": ["airdrop"],
+  "org.inkscape.inkscape": ["svg", "illustrator"],
+  "org.kde.krita": ["painting", "drawing"],
+  "blender": ["3d", "modeling", "animation"],
+  "audacity": ["audio editor", "record audio"],
+  "libreoffice-writer": ["word", "docx"],
+  "libreoffice-calc": ["excel", "xlsx"],
+  "libreoffice-impress": ["powerpoint", "slides", "pptx"],
+  "spotify": ["music"],
+  "btop": ["task manager", "processes", "activity monitor"],
+  "1password": ["passwords"],
+  "obsidian": ["notes", "markdown", "knowledge base"],
+  "com.github.xournalpp.xournalpp": ["handwriting", "annotate pdf"],
+  "omacalc": ["calc"],
+  "chromium": ["web browser", "web"],
+  "foot": ["console", "shell"],
+  "nvim": ["vim", "code editor"],
+  "whatsapp": ["chat", "messages"],
+  "telegram": ["chat", "messages"],
+  "discord": ["chat", "voice chat"],
+  "slack": ["chat", "work chat"],
+  "gmail": ["email", "mail", "inbox"],
+  "google calendar": ["calendar", "meetings"],
+  "youtube": ["videos"],
+  "x": ["twitter"],
+  "system-config-printer": ["printer", "printers"],
+  "dev.tensaku.tensaku": ["annotate screenshot"]
+}
+
+function keywordsOf(app) {
+  var id = String(app.id || "").toLowerCase()
+  return Object.prototype.hasOwnProperty.call(KEYWORDS, id) ? KEYWORDS[id] : []
+}
+
 // Whether the whole query names an app by its words (keyword or better): a
 // description that has the verb ("Free and Open Source", OBS's comment)
 // keeps no verb (Fable 2026-10-05).
@@ -81,7 +127,7 @@ function fields(app, descriptions) {
   return Score.prepare({
     name: app.name,
     generic: app.generic,
-    keywords: [String(app.id || "").replace(/[._-]+/g, " ")].concat(app.keywords || []),
+    keywords: [String(app.id || "").replace(/[._-]+/g, " ")].concat(app.keywords || [], keywordsOf(app)),
     description: describedAs(app, descriptions),
     letters: true
   })
