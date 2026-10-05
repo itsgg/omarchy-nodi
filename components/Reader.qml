@@ -24,6 +24,19 @@ Item {
   // A read that can be cancelled (a script filter's run that a newer
   // keystroke replaced) is ended with the program and all it started.
   property bool cancelable: false
+  // A read that streams (an answer, providers/answers.js): what the program
+  // prints is handed on as it arrives, `chunk`, not split into lines, and
+  // kept whole in `collected` too.
+  property bool streaming: false
+  // The end of what the program wrote to stderr in this run, and its last
+  // line, for saying why it failed. Read as it arrives and only the end
+  // kept, so nothing on stderr is held whole, a line with no newline
+  // included.
+  property string errorTail: ""
+  readonly property string errorLine: {
+    var lines = reader.errorTail.split("\n").filter(function(l) { return l.trim() !== "" })
+    return lines.length ? lines[lines.length - 1].trim().slice(0, 300) : ""
+  }
   // Its own flag, not proc.running: a Process reports running only once it
   // has started, so a second run() straight after the first saw it idle and
   // replaced the first one's command (found by tests/qml/RequestsTest.qml).
@@ -31,6 +44,7 @@ Item {
   readonly property bool busy: active
 
   signal finished(string text, bool ok, var tag)
+  signal chunk(string data, var tag)
 
   property string collected: ""
   property bool overflowed: false
@@ -58,10 +72,11 @@ Item {
     reader.active = true
     reader.tag = tag === undefined ? null : tag
     reader.collected = ""
+    reader.errorTail = ""
     reader.overflowed = false
     reader.timedOut = false
     proc.environment = reader.environment()
-    proc.command = Sources.limited(argv, reader.timeoutMs, reader.maxBytes)
+    proc.command = Sources.limited(argv, reader.timeoutMs, reader.maxBytes, reader.streaming)
     proc.running = true
     deadline.restart()
   }
@@ -95,15 +110,22 @@ Item {
     id: proc
     clearEnvironment: true
     stdout: SplitParser {
+      splitMarker: reader.streaming ? "" : "\n"
       onRead: function(data) {
         if (reader.overflowed) return
-        if (reader.collected.length + data.length + 1 > reader.maxBytes) {
+        var piece = reader.streaming ? data : data + "\n"
+        if (reader.collected.length + piece.length > reader.maxBytes) {
           reader.overflowed = true
           proc.running = false
           return
         }
-        reader.collected += data + "\n"
+        reader.collected += piece
+        if (reader.streaming) reader.chunk(data, reader.tag)
       }
+    }
+    stderr: SplitParser {
+      splitMarker: ""
+      onRead: function(data) { reader.errorTail = (reader.errorTail + data).slice(-600) }
     }
     onExited: function(exitCode, exitStatus) {
       if (exitCode === Sources.OVERFLOW) reader.overflowed = true

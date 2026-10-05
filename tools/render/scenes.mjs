@@ -175,6 +175,17 @@ const scenes = [
   scene("32-keys-help", "?shortcuts"),
   scene("30-filter-markdown", "n meet", { filter: () => Filters.parse(filterOutput, { keyword: "n", title: "Notes", icon: "󰎞" }) }, null, withFilter),
   (() => {
+    // An answer a program streams (providers/answers.js), halfway through.
+    const withAnswers = Object.assign({}, config, { answers: [{ keyword: "a", title: "Assistant", icon: "󰚩", command: ["my-ask"] }] });
+    const said = "The cache is cold after a reboot, so the first open reads every desktop entry.\n\n"
+      + "- `nodi` keeps its own cache in `~/.cache/nodi`\n- the second open is **under 100 ms**\n\nTo warm it at login:";
+    const answer = { phase: "streaming", keyword: "a", question: "why is the first open slow", text: said, error: "" };
+    const rows = plain(Engine.run("a why is the first open slow", withAnswers, services(Object.assign({}, base, { answer }))));
+    return { name: "34-answer", query: "a why is the first open slow", rows, mode: plain(Engine.mode("a q", withAnswers)),
+             streamed: { question: answer.question, title: "Assistant", text: said },
+             selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0, paletteArmed: "", paletteRow: null, armedKey: "" };
+  })(),
+  (() => {
     // `nodi pick --json`: a program's rows, one with a preview, filtered by
     // what is typed.
     const Pick = load("lib/Pick.js");

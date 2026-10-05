@@ -135,8 +135,9 @@ you came from, the one that had the focus when the bar opened:
 empty when not known. It runs for 3 s at most
 (`timeoutMs`, up to 10000), and each keystroke ends the run before it, the
 program and what it started. Where two take the same word, the one earlier
-in `providers` wins: by default your `keywords`, then filters, then Nodi's
-own prefixes (`w`, `kill`, `cb`), so pick a word of its own. It prints one
+in `providers` wins: by default your `keywords`, then filters, then
+answers (below), then Nodi's own prefixes (`w`, `kill`, `cb`), so pick a
+word of its own. It prints one
 JSON object a line, each a row; only `title` is required:
 
 ```json
@@ -155,6 +156,26 @@ loaded. A row with an `id` is remembered and ranked like any other.
 `actions` are what Ctrl+K offers, each with `exec`, `open`, `copy` or
 `paste`. At most 50 rows; a line that is not such an object is skipped.
 While a run is on its way, the last rows stay.
+
+An answer is a program that answers a question you type after a keyword,
+on Enter rather than as you type, and what it prints shows as Markdown in
+the pane as it arrives:
+
+```jsonc
+"answers": [
+  { "keyword": "a", "title": "Assistant", "icon": "󰚩", "command": ["my-ask", "--markdown"] }
+]
+```
+
+`a why is it slow`, then Enter, runs `my-ask --markdown "why is it slow"`
+with the same environment, argument and `NODI_QUERY` as a script filter.
+It runs for two minutes at most (`timeoutMs`, up to 600000) and may print
+256 KB. Write each piece as you have it: a program whose output is
+buffered when it goes into a pipe (Python's, for one) shows nothing until
+it flushes. Escape while it answers stops it, the program and what it
+started, and so does closing the bar. Once it has ended, Enter pastes the
+answer where you were, Ctrl+Enter copies it, and Ask again asks it again;
+if it fails, the last line it wrote to stderr says why.
 
 Other settings: `fallbacks` (what a query nothing answers offers),
 `ask.model` (the Claude model for `ask` and app descriptions, `haiku` by
