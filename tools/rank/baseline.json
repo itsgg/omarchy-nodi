@@ -1,11 +1,11 @@
 {
  "summary": {
   "intended": {
-   "queries": 100,
-   "first": 91,
-   "topThree": 95,
-   "notShown": 2,
-   "mrr": 0.936
+   "queries": 118,
+   "first": 111,
+   "topThree": 115,
+   "notShown": 0,
+   "mrr": 0.963
   },
   "classes": {
    "name": {
@@ -37,8 +37,8 @@
     "first": 8
    },
    "synonym": {
-    "queries": 10,
-    "first": 7
+    "queries": 28,
+    "first": 27
    },
    "verb": {
     "queries": 3,
@@ -164,11 +164,29 @@
   "wallpaper": 1,
   "dnd": 1,
   "do not disturb": 1,
-  "keyboard layout": 0,
-  "photo editor": 0,
+  "keyboard layout": 1,
+  "photo editor": 1,
   "notes": 1,
   "pdf": 1,
   "stay awake": 1,
+  "night light": 1,
+  "screen recording": 1,
+  "caffeine": 1,
+  "change password": 1,
+  "time zone": 1,
+  "factory reset": 1,
+  "status bar": 1,
+  "security key": 1,
+  "file manager": 1,
+  "pdf viewer": 1,
+  "excel": 1,
+  "powerpoint": 1,
+  "task manager": 1,
+  "email": 1,
+  "twitter": 1,
+  "video player": 1,
+  "share file": 1,
+  "send file": 1,
   "open spotify": 1,
   "launch slack": 1,
   "start obs": 1,

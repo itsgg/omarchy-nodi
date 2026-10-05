@@ -27,7 +27,12 @@ var GATE_WORDS = { install: "install", remove: "remove", uninstall: "remove" }
 // What people call Omarchy's rows when they do not know the menu's word.
 // Matched as aliases: the whole phrase names the row as its label does
 // ("power off" is Shutdown, not LibreOffice by "OpenOffice"), part of it as
-// a keyword.
+// a keyword. Written once and read, not asked of a model each time: the
+// menu is the same on every Omarchy (ROADMAP 40). A word goes in only where
+// it names that row and no other ("clock", "internet" and "sound" do not),
+// and never over a row that names it by its own words: "reinstall" is
+// Omarchy's reinstall command, never Reset Computer; "record screen" the
+// action that records it, not the submenu (Fable 2026-10-05).
 var SYNONYMS = {
   "system.lock": ["lock screen", "lock the screen"],
   "system.logout": ["log out", "sign out", "log off"],
@@ -44,10 +49,51 @@ var SYNONYMS = {
   "trigger.capture.qr": ["qr code", "scan qr"],
   "trigger.capture.color": ["colour picker", "color picker", "eyedropper"],
   "setup.monitors": ["display", "displays", "resolution", "scaling"],
-  "setup.input": ["keyboard", "mouse"],
+  "setup.input": ["keyboard", "mouse", "keyboard layout", "key repeat", "mouse speed", "trackpad speed"],
   "setup.keybindings": ["edit keybindings", "bindings"],
   "update.omarchy": ["update", "upgrade", "update system", "system update"],
-  "update.process.shell": ["restart bar", "reload shell"]
+  "update.process.shell": ["restart bar", "reload shell"],
+  "system.hibernate": ["deep sleep"],
+  "trigger.capture.screenrecord": ["screen recording", "screencast"],
+  "trigger.capture.screenrecord.stop": ["stop recording"],
+  "trigger.transcode": ["convert video", "compress video", "convert image"],
+  "trigger.share.file": ["send file", "send files"],
+  "trigger.share.receive": ["receive file", "receive files"],
+  "trigger.toggle.idle-lock": ["caffeine", "keep awake", "prevent sleep"],
+  "trigger.toggle.notifications": ["do not disturb", "silence notifications", "mute notifications"],
+  "trigger.toggle.nightlight": ["night light", "blue light", "night mode", "warm screen"],
+  "trigger.toggle.top-bar": ["hide bar", "show bar", "hide the bar", "top bar"],
+  "trigger.tests.network-speedtest": ["internet speed", "speedtest", "bandwidth"],
+  "trigger.tests.disk-speedtest": ["disk speed", "ssd speed"],
+  "trigger.hardware.laptop-display": ["laptop screen", "internal display"],
+  "trigger.hardware.mirror-display": ["mirror screen", "duplicate display", "projector"],
+  "trigger.hardware.hybrid-gpu": ["graphics card", "nvidia"],
+  "trigger.emoji": ["emoji picker", "emojis"],
+  "trigger.reminder": ["remind me", "timer"],
+  "style.font": ["fonts", "typeface"],
+  "style.bar": ["status bar"],
+  "style.bar.transparency": ["bar opacity", "transparent bar"],
+  "setup.network.dns": ["name server", "nameserver"],
+  "setup.default.browser": ["default browser"],
+  "setup.default.terminal": ["default terminal"],
+  "setup.default.editor": ["default editor"],
+  "setup.default.agent": ["default agent", "coding agent"],
+  "setup.plugin": ["extensions", "add ons"],
+  "setup.security.fingerprint": ["fingerprint reader", "fingerprint login"],
+  "setup.security.fido2": ["security key", "yubikey"],
+  "setup.security.sshd": ["ssh server", "remote login"],
+  "setup.reset": ["factory reset"],
+  "update.timezone": ["time zone"],
+  "update.time": ["date and time", "sync time"],
+  "update.password.user": ["change password", "user password"],
+  "update.password.drive": ["disk encryption", "luks"],
+  "update.firmware": ["bios update", "fwupd"],
+  "update.hardware.audio": ["restart audio", "fix sound", "no sound"],
+  "update.hardware.wifi": ["restart wifi", "fix wifi"],
+  "update.hardware.bluetooth": ["restart bluetooth", "fix bluetooth"],
+  "update.themes": ["more themes"],
+  "learn.hyprland": ["hyprland wiki"],
+  "learn.arch": ["arch wiki"]
 }
 
 // Own keys only: a user's menu id can be `constructor`.
