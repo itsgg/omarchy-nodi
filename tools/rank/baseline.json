@@ -4,8 +4,8 @@
    "queries": 100,
    "first": 82,
    "topThree": 88,
-   "notShown": 10,
-   "mrr": 0.853
+   "notShown": 9,
+   "mrr": 0.856
   },
   "classes": {
    "name": {
@@ -133,7 +133,7 @@
   "spotfy": 1,
   "chromuim": 1,
   "termnal": 1,
-  "browsr": 0,
+  "browsr": 4,
   "nightlite": 1,
   "scrennshot": 1,
   "bluetoth": 1,
