@@ -56,11 +56,16 @@ QtObject {
 
   readonly property QtObject spacing: QtObject {
     readonly property int hairline: root.space(1)
+    readonly property int xxs: root.spacingToken("xxs", 2)
+    readonly property int xs: root.spacingToken("xs", 3)
     readonly property int sm: root.spacingToken("sm", 4)
     readonly property int md: root.spacingToken("md", 6)
     readonly property int lg: root.spacingToken("lg", 8)
+    readonly property int xl: root.spacingToken("xl", 10)
+    readonly property int xxl: root.spacingToken("xxl", 12)
     readonly property int controlPaddingY: root.spacingToken("control-padding-y", 6)
     readonly property int panelPadding: root.spacingToken("panel-padding", 18)
+    readonly property int popupPadding: root.spacingToken("popup-padding", 14)
   }
 
   readonly property QtObject font: QtObject {

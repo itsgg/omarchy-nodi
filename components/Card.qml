@@ -1,6 +1,7 @@
 import QtQuick
 import qs.Commons
 import qs.Ui
+import "../lib/Scroll.js" as Scroll
 
 // The bar itself: the search field, the results or Ctrl+K's actions, and
 // the footer. Everything it shows and does comes from `nodi`, the Nodi
@@ -24,6 +25,9 @@ BorderSurface {
 
   // The pane beside the list, by lines or pages, from the keyboard.
   function scrollPane(lines, pages) { pane.scroll(lines, pages) }
+
+  // The row at `index` in view, clear of the fades (lib/Scroll.js).
+  function keepVisible(index) { Scroll.keep(list, index, nodi.rowPeek, ListView.Contain) }
   // Whether the pane holds text to scroll: a picture or a title alone does
   // not, and Shift+Down there moves the list as it did.
   readonly property bool paneScrolls: pane.visible && pane.hasText
@@ -43,11 +47,15 @@ BorderSurface {
       width: parent.width
       height: nodi.inputHeight
 
+      // In the tiles' column, so what is typed starts where a row's title
+      // does (Fable 2026-10-05).
       Text {
         id: promptGlyph
         anchors.left: parent.left
-        anchors.leftMargin: Style.space(4)
+        anchors.leftMargin: Style.spacing.lg + nodi.rowInsetLeft
         anchors.verticalCenter: parent.verticalCenter
+        width: nodi.tileSize
+        horizontalAlignment: Text.AlignHCenter
         text: "󰍉"
         color: nodi.secondary
         font.family: nodi.fontFamily
@@ -57,7 +65,7 @@ BorderSurface {
       TextInput {
         id: input
         anchors.left: promptGlyph.right
-        anchors.leftMargin: Style.spacing.md
+        anchors.leftMargin: Style.spacing.xxl
         anchors.right: modeChip.visible ? modeChip.left : (helpHint.visible ? helpHint.left : parent.right)
         anchors.rightMargin: Style.spacing.md
         anchors.verticalCenter: parent.verticalCenter
@@ -96,9 +104,10 @@ BorderSurface {
         id: modeChip
         visible: !!nodi.mode
         anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
         anchors.verticalCenter: parent.verticalCenter
-        implicitWidth: chipRow.implicitWidth + Style.space(16)
-        implicitHeight: chipRow.implicitHeight + Style.space(8)
+        implicitWidth: chipRow.implicitWidth + Style.spacing.lg * 2
+        implicitHeight: chipRow.implicitHeight + Style.spacing.sm * 2
         width: implicitWidth
         height: implicitHeight
         // No rounder than the card it sits in (his ruling 2026-10-04).
@@ -108,7 +117,7 @@ BorderSurface {
         Row {
           id: chipRow
           anchors.centerIn: parent
-          spacing: Style.space(6)
+          spacing: Style.spacing.md
           Text {
             anchors.verticalCenter: parent.verticalCenter
             text: nodi.mode ? (nodi.mode.icon || "") : ""
@@ -132,8 +141,9 @@ BorderSurface {
         id: helpHint
         visible: !nodi.mode && !input.text
         anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
         anchors.verticalCenter: parent.verticalCenter
-        spacing: Style.space(6)
+        spacing: Style.spacing.md
         Keycap { label: "?"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
         Text {
           anchors.verticalCenter: parent.verticalCenter
@@ -150,8 +160,9 @@ BorderSurface {
     Text {
       width: parent.width
       visible: nodi.argsHint !== ""
-      leftPadding: Style.space(4)
-      bottomPadding: Style.space(6)
+      // Under what is typed, which it describes.
+      leftPadding: Style.spacing.lg + nodi.rowInsetLeft + nodi.tileSize + Style.spacing.xxl
+      bottomPadding: Style.spacing.md
       textFormat: Text.PlainText
       text: nodi.argsHint
       color: nodi.secondary
@@ -172,7 +183,7 @@ BorderSurface {
     Column {
       width: parent.width
       visible: nodi.noResults
-      spacing: Style.space(4)
+      spacing: Style.spacing.sm
       topPadding: Style.spacing.md
       bottomPadding: Style.spacing.md
       Text {
@@ -188,7 +199,7 @@ BorderSurface {
       // A key and its label, not a sentence (item 25).
       Row {
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: Style.space(6)
+        spacing: Style.spacing.md
         Keycap { label: "?"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
         Text { anchors.verticalCenter: parent.verticalCenter; text: "Help"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.bodySmall }
       }
@@ -232,7 +243,7 @@ BorderSurface {
           anchors.left: parent.left
           anchors.right: parent.right
           anchors.top: parent.top
-          height: Math.min(Style.space(28), parent.height / 2)
+          height: Math.min(nodi.rowPeek, parent.height / 2)
           visible: opacity > 0
           opacity: list.contentHeight > list.height ? Math.max(0, Math.min(1, (list.contentY - list.originY) / height)) : 0
           gradient: Gradient {
@@ -244,7 +255,7 @@ BorderSurface {
           anchors.left: parent.left
           anchors.right: parent.right
           anchors.bottom: parent.bottom
-          height: Math.min(Style.space(28), parent.height / 2)
+          height: Math.min(nodi.rowPeek, parent.height / 2)
           visible: opacity > 0
           opacity: list.contentHeight > list.height
             ? Math.max(0, Math.min(1, (list.originY + list.contentHeight - list.height - list.contentY) / height)) : 0

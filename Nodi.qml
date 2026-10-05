@@ -127,6 +127,8 @@ Item {
   readonly property alias tileSize: look.tileSize
   readonly property alias tileRadius: look.tileRadius
   readonly property alias maxRows: look.maxRows
+  readonly property alias rowPeek: look.rowPeek
+  function paletteHeight(count) { return look.paletteHeight(count) }
   readonly property alias cardWidth: look.cardWidth
   readonly property alias listColumn: look.listColumn
   readonly property alias paneMin: look.paneMin
@@ -291,7 +293,7 @@ Item {
     }
     root.selectedIndex = NodiKeys.reselect(before, root.rows, input.text)
     root.shownQuery = input.text
-    if (root.rows.length > 0) list.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    if (root.rows.length > 0) card.keepVisible(root.selectedIndex)
   }
 
   function move(delta) {
@@ -299,7 +301,7 @@ Item {
     var n = root.rows.length
     if (n === 0) return
     root.selectedIndex = (root.selectedIndex + delta + n) % n
-    list.positionViewAtIndex(root.selectedIndex, ListView.Contain)
+    card.keepVisible(root.selectedIndex)
   }
 
   function complete(row) {
@@ -693,7 +695,7 @@ Item {
   function perform(act) {
     switch (act.do) {
     case "move": root.move(act.by); break
-    case "select": root.armedKey = ""; root.selectedIndex = act.index; list.positionViewAtIndex(act.index, ListView.Contain); break
+    case "select": root.armedKey = ""; root.selectedIndex = act.index; card.keepVisible(act.index); break
     case "paneScroll": card.scrollPane(act.lines, 0); break
     case "panePage": card.scrollPane(0, act.by); break
     case "activate": root.selectedIndex = act.index; root.activate(act.index); break

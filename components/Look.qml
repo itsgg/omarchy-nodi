@@ -50,6 +50,11 @@ QtObject {
   readonly property int tileRadius: cornerRadius > 0 ? Style.space(7) : 0
   // Up to 7 rows before scrolling; the ? list may grow to fit.
   readonly property int maxRows: 7
+  // With more rows than that, a part of the next one shows under the fold,
+  // as Omarchy's menu does (Menu.qml rowPeek): the fade over the edge lies
+  // on that part, not on the seventh row, which the list held to the pixel
+  // and the fade then hid (Fable 2026-10-05, his Spotify row).
+  readonly property int rowPeek: Math.round(rowHeight * 0.55)
   // 960 while the selected row has a preview, the list 430 of it, as
   // Kadhir's (his ruling: the pane only when the row has one).
   property bool wide: false
@@ -66,6 +71,12 @@ QtObject {
   function listHeight(rows, showingHelp) {
     var total = 0
     for (var i = 0; i < rows.length && (showingHelp || i < maxRows); i++) total += rowSize(rows[i])
+    if (!showingHelp && rows.length > maxRows) total += rowPeek
     return Math.min(total, screenHeight * 0.6)
+  }
+
+  // Ctrl+K's actions, held as the list is: seven, then a part of the next.
+  function paletteHeight(count) {
+    return Math.min(count, maxRows) * rowHeight + (count > maxRows ? rowPeek : 0)
   }
 }
