@@ -55,7 +55,7 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
 // contract this protects), template literals, a script returned by a
 // helper.
 const WRITTEN = {
-  "providers/keywords.js": ["substitute(cmd.run)"],   // a keyword's `run`, through its quoting lexer
+  "providers/keywords.js": ["cmd.run"],               // a keyword's `run` as written; what is typed is its $1
   "providers/menu.js": ["item.action"],               // a menu row's action
   "providers/shell.js": ["cmd"]                       // the command line typed after `>`
 };

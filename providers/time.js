@@ -149,7 +149,16 @@ function matchZones(q, ctx) {
 
 // ---------------------------------------------------------------- dates
 
-function midnight(d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()) }
+// A day from its parts, overflow carried (the 32nd is the next month's
+// 1st), by setFullYear: the Date constructor reads a year under 100 as
+// 1900 and on (codex 2026-10-05).
+function ymd(y, mo, d) {
+  var date = new Date(2000, 0, 1)
+  date.setFullYear(y, mo, d)
+  return date
+}
+
+function midnight(d) { return ymd(d.getFullYear(), d.getMonth(), d.getDate()) }
 
 function monthIndex(word) {
   var w = String(word || "").toLowerCase()
@@ -161,23 +170,25 @@ function monthIndex(word) {
   return (full.indexOf(w) === 0 || (i === 8 && w === "sept")) ? i : -1
 }
 
-// Returns { date, hadYear } or null.
+// Returns { date, hadYear } or null; a date without its year also carries
+// { month, day }, and its `date` is this year's, or null in a year it does
+// not fall in (February 29). occurrence() places it where a count needs it.
 function parseDate(s, today) {
   var t = String(s || "").trim().toLowerCase().replace(/\s+/g, " ")
   if (t === "today" || t === "now") return { date: today, hadYear: true }
   if (t === "tomorrow") return { date: addDays(today, 1), hadYear: true }
   if (t === "yesterday") return { date: addDays(today, -1), hadYear: true }
-  if (t === "christmas" || t === "xmas") return { date: new Date(today.getFullYear(), 11, 25), hadYear: false }
-  if (t === "new year" || t === "new years" || t === "new year's") return { date: new Date(today.getFullYear(), 0, 1), hadYear: false }
+  if (t === "christmas" || t === "xmas") return yearless(11, 25, today)
+  if (t === "new year" || t === "new years" || t === "new year's") return yearless(0, 1, today)
 
   var m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
   if (m) return validDate(+m[1], +m[2] - 1, +m[3], true)
 
   m = t.match(/^([a-z]+)\.? (\d{1,2})(?:st|nd|rd|th)?(?:,? (\d{4}))?$/)
-  if (m && monthIndex(m[1]) !== -1) return validDate(m[3] ? +m[3] : today.getFullYear(), monthIndex(m[1]), +m[2], !!m[3])
+  if (m && monthIndex(m[1]) !== -1) return m[3] ? validDate(+m[3], monthIndex(m[1]), +m[2], true) : yearless(monthIndex(m[1]), +m[2], today)
 
   m = t.match(/^(\d{1,2})(?:st|nd|rd|th)? ([a-z]+)\.?(?:,? (\d{4}))?$/)
-  if (m && monthIndex(m[2]) !== -1) return validDate(m[3] ? +m[3] : today.getFullYear(), monthIndex(m[2]), +m[1], !!m[3])
+  if (m && monthIndex(m[2]) !== -1) return m[3] ? validDate(+m[3], monthIndex(m[2]), +m[1], true) : yearless(monthIndex(m[2]), +m[1], today)
 
   m = t.match(/^(next|this|last|coming)? ?([a-z]+)$/)
   if (m) {
@@ -194,31 +205,63 @@ function parseDate(s, today) {
 }
 
 function validDate(y, mo, d, hadYear) {
-  var date = new Date(y, mo, d)
-  if (date.getMonth() !== mo || date.getDate() !== d) return null
-  return { date: date, hadYear: hadYear }
+  var date = makeDate(y, mo, d)
+  return date ? { date: date, hadYear: hadYear } : null
 }
 
-function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n) }
+// The day itself, or null when the year has no such day. By setFullYear:
+// the Date constructor reads a year under 100 as 1900 and on, so 0099-01-01
+// was 1999 (codex 2026-10-05).
+function makeDate(y, mo, d) {
+  var date = ymd(y, mo, d)
+  return date.getFullYear() === y && date.getMonth() === mo && date.getDate() === d ? date : null
+}
+
+// A month and day with no year: one that falls in some year (February 29
+// does, February 30 never), its date this year's or null.
+function yearless(mo, d, today) {
+  if (!makeDate(2000, mo, d)) return null
+  return { date: makeDate(today.getFullYear(), mo, d), hadYear: false, month: mo, day: d }
+}
+
+// Where a parsed date falls for a count from today: as given when it had a
+// year; else its first day on or after today (dir 1) or its last on or
+// before (dir -1), in a year it falls in, so "since dec 25" counts from the
+// last one and "until feb 29" to the next leap day (codex 2026-10-05).
+function occurrence(r, today, dir) {
+  if (!r) return null
+  if (r.hadYear) return r.date
+  for (var k = 0; k <= 8; k++) {
+    var d = makeDate(today.getFullYear() + dir * k, r.month, r.day)
+    if (d && (dir > 0 ? d >= today : d <= today)) return d
+  }
+  return null
+}
+
+function addDays(d, n) { return ymd(d.getFullYear(), d.getMonth(), d.getDate() + n) }
 
 function addUnits(d, n, unit) {
   var u = unit.toLowerCase()
   var out = null
   if (/^(d|days?)$/.test(u)) out = addDays(d, n)
   else if (/^(w|wks?|weeks?)$/.test(u)) out = addDays(d, n * 7)
-  else if (/^(m|mos?|months?)$/.test(u)) out = new Date(d.getFullYear(), d.getMonth() + n, d.getDate())
-  else if (/^(y|yrs?|years?)$/.test(u)) out = new Date(d.getFullYear() + n, d.getMonth(), d.getDate())
+  else if (/^(m|mos?|months?)$/.test(u)) out = ymd(d.getFullYear(), d.getMonth() + n, d.getDate())
+  else if (/^(y|yrs?|years?)$/.test(u)) out = ymd(d.getFullYear() + n, d.getMonth(), d.getDate())
   // An offset past what a Date can hold ("in 99999999999 days") is no date.
   return out && !isNaN(out.getTime()) ? out : null
 }
 
 function daysBetween(a, b) { return Math.round((midnight(b) - midnight(a)) / DAY_MS) }
 
+// Four digits for a year under 1000, as ISO writes 0099; any other year
+// whole (Fable 2026-10-05: 11026 came out as 1026).
+function year4(d) { var y = d.getFullYear(); return y >= 0 && y < 1000 ? ("000" + y).slice(-4) : String(y) }
+
 function formatDate(d) {
-  return WD_SHORT[d.getDay()] + ", " + d.getDate() + " " + MON_SHORT[d.getMonth()] + " " + d.getFullYear()
+  return WD_SHORT[d.getDay()] + ", " + d.getDate() + " " + MON_SHORT[d.getMonth()] + " " + year4(d)
 }
 
-function isoDate(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) }
+function isoDate(d) { return year4(d) + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) }
 
 function relative(days) {
   if (days === 0) return "today"
@@ -256,26 +299,23 @@ function matchDates(q, ctx) {
   // "days until dec 25", "until christmas"
   m = q.match(/^(?:how many )?(?:days? )?(?:until|till|til|to|before) (.+?)\??$/)
   if (m) {
-    var target = parseDate(m[1], today)
-    if (target) {
-      var d = target.date
-      if (!target.hadYear && d < today) d = new Date(d.getFullYear() + 1, d.getMonth(), d.getDate())
-      return [countRow(daysBetween(today, d), today, d, 90)]
-    }
+    var d = occurrence(parseDate(m[1], today), today, 1)
+    if (d) return [countRow(daysBetween(today, d), today, d, 90)]
   }
 
   // "days since jan 1"
   m = q.match(/^(?:how many )?(?:days? )?since (.+?)\??$/)
   if (m) {
-    var since = parseDate(m[1], today)
-    if (since) return [countRow(daysBetween(since.date, today), since.date, today, 90)]
+    var since = occurrence(parseDate(m[1], today), today, -1)
+    if (since) return [countRow(daysBetween(since, today), since, today, 90)]
   }
 
   // "today + 45 days", "dec 25 - 2 weeks"
   m = q.match(/^(.+?) ?([+-]) ?(\d+) ?([a-z]+)$/)
   if (m) {
     var base = parseDate(m[1], today)
-    var shifted = base && addUnits(base.date, (m[2] === "-" ? -1 : 1) * parseInt(m[3], 10), m[4])
+    var from = base && (base.date || occurrence(base, today, 1))
+    var shifted = from && addUnits(from, (m[2] === "-" ? -1 : 1) * parseInt(m[3], 10), m[4])
     if (shifted) return [dateRow(shifted, today, 90)]
   }
 
@@ -295,12 +335,17 @@ function matchDates(q, ctx) {
   m = q.match(/^(?:days? )?(?:between |from )?(.+?) (?:to|and|until|-|–) (.+)$/)
   if (m) {
     var a = parseDate(m[1], today), b = parseDate(m[2], today)
-    if (a && b) return [countRow(daysBetween(a.date, b.date), a.date, b.date, 88)]
+    // Without a year, the second date is the first one on or after the
+    // first: "dec 25 to jan 1" is a week, "feb 29 to mar 1" a day.
+    var da = a && (a.date || occurrence(a, today, 1))
+    var db = b && da && (b.hadYear ? b.date : occurrence(b, da, 1))
+    if (da && db) return [countRow(daysBetween(da, db), da, db, 88)]
   }
 
   // A bare date: "dec 25", "next friday"
   var bare = parseDate(q, today)
-  if (bare && q !== "now") return [dateRow(bare.date, today, 70)]
+  var on = bare && (bare.date || occurrence(bare, today, 1))
+  if (on && q !== "now") return [dateRow(on, today, 70)]
   return []
 }
 

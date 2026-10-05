@@ -143,6 +143,10 @@ function wifiRows(q, wifi) {
     else { row.run = Run.exec(["omarchy-shell", "omarchy.network", "open"]); row.actionLabel = "Open Wi-Fi" }
     out.push(row)
   }
+  // Best named first, then as listed (connected, saved, strongest), so the
+  // cut to LIMIT never drops the network named exactly for six that only
+  // start with its name (codex 2026-10-05).
+  out.sort(function(a, b) { return Score.ORDER.indexOf(a.tier) - Score.ORDER.indexOf(b.tier) || b.offset - a.offset })
   return out
 }
 

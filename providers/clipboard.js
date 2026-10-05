@@ -11,6 +11,23 @@
 
 var LIMIT = 30
 
+// A row is keyed by what it holds, never by its place: a copy made while
+// the bar is open moves every entry down one, and a key by place kept the
+// selection on the place, so Enter pasted the newer entry (codex
+// 2026-10-05). By content, the selection follows the entry, whose run then
+// names its new place. The text stays in Nodi: a run names an entry by its
+// index because an argument is readable by anyone through ps. A copy that
+// lands between Enter and the paste is the one race left.
+// Of its length and its first and last 4 KB: the whole of a 1 MB entry
+// cost 142 ms a keystroke in Qt's engine (Fable 2026-10-05), and Omarchy's
+// history holds an entry once, so its ends and its length tell entries apart.
+function fingerprint(s) {
+  var part = s.length > 8192 ? s.slice(0, 4096) + s.slice(-4096) : s
+  var h = 0x811c9dc5
+  for (var i = 0; i < part.length; i++) { h ^= part.charCodeAt(i); h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0 }
+  return s.length + "." + h.toString(16)
+}
+
 function preview(text) {
   var s = String(text || "").trim().replace(/[\r\n\t]+/g, " ")
   return s.length > 80 ? s.slice(0, 77) + "..." : s
@@ -20,7 +37,7 @@ function textRow(item, index, score) {
   var text = String(item.text || "")
   var lines = text.split(/\r?\n/).length
   return {
-    key: "clip:" + index,
+    key: "clip:text:" + fingerprint(text),
     remember: false,
     title: preview(text.trim().split(/\r?\n/)[0] || text),
     subtitle: text.length + " characters" + (lines > 1 ? ", " + lines + " lines" : ""),
@@ -39,7 +56,7 @@ function imageRow(item, index, score) {
   var path = String(item.path || "")
   var mime = /^image\/[a-z0-9.+-]+$/i.test(String(item.mime || "")) ? String(item.mime) : "image/png"
   return {
-    key: "clip:" + index,
+    key: "clip:image:" + path,
     remember: false,
     title: "Image" + (item.capturedAt ? ", " + item.capturedAt : ""),
     subtitle: path,

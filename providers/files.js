@@ -143,6 +143,10 @@ function pathRows(typed, ctx, home) {
   var prefix = /\/$/.test(full) ? "" : full.split("/").pop().toLowerCase()
   var got = ctx.request ? ctx.request("directory", dir) : { state: "pending" }
   var listing = got.value
+  // A read that failed with nothing of this folder to show says so, rather
+  // than "Reading..." for ever (codex 2026-10-05).
+  if (got.state === "error" && (!listing || listing.path !== dir))
+    return [{ title: "Cannot read " + tilde(dir, home), subtitle: String(got.error || "the listing failed"), score: 40, copy: "" }]
   if (!listing || listing.path !== dir) return [{ title: "Reading " + tilde(dir, home) + "...", subtitle: "Files", score: 40, copy: "" }]
   if (listing.error) return [{ title: "Cannot read " + tilde(dir, home), subtitle: listing.error, score: 40, copy: "" }]
 

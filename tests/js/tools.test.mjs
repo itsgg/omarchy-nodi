@@ -31,6 +31,19 @@ test("clipboard: pasted and copied by history index, never by text", () => {
   assert.equal(top("cb", { clipboard: [] }).title, "The clipboard history is empty");
 });
 
+test("clipboard: a copy made while the bar is open keeps the entry you chose selected, its new place pasted (codex 2026-10-05)", () => {
+  const Keys = load("lib/Keys.js");
+  const before = run("cb", { clipboard });
+  const chosen = before[1];
+  const after = run("cb", { clipboard: [{ type: "text", text: "copied just now" }].concat(clipboard) });
+  const at = Keys.reselect({ query: "cb", key: chosen.key, index: 1 }, after, "cb");
+  assert.equal(after[at].title, chosen.title, "the selection follows the entry");
+  assert.deepEqual(plain(after[at].run.argv), ["omarchy-clipboard-paste-text", "--shift-insert", "--history-index", "2"]);
+  assert.ok(!JSON.stringify(after.map(r => r.run)).includes("rm -rf"), "the text is never an argument");
+  assert.notEqual(run("cb", { clipboard: [{ type: "text", text: "ab" }, { type: "text", text: "ba" }] })[0].key,
+                  run("cb", { clipboard: [{ type: "text", text: "ba" }, { type: "text", text: "ab" }] })[0].key);
+});
+
 test("clipboard: clear asks Omarchy's clipboard manager, after a second Enter", () => {
   const c = top("cb clear", { clipboard });
   assert.equal(c.confirm, true);

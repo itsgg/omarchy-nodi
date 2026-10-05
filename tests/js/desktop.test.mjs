@@ -75,3 +75,11 @@ test("names as typed, camel case or not; a short prefix is not an answer over an
 test("nothing from the desktop for queries it does not name", () => {
   for (const q of ["firefox", "2+2", "lock", "theme"]) assert.equal(rows(q).length, 0, q);
 });
+
+test("wifi: the network named exactly is kept when six only start with its name (codex 2026-10-05)", () => {
+  const nets = [0, 1, 2, 3, 4, 5].map(i => ({ ssid: "Home-" + i, signal: 0.9, known: false, connected: false }))
+    .concat([{ ssid: "Home", signal: 0.2, known: false, connected: false }]);
+  const found = run("home", { desktop: { ...desktop, wifi: { enabled: true, networks: nets } } }).filter(r => r.group === "Wi-Fi");
+  assert.equal(found.length, 6);
+  assert.equal(found[0].title, "Home");
+});

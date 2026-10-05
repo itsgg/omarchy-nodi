@@ -9,13 +9,26 @@
 //
 // `open` takes every placeholder snippets do ({argument name=..},
 // {clipboard}, {date}, {uuid}, lib/Placeholders.js), what you type and the
-// clipboard URL-encoded, and goes to xdg-open. In `run`, only {q}: what you type
-// is passed as the argument $1, never as shell text, so it cannot change the
-// command around it (a quoted "{q}" made $(...) in a query run, codex
-// 2026-10-02). Nothing runs until Enter.
+// clipboard URL-encoded, and goes to xdg-open. In `run`, what you type is
+// the command's "$1" and is never written into it, so nothing typed can
+// change the command; it uses "$1" as a script does. Nodi once wrote {q}
+// into the command, quoted for where it stood, and a quoting lexer could
+// not know every place bash evaluates text (arithmetic, backticks; codex
+// 2026-10-02 and 2026-10-05): a `run` still holding {q} says to write "$1"
+// and runs nothing. Nothing runs until Enter.
 // Ported from omarchy-commandbar (Saikomantisu, MIT).
 
-function takesQuery(cmd) { return cmd.open ? Placeholders.takesArguments(cmd.open) : /\{q\}/.test(cmd.run || "") }
+// A `run` takes what is typed when it reads its arguments: $1, ${1}, $@ or
+// $*, outside single quotes, where bash reads none of them; awk's '{print
+// $1}' is awk's (Fable 2026-10-05: such a command asked for words).
+function takesQuery(cmd) {
+  if (cmd.open) return Placeholders.takesArguments(cmd.open)
+  return /\$(\{?1\}?(?![0-9])|\{?[@*]\}?)/.test(String(cmd.run || "").replace(/'[^']*'/g, ""))
+}
+
+// A `run` written for the old {q}: it says how to write it instead.
+function outdated(cmd) { return !cmd.open && /\$?\{q\}/.test(String(cmd.run || "")) }
+var OUTDATED = "Write \"$1\" where {q} is: what you type is the command's $1"
 
 // Whether a keyword can take a whole query nothing else answered: one
 // argument and no clipboard, as Raycast's fallback commands are.
@@ -36,75 +49,19 @@ function clipboardFor(cmd, ctx) {
 
 function usable(cmd) { return !!cmd && !!cmd.keyword && !!(cmd.open || cmd.run) && !/\s/.test(String(cmd.keyword)) }
 
-// A `run` template with each {q} turned into $1, quoted for where it stands,
-// so it is one word, the query as typed, never split or globbed: "$1" bare,
-// $1 inside double quotes, '"$1"' inside single quotes, '"$1"$' inside $'...'.
-// `$(` and a backtick open a fresh context, as in bash, so {q} inside one is
-// judged by the quotes inside it (Fable 2026-10-02). ${q} is read as {q}; a
-// backslash escapes what follows; a # comment is copied as it is. Not
-// tracked: heredoc bodies and a `case` inside $( ), whose pattern's `)`
-// reads as the close; write $1 itself there.
-function substitute(template) {
-  var t = String(template)
-  var out = ""
-  var stack = [{ quote: "", close: "", depth: 0 }]
-  var at = function() { return stack[stack.length - 1] }
-  var wordStart = function(i) { return i === 0 || /[\s;&|()]/.test(t[i - 1]) }
-  for (var i = 0; i < t.length; i++) {
-    var f = at()
-    var token = t.substr(i, 3) === "{q}" ? 3 : (t.substr(i, 4) === "${q}" && f.quote !== "'" && f.quote !== "$'" ? 4 : 0)
-    if (token) {
-      out += f.quote === "\"" ? "$1" : f.quote === "'" ? "'\"$1\"'" : f.quote === "$'" ? "'\"$1\"$'" : "\"$1\""
-      i += token - 1
-      continue
-    }
-    var c = t[i]
-    var two = t.substr(i, 2)
-    if (f.quote === "'") {
-      if (c === "'") f.quote = ""
-    } else if (f.quote === "$'") {
-      if (c === "\\") { out += two; i++; continue }
-      if (c === "'") f.quote = ""
-    } else if (c === "\\") {
-      out += two; i++; continue
-    } else if (two === "$(") {
-      stack.push({ quote: "", close: ")", depth: 0 }); out += two; i++; continue
-    } else if (c === "`") {
-      if (f.close === "`" && f.quote === "") stack.pop()
-      else stack.push({ quote: "", close: "`", depth: 0 })
-    } else if (f.quote === "\"") {
-      if (c === "\"") f.quote = ""
-    } else if (two === "$'") {
-      f.quote = "$'"; out += two; i++; continue
-    } else if (c === "'" || c === "\"") {
-      f.quote = c
-    } else if (c === "#" && wordStart(i)) {
-      var nl = t.indexOf("\n", i)
-      var stop = nl === -1 ? t.length : nl
-      out += t.slice(i, stop); i = stop - 1; continue
-    } else if (c === "(") {
-      f.depth++
-    } else if (c === ")") {
-      if (f.depth > 0) f.depth--
-      else if (f.close === ")" && stack.length > 1) stack.pop()
-    }
-    out += c
-  }
-  return out
-}
-
 function build(cmd, q, ctx) {
   if (cmd.open) {
     var filled = Placeholders.fill(cmd.open, q, { now: ctx && ctx.now ? ctx.now() : new Date(), clipboard: clipboardFor(cmd, ctx) || "",
                                                   encode: encodeURIComponent })
     return Run.open(filled.text)
   }
-  if (cmd.run) return Run.shell(substitute(cmd.run), [String(q)])
+  if (cmd.run && !outdated(cmd)) return Run.shell(cmd.run, [String(q)])
   return null
 }
 
 // What a row will do, said plainly: the site it opens or the command it runs.
 function describe(run, cmd) {
+  if (!run) return outdated(cmd) ? OUTDATED : ""
   if (run.kind === "open") {
     var host = String(run.target).match(/^[a-z]+:\/\/(?:www\.)?([^\/?#]+)/i)
     return "Opens " + (host ? host[1] : run.target)
@@ -150,7 +107,7 @@ var provider = {
   help: function(ctx) {
     var examples = list(ctx.settings).map(function(cmd) {
       var kw = String(cmd.keyword)
-      var what = describe(build(cmd, "{q}"), cmd).replace(/%7Bq%7D|\{q\}/g, "...")
+      var what = describe(build(cmd, "..."), cmd).replace(/%2E%2E%2E/g, "...")
       return { q: takesQuery(cmd) ? kw + " " : kw, note: (cmd.title || kw) + ". " + what }
     })
     if (examples.length === 0) return []
@@ -185,7 +142,11 @@ var provider = {
       if (word !== String(cmd.keyword).toLowerCase()) continue
       var title = cmd.title || cmd.keyword
       var icon = cmd.icon || (cmd.open ? "󰖟" : "󰆍")
-      // A `run` taking {q}, typed alone, asks for it as an `open` does, rather
+      if (outdated(cmd)) {
+        out.push({ title: title, subtitle: OUTDATED, score: 95, icon: icon, copy: "", remember: false })
+        continue
+      }
+      // A `run` taking $1, typed alone, asks for it as an `open` does, rather
       // than running with "" (Fable 2026-10-04).
       var missing = cmd.open ? Placeholders.fill(cmd.open, rest, {}).missing : (takesQuery(cmd) && !rest ? [""] : [])
       if (takesQuery(cmd) && clipboardFor(cmd, ctx) === undefined) {
