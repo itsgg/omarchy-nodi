@@ -4,6 +4,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { load, plain } from "./load.mjs";
 
 const Run = load("lib/Run.js");
@@ -117,3 +120,36 @@ test("a file's preview: its details and first lines once the read lands", () => 
   assert.ok(!bin.text, "a binary file: its labels, no text");
   assert.throws(() => F.parseHead("", false));
 });
+
+test("a watched command says it failed, with its last line, and only then (ROADMAP 53)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-watch-"));
+  const log = join(dir, "said");
+  writeFileSync(join(dir, "notify-send"), `#!/usr/bin/bash\nprintf '%s|' "$@" >> ${JSON.stringify(log)}\necho >> ${JSON.stringify(log)}\n`, { mode: 0o755 });
+  const said = () => { try { return readFileSync(log, "utf8").trim().split("\n").filter(Boolean); } catch { return []; } };
+  const runIt = (argv) => {
+    const a = Run.watched("Sync notes", argv);
+    assert.deepEqual(plain(a.slice(0, 2)), ["bash", "-lc"]);
+    // As a plain shell here, with the fake on the PATH: a login shell would read the user's profile.
+    try { execFileSync("/usr/bin/bash", ["-c"].concat(a.slice(2)), { env: { PATH: dir + ":/usr/bin:/bin", XDG_RUNTIME_DIR: dir }, stdio: "pipe" }); return 0; }
+    catch (e) { return e.status; }
+  };
+  assert.equal(runIt(["bash", "-c", "echo working >&2; echo 'rsync: connection refused' >&2; exit 3"]), 3, "its own exit code");
+  assert.deepEqual(said(), ["-a|Nodi|--|Sync notes failed|rsync: connection refused|"]);
+  assert.equal(runIt(["bash", "-c", "exit 1"]), 1);
+  assert.equal(said().length, 1, "a failure that says nothing is quiet");
+  assert.equal(runIt(["bash", "-c", "echo bye >&2; kill -TERM $$"]), 143);
+  assert.equal(said().length, 1, "an exit by a signal is quiet");
+  assert.equal(runIt(["bash", "-c", "echo fine >&2"]), 0);
+  assert.equal(said().length, 1, "success is quiet");
+  assert.equal(runIt(["bash", "-c", "echo 'the disk is full' >&2; sleep 0.4 & exit 2"]), 2);
+  assert.equal(said()[1], "-a|Nodi|--|Sync notes failed|the disk is full|", "a child that holds stderr a moment longer: the line still read (Fable 2026-10-05)");
+  assert.equal(runIt(["bash", "-c", "echo '-x is not an option' >&2; exit 4"]), 4);
+  assert.equal(said()[2], "-a|Nodi|--|Sync notes failed|-x is not an option|", "a line that starts with a dash is no option to notify-send");
+  assert.equal(runIt(["printf", "%s", "$(touch " + join(dir, "pwned") + ")"]), 0);
+  assert.ok(!existsSync(join(dir, "pwned")), "arguments are never read as shell");
+  assert.deepEqual(readdirSync(dir).filter(f => f.startsWith("nodi-err")), [], "no file left behind");
+  assert.equal(Run.command(Run.exec(["true"]), null, "T")[2].indexOf("notify-send") > 0, true, "a titled command is watched");
+  assert.deepEqual(plain(Run.command(Run.exec(["true"]), null)).slice(0, 3), ["bash", "-lc", 'exec "$@"'], "untitled, as before");
+  assert.equal(Run.command(Run.app("firefox"), null, "Firefox")[2], 'exec "$@"', "an app is not watched: LaunchFeedback says");
+});
+
