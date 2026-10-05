@@ -14,9 +14,10 @@
 //      accept them as input.
 //   4. A program started without a Process goes through Run.js or names its
 //      program: Quickshell.execDetached takes Run.command(...), an argv
-//      built in the same function by Run.command or Hotkey.releaseArgv, or
-//      an array whose first element is a program's name, never a shell
-//      (review T5).
+//      built in the same function by Run.command or Hotkey.releaseArgv,
+//      Pick.answerArgv(...) (a constant script, its data as arguments, as
+//      releaseArgv's), or an array whose first element is a program's name,
+//      never a shell (review T5).
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -111,7 +112,7 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
     for (const m of line.matchAll(/Quickshell\.execDetached\(\s*/g)) {
       const arg = line.slice(m.index + m[0].length);
       const named = arg.match(/^\[\s*["']([^"']+)["']/);
-      let ok = /^Run\.command\(/.test(arg) || (!!named && !/(^|\/)(ba|z|da|k|mk|c|tc|fi)?sh$/.test(named[1]));
+      let ok = /^(Run\.command|Pick\.answerArgv)\(/.test(arg) || (!!named && !/(^|\/)(ba|z|da|k|mk|c|tc|fi)?sh$/.test(named[1]));
       if (/^argv\s*\)/.test(arg)) {
         // The nearest assignment above, inside the same function.
         for (let j = i - 1; j >= 0 && !/^\s*function\s|^\s*Component\.on/.test(lines[j]); j--) {

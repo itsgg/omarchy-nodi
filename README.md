@@ -158,6 +158,31 @@ default), and
 `providers` (what Nodi searches, in order). A list you set replaces the default one, so start from
 `config.default.json`; only `keywords` merge.
 
+## From a terminal
+
+`bin/nodi` in the plugin's folder is a command for scripts and
+terminals; link it onto your PATH once:
+
+```sh
+ln -s ~/.config/omarchy/plugins/io.github.itsgg.nodi/bin/nodi ~/.local/bin/nodi
+```
+
+`nodi` opens the bar, `nodi cb` opens it with `cb` typed (`nodi -- run`
+types a word the command itself would take), and `nodi run <key>` runs a
+row by its key as its hotkey would; Ctrl+K's Copy deeplink shows a row's
+key. A row that asks before it runs is refused there. `nodi pick` shows
+the lines it reads from stdin as rows and prints the one you choose, as it
+was read:
+
+```sh
+choice=$(printf '%s\n' Lock Suspend Reboot | nodi pick --placeholder Power)
+```
+
+With `--json`, each line is an object as a script filter prints one
+(`title`, `subtitle`, `icon`, `image`, `badge`, `preview`); Enter only
+chooses, so an `action` is not read. It exits 0 with a choice, 1 when the
+bar closes without one, and 2 when Nodi cannot be reached.
+
 ## What it touches
 
 - It starts programs the way Omarchy's menu does: through a login shell,
