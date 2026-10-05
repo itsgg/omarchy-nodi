@@ -291,7 +291,7 @@ test("help", () => {
   const topics = run("?").map(r => r.title);
   assert.deepEqual(plain(topics.slice(0, 4)), ["Keys", "Open an app", "Switch window", "Omarchy menu"], "Nodi's own keys first");
   const keysTopic = run("?shortcuts");
-  assert.deepEqual(plain(keysTopic.map(r => r.badge)).slice(-5), ["PgUp PgDn", "Shift 󰁝 󰁅", "Shift PgUp PgDn", "Ctrl D U", "Esc"]);
+  assert.deepEqual(plain(keysTopic.map(r => r.badge)).slice(-7), ["PgUp PgDn", "Shift 󰁝 󰁅", "Shift PgUp PgDn", "Ctrl D U", "Ctrl W", "Ctrl E F B", "Esc"]);
   assert.ok(keysTopic.every(r => r.help && !r.run && !r.complete), "a key is said, not filled in");
   assert.equal(run("?shortcuts")[0].section, "Keys");
   assert.equal(topics[topics.length - 1], "Keywords");

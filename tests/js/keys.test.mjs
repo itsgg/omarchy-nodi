@@ -2,7 +2,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { load } from "./load.mjs";
+import { load, plain } from "./load.mjs";
 import { run, windows } from "./fixtures.mjs";
 
 const Keys = load("lib/Keys.js");
@@ -139,5 +139,21 @@ test("the pane scrolls with Shift, the list pages with PageUp and PageDown", () 
   assert.deepEqual(ctrl("D", pal), { do: "panePage", by: 0.5 });
   assert.deepEqual(k("Down", true, Object.assign({ pane: false }, pal)), { do: "paletteMove", to: 2 }, "no pane: Shift+Down moves the actions");
   assert.deepEqual(k("Down", false, pal), { do: "paletteMove", to: 2 });
+});
+
+test("readline keys in the field: Ctrl+W, Ctrl+E, Ctrl+F, Ctrl+B (ROADMAP 51)", () => {
+  assert.deepEqual(d("W", {}, true), { do: "edit", how: "word" });
+  assert.deepEqual(d("E", { palette: { count: 3, index: 0 } }, true), { do: "edit", how: "end" }, "under Ctrl+K too (Ctrl+W, which changes the text, closes it, as typing does)");
+  assert.equal(Keys.decide({ name: "W", ctrl: true, shift: true }, view()), null, "Ctrl+Shift+W is not one");
+  assert.deepEqual(plain(Keys.decide({ name: "W", ctrl: true, repeat: true }, view())), { do: "edit", how: "word" }, "held, it keeps deleting");
+  const e = (how, text, at, s, f) => plain(Keys.edited(how, text, at, s === undefined ? at : s, f === undefined ? at : f));
+  assert.deepEqual(e("word", "open the  door", 14), { text: "open the  ", at: 10 });
+  assert.deepEqual(e("word", "open the  ", 10), { text: "open ", at: 5 }, "back over spaces, then the word");
+  assert.deepEqual(e("word", "firefox", 7, 0, 7), { text: "", at: 0 }, "the selected kept query goes whole");
+  assert.deepEqual(e("word", "", 0), { text: "", at: 0 });
+  assert.deepEqual(e("end", "abc", 1), { text: "abc", at: 3 });
+  assert.deepEqual(e("right", "abc", 3), { text: "abc", at: 3 }, "not past the end");
+  assert.deepEqual(e("left", "abc", 0), { text: "abc", at: 0 });
+  assert.deepEqual(e("left", "abcdef", 6, 2, 5), { text: "abcdef", at: 2 }, "back from a selection: its start");
 });
 

@@ -334,6 +334,9 @@ baseline query loses rank.
 50. **Query history on Ctrl+R** (Up wraps the list), and a kept query that
     lasts two minutes, then the home view (his call). L 1, 12; X 9.
 51. **Readline keys in the field**: Ctrl+W, Ctrl+E, Ctrl+F, Ctrl+B. X 10.
+    Done 2026-10-05: Ctrl+W takes the word before the cursor, or the
+    selection (the kept query is selected at an open); Ctrl+E to the end;
+    Ctrl+F and Ctrl+B a letter. Ctrl+A stays select-all.
 52. **A Ctrl+K that is typed into**, grouped, its Manage group last, each
     action's chord on the right. X 7.
 53. **A failed command says so**: its last stderr line in a notification,

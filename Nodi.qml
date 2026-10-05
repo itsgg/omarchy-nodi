@@ -763,6 +763,10 @@ Item {
     case Qt.Key_P: return "P"
     case Qt.Key_D: return "D"
     case Qt.Key_U: return "U"
+    case Qt.Key_W: return "W"
+    case Qt.Key_E: return "E"
+    case Qt.Key_F: return "F"
+    case Qt.Key_B: return "B"
     case Qt.Key_PageUp: return "PageUp"
     case Qt.Key_PageDown: return "PageDown"
     }
@@ -787,6 +791,14 @@ Item {
       page: Math.max(1, Math.floor(list.height / Math.max(1, root.rowHeight))),
       pane: card.paneScrolls
     }
+  }
+
+  // A readline edit of the field, worked out by lib/Keys.js edited().
+  function edit(how) {
+    var r = NodiKeys.edited(how, input.text, input.cursorPosition, input.selectionStart, input.selectionEnd)
+    input.deselect()
+    if (r.text !== input.text) input.text = r.text
+    input.cursorPosition = r.at
   }
 
   function perform(act) {
@@ -814,6 +826,7 @@ Item {
     case "helpBack": root.helpBack(); break
     case "dismiss": root.dismiss(); break
     case "stopAnswer": answerSession.stop(); break
+    case "edit": root.edit(act.how); break
     case "cancelPrompt":
       if (root.wordAsk) { root.endWord(); break }
       root.aliasRow = null; input.text = ""; root.recompute(); break
