@@ -18,7 +18,7 @@ test("windows: mapped, visible ones, and the active workspace", () => {
     { address: "0xc", mapped: true, hidden: true, class: "y", title: "hidden", workspace: { name: "1" }, focusHistoryID: 3 }
   ];
   const r = plain(S.windows(JSON.stringify(clients) + "\n@@\n" + JSON.stringify({ id: 4 })));
-  assert.deepEqual(r, { list: [{ address: "0xa", cls: "firefox", title: "Docs", workspace: "2", focus: 1 }], activeWorkspace: 4 });
+  assert.deepEqual(r, { list: [{ address: "0xa", cls: "firefox", title: "Docs", workspace: "2", focus: 1, pid: 0 }], activeWorkspace: 4 });
   assert.deepEqual(plain(S.windows("garbage")), { list: [], activeWorkspace: null });
   assert.equal(S.windows('[]\n@@\n{"id":-1337,"name":"code"}').activeWorkspace, "name:code", "a named workspace, never its negative id");
   assert.equal(S.windows('[]\n@@\n{"id":-98,"name":"special:scratch"}').activeWorkspace, "special:scratch");
@@ -29,6 +29,22 @@ test("windows: the real hyprctl output parses", { skip: !process.env.HYPRLAND_IN
   const r = S.windows(out);
   assert.equal(typeof r.activeWorkspace, "number");
   assert.ok(r.list.every(w => /^0x[0-9a-f]+$/.test(w.address)));
+});
+
+test("the window you came from: Hyprland's active window, filled in from the list", () => {
+  const list = [{ address: "0x5b8f", cls: "foot", title: "vim notes.md", workspace: "2", focus: 0, pid: 5438 }];
+  const ipc = { address: "0x5b8f", class: "foot", title: "old title", pid: 5438, workspace: { id: 2, name: "2" } };
+  // Quickshell gives the address without 0x.
+  assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "vim notes.md", ipc, workspace: "2" }, [])),
+    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2" }, "the live title, not the record's");
+  assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "", ipc: {}, workspace: "" }, list)),
+    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2" }, "an empty record is filled from the list");
+  assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "t", ipc: null }, [])),
+    { address: "0x5b8f", class: "", title: "t", pid: "", workspace: "" }, "what is not known is empty");
+  const none = { address: "", class: "", title: "", pid: "", workspace: "" };
+  assert.deepEqual(plain(S.windowContext(null, list)), none, "no window had the focus");
+  assert.deepEqual(plain(S.windowContext({ address: "0xzz;rm" }, list)), none, "an address that is not one");
+  assert.equal(S.windowContext({ address: "1", title: "x".repeat(1000) }, []).title.length, 300);
 });
 
 test("processes: names with spaces, ps itself left out", () => {

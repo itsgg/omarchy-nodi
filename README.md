@@ -128,7 +128,11 @@ into rows, as you type:
 are the last argument (so a program must not read it as an option) and
 `NODI_QUERY`. From your session it gets PATH, HOME, USER,
 `XDG_RUNTIME_DIR`, `OMARCHY_PATH`, the Wayland, Hyprland and D-Bus
-variables, and nothing else; LANG is `C.UTF-8`. It runs for 3 s at most
+variables, and nothing else; LANG is `C.UTF-8`. It is told of the window
+you came from, the one that had the focus when the bar opened:
+`NODI_WINDOW_ADDRESS` (Hyprland's, `0x...`), `NODI_WINDOW_CLASS`,
+`NODI_WINDOW_TITLE`, `NODI_WINDOW_PID` and `NODI_WINDOW_WORKSPACE`, each
+empty when not known. It runs for 3 s at most
 (`timeoutMs`, up to 10000), and each keystroke ends the run before it, the
 program and what it started. Where two take the same word, the one earlier
 in `providers` wins: by default your `keywords`, then filters, then Nodi's
