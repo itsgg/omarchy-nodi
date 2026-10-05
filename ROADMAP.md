@@ -242,12 +242,19 @@ baseline query loses rank.
     Done 2026-10-05: "termnal" finds Foot, "browsr" Chromium (fourth,
     under three apps named Browser); no query lost rank.
 37. **An fzf-style score inside each tier**: initials, camel case and
-    letters in order for every row. Q 8. Check: "lo c", "wfi", "blth"; a
+    letters in order for every row. Q 8. Check: "lo c", "wfi", "blth", and
+    "susp" putting Suspend over the toggle that hides it (a shorter name
+    at the same tier); a
     keystroke's ranking still under a frame at p95 in Qt's engine (9.8 ms
     before, `make bench`).
 38. **A decaying frecency** in place of counts. Q 9.
 39. **A group leads by at most three rows** before a stronger row of the
-    next one (his call). Q 10. Check: "susp" puts Suspend first.
+    next one (his call). Q 10. Check: the fourth row of a group waits for
+    a stronger row of another (tests/js/ranking.test.mjs). "susp" is a
+    near tie on score, not grouping (Q L13), and goes with item 37.
+    Done 2026-10-05: on the search path only (help and the home view keep
+    each group whole). Q L6's "ss" is unchanged, its menu group leading by
+    two rows; "wa" moves one place down.
 40. **Keywords written once by the model**, beside the descriptions
     lib/Describe.js has it write. Q 11.
 41. **A leading verb dropped** ("open", "launch", "start", "run"). Q 15.
