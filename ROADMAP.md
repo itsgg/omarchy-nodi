@@ -173,8 +173,181 @@ opening Audacity.
 28. **Codex over the whole** (owed since the first commit), then GitHub
     (public, `itsgg/omarchy-nodi`), then the marketplace on his word.
 
+## Phase G: speed, and a measure of ranking
+
+Phases G to L were written 2026-10-05 from four Opus reports in
+`~/.local/share/nodi-research2/`: what other launchers shipped in 2025 and
+2026 (`landscape/FINDINGS.md`, cited L), search quality and speed
+(`quality/`, Q), extensions, AI and distribution (`ecosystem/`, E), and the
+experience (`experience/`, X), numbers as in each report's ranked list. His
+calls the same day, my recommendations taken ("do the best"): a group leads
+by at most three rows, a kept query lasts two minutes, the selection bar
+only where a theme's selection does not read, the calendar off until an ICS
+link is set.
+
+29. **A ranking harness.** `make rank` types each row's name a letter at a
+    time (letters until it is first), ranks a fixed set of queries against
+    the row each means, and counts the rows some queries show past the
+    fallbacks (noise); a baseline file, and a diff on any ranking change.
+    Q 1.
+    Check: it reports today's "susp" and "lo c" defects.
+30. **The open, timed and cut.** Stamps for the key, the first ranking, the
+    first frame and Hyprland's openlayer; then the held rows on the first
+    frame and the ranking after it, a card-sized layer, and a window kept
+    between opens if the layer protocol allows it. Q 6. Check: key to
+    openlayer, 84 to 97 ms before (measured), measured after; no first
+    frame larger than the card.
+31. **The list updated in place**: a model diffed by row key instead of an
+    array replaced on every keystroke. Q 5. Check: a bench of a
+    keystroke's view cost, about 10.5 ms before.
+32. **Windows from the live model**: Quickshell.Hyprland's toplevels
+    instead of `hyprctl clients -j` after each open, so `w` has its
+    windows at the first keystroke. X 18.
+
+## Phase H: ranking
+
+Each item is checked by item 29's harness: its own queries improve, and no
+baseline query loses rank.
+
+33. **Every script, accents folded.** NFD with the marks stripped; any
+    letter above U+007F is a letter, without `\p{}` (Qt's engine fails it
+    silently). Q 2, X 1. Check: Tamil, "beyonce", "muller"; the matcher's
+    tests run in qml6 as well as node.
+34. **Picks lift shorter queries**: a pick stored for "spotify" counts for
+    "sp", weighted by how much of it was typed. Q 3.
+35. **The words a row shows are searched**: an app's comment and written
+    description, a row's subtitle source. Q 4.
+36. **Typos on generic names and keywords**, a typo costing one step
+    instead of the floor; a plural folded. Q 7.
+37. **An fzf-style score inside each tier**: initials, camel case and
+    letters in order for every row. Q 8. Check: "lo c", "wfi", "blth"; a
+    keystroke's ranking still under a frame at p95 in Qt's engine (9.8 ms
+    before, `make bench`).
+38. **A decaying frecency** in place of counts. Q 9.
+39. **A group leads by at most three rows** before a stronger row of the
+    next one (his call). Q 10. Check: "susp" puts Suspend first.
+40. **Keywords written once by the model**, beside the descriptions
+    lib/Describe.js has it write. Q 11.
+41. **A leading verb dropped** ("open", "launch", "start", "run"). Q 15.
+42. **His own picks, logged and replayed**: each Enter's query as it was
+    typed keystroke by keystroke, the rows shown and the row picked with
+    its rank, kept on this machine; the harness replays them in order, so
+    learning is tested as it accrues, and measures the letters to first
+    after each pick of a row. Q 1 (H 1, H 5). The frontier's constants
+    fitted to his picks (Q 14) need it.
+
+## Phase I: AI and agents
+
+43. **Ask continues**: follow-ups on the held session; "Ask again" and
+    "New question" as Ctrl+K rows (Ctrl+R is the query history below, and
+    Ctrl+N moves down); Ctrl+K "About this window" (a capture of the
+    window it was opened over) and "About the selection". L 3.
+44. **Ask acts through rows**: `nodi_search` and `nodi_run` over the
+    session's permission channel, no other tools; a proposed row shows
+    armed with its risk and exact command, Enter allows, Escape denies.
+    E 1, 7.
+45. **`nodi mcp`**, the bar as an MCP server: `search`, `run` (refusing
+    rows that ask, as `nodi run` does) and `propose` (the bar opens on the
+    row armed and returns Enter or Escape). E 3.
+46. **Approval for headless agents**: a permission prompt tool in `nodi
+    mcp` for `claude -p` runs. E 6.
+47. **The selection as context**: `{selection}` in keywords and snippets,
+    rows on a fresh selection (fix spelling, rewrite, translate, change
+    case, search), the result pasted over it. Item 19's "Wayland gives no
+    selection to a bar that has focus" was wrong: data-control serves the
+    primary selection to an unfocused client (X 6, measured). L 2.
+48. **Translation streamed into the pane**: `tr <language> <text>`, and
+    `<text> in <language>`. L 8.
+49. **MCP servers for Ask, opt-in**: servers he names in nodi.json, passed
+    with `--strict-mcp-config`, every call confirmed as Ask's proposed rows
+    are; off by default, since the README says Ask's session has no MCP
+    servers. E 10.
+
+## Phase J: daily verbs
+
+50. **Query history on Ctrl+R** (Up wraps the list), and a kept query that
+    lasts two minutes, then the home view (his call). L 1, 12; X 9.
+51. **Readline keys in the field**: Ctrl+W, Ctrl+E, Ctrl+F, Ctrl+B. X 10.
+52. **A Ctrl+K that is typed into**, grouped, its Manage group last, each
+    action's chord on the right. X 7.
+53. **A failed command says so**: its last stderr line in a notification,
+    as scripts already have. X 4.
+54. **Clipboard**: pins, type filters, images found by their text (OCR),
+    paste in sequence, send to a device. L 4.
+55. **URLs and bookmarks**: a typed domain opens; Chromium's bookmarks at
+    root and under `bm`. L 5.
+56. **Labels that remove a doubt**: the paste target's name, calculator
+    history, Tab puts an answer into the field. L 6.
+57. **Script filters, further**: a cached list mode ranked at root;
+    autocomplete, match text, hidden data and rerun; multi-step filters
+    and a rofi adapter. E 2, 4, 5; L 19.
+58. **Other plugins' panels and the tray's menus as rows.** L 7.
+59. **The window it was opened over**: screenshot it, read its text, a
+    terminal in its directory, move, float, pin; capture results come back
+    to the bar. X 5.
+60. **Windows**: the next window of this app, typed move and size for a
+    floating window, saved desktops. L 10.
+61. **Agents' usage and sessions.** L 11.
+62. **Placeholders**: `{cursor}` (arrow keys after the paste, which
+    answers item 19's "a paste cannot place the cursor"), `{clipboard:N}`,
+    `{snippet:name}`, random, a sum. L 13.
+63. **Search suggestions** after a search keyword. L 14.
+64. **Files**: names in root search, contents under `in`, type filters.
+    L 16, Q 12.
+65. **Packages and a dictionary.** L 20.
+66. **A file chooser jump**: over a Save dialog, folders lead and Enter
+    types the path in. L 18.
+67. **Calendar**: the next meeting first, Enter joins; from an ICS link in
+    nodi.json, off until one is set (his call). L 9.
+68. **Notes in one line**: `note <text>` appends a dated line to a Markdown
+    file set in nodi.json; `notes <words>` finds the line. L 17.
+69. **Small fits**: Ask's "continue in a terminal" through
+    `omarchy-agent-prompt`, so it follows Omarchy's default agent; a paste
+    that focuses the window it came from first. X 20.
+
+## Phase K: the experience
+
+70. **On screen at every text size.** X 2. Check: renders at text size 20
+    on 1536x960.
+71. **A combobox to a screen reader**, the selection announced. X 3. Its
+    tests run under their own runtime directory, never on his session's
+    accessibility bus.
+72. **A selection cue that reads**: a 2 px bar in the text colour where
+    the accent was swapped away and the theme sets no selected border,
+    and always under higher contrast (his call). X 8.
+73. **Motion and contrast preferences** from the portal and Hyprland. X 12.
+74. **Mouse**: right click opens Ctrl+K; the footer's keys click. X 14.
+75. **`?mine`**: every alias, hotkey, favourite and hidden row. X 13.
+76. **Right-to-left titles aligned left; an input method tested** in a
+    scratch session, results following the composition. X 15, 16.
+77. **Starter rows on a first open.** X 11.
+78. **The window itself in the pane** for `w` rows. X 17.
+79. **Window rules from Ctrl+K**, applied at runtime. X 19.
+
+## Phase L: release
+
+80. **Tags, a version in the manifest, a CHANGELOG.** E 8.
+81. **`contrib/`**: filters and answers in the repository, off by default,
+    never fetched. E 9.
+
+## Frontier, after the above
+
+Each an experiment with a measure before it stays: a model fallback over
+the catalogue when nothing matches, toasts that teach the shortcut for what
+was run by hand, ranking by context, the scoring constants fitted to his
+own picks (on the log of item 42), Latin keys for Tamil titles, the
+focused app's own menus over AT-SPI, and a query spoken through voxtype.
+L 21, Q 13, Q 14, X (frontier).
+
 ## Not doing
 
 A Raycast extension runtime (needs Node; Nodi is QML and JS with no npm),
 text expansion anywhere (needs uinput and setcap), a local embedding model
 (this laptop's prefill times), and Akshi rows until the Akshi rewrite lands.
+
+From the 2026-10-05 reports: KRunner and GNOME search providers (one on
+this machine), MCP tools as rows (their inputs are schemas written for
+models), a store of extensions fetched from HEAD (it would escape the
+marketplace's review), cloud sync (one machine), a settings window, double
+click to run, and a password manager until `op` stops hanging with the
+tray-only 1Password.
