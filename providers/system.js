@@ -210,7 +210,7 @@ function themeRows(needle, ctx) {
   for (var i = 0; i < themes.length; i++) {
     var t = themes[i]
     if (nw.length > 0 && !Match.prefixesAll(nw, Match.words(t.name))) continue
-    var exact = needle && t.name.toLowerCase() === needle
+    var exact = needle && Match.fold(t.name) === Match.fold(needle)
     var isCurrent = t.name === current
     out.push({
       key: "theme:" + t.name,

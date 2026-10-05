@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 
 // Emoji search over Omarchy's own emojis.json ({ e, k } entries), loaded by
 // Nodi.qml and passed in as ctx.emojis.
@@ -20,7 +21,7 @@ function prepared(list) {
   for (var i = 0; i < list.length; i++) {
     var item = list[i]
     if (!item || !item.e) continue
-    var keywords = String(item.k || "").toLowerCase()
+    var keywords = Match.fold(item.k)
     entries.push({ item: item, i: i, tokens: keywords.split(" "), padded: " " + keywords.replace(/_/g, " ") + " " })
   }
   preparedCache = { list: list, entries: entries }
@@ -72,6 +73,7 @@ var provider = {
     var m = String(query).match(/^\s*(?::|emoji\s+|emoji$)\s*(.*)$/i)
     if (!m) return []
     var needle = m[1].trim().toLowerCase()
+    var want = Match.fold(needle)
     var list = ctx.emojis || []
     if (list.length === 0) return [{ title: "Loading emoji...", subtitle: "Emoji", score: 40, copy: "" }]
     if (!needle) return [{ title: "Emoji", subtitle: ":fire, :thumbs up, :party", score: 40, copy: "", hint: ":<word>" }]
@@ -80,7 +82,7 @@ var provider = {
     var hits = []
     var entries = prepared(list)
     for (var i = 0; i < entries.length; i++) {
-      var r = rank(entries[i], needle)
+      var r = rank(entries[i], want)
       if (r > 0) hits.push({ item: entries[i].item, r: r, i: entries[i].i })
     }
     // A colon query is always about emoji: say there is none rather than hand

@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 .import "../lib/Score.js" as Score
 
 // Developer views (ROADMAP item 21, research 11, integrations 10 and 12):
@@ -209,7 +210,7 @@ function portRows(q, ctx) {
   var out = []
   for (var i = 0; i < got.value.length; i++) {
     var p = got.value[i]
-    if (want && String(p.port).indexOf(want) !== 0 && (p.name || "").toLowerCase().indexOf(want) !== 0) continue
+    if (want && String(p.port).indexOf(want) !== 0 && Match.fold(p.name).indexOf(want) !== 0) continue
     var held = p.name === "systemd" ? ", socket activated" : p.pids.length === 1 ? ", pid " + p.pids[0]
              : p.pids.length > 1 ? ", " + p.pids.length + " processes" : ", another user's"
     var at = hostFor(p.addresses) + ":" + p.port
@@ -254,7 +255,7 @@ function historyRows(q, ctx) {
   if (!got.value) return [{ title: got.state === "error" ? "No browser history to read" : "Reading history...", subtitle: "Browser history", score: 40, copy: "", remember: false }]
   var words = q.split(" ")
   var hits = got.value.filter(function(r) {
-    var hay = (r.title + " " + r.url).toLowerCase()
+    var hay = Match.folded(r.title + " " + r.url)
     return words.every(function(w) { return hay.indexOf(w) !== -1 })
   })
   hits.sort(function(a, b) { return b.visits - a.visits || b.at - a.at })
@@ -275,7 +276,7 @@ function prRows(q, ctx) {
   var out = []
   for (var i = 0; i < got.value.length; i++) {
     var p = got.value[i]
-    var hay = (p.title + " " + p.repo + " " + p.number).toLowerCase()
+    var hay = Match.folded(p.title + " " + p.repo + " " + p.number)
     if (q && q.split(" ").some(function(w) { return hay.indexOf(w) === -1 })) continue
     out.push({ key: "pr:" + p.url, title: "#" + p.number + " " + p.title, subtitle: p.repo + (p.author ? ", by " + p.author : ""),
                icon: "󰐅", score: 97 - out.length * 0.01, copy: p.url, run: Run.open(p.url), actionLabel: "Open", group: "Pull requests", remember: false })
@@ -291,7 +292,7 @@ var SERVICES = /^\s*(?:services|systemctl|service(?=\s))(?:\s+(.*))?$/i
 var HISTORY = /^\s*(?:h|history)\s+(.*)$/i
 var PRS = /^\s*(?:prs|pull\s+requests?|pr(?=\s))(?:\s+(.*))?$/i
 
-function rest(m) { return String(m[1] || "").trim().toLowerCase().replace(/\s+/g, " ") }
+function rest(m) { return Match.normalise(m[1]) }
 
 function projectRows(q, ctx, home) {
   var got = ctx.request ? ctx.request("projects") : { state: "pending" }

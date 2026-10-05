@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 .import "../lib/Score.js" as Score
 
 // The lists Omarchy's menu builds when you open them (its Menu.qml
@@ -37,10 +38,10 @@ function fontRows(needle, ctx) {
   var data = got.value
   if (!data) return [{ title: got.state === "error" ? "Could not list fonts" : "Reading fonts...", subtitle: "Fonts", score: 40, copy: "" }]
   var out = []
-  var n = String(needle || "").toLowerCase()
+  var n = Match.fold(needle)
   for (var i = 0; i < data.list.length; i++) {
     var f = data.list[i]
-    if (n && f.toLowerCase().indexOf(n) === -1) continue
+    if (n && Match.fold(f).indexOf(n) === -1) continue
     var current = f === data.current
     out.push({
       key: "font:" + f,

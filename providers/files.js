@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 .import "../lib/Sources.js" as Sources
 
 // Files: the ones you opened recently, and any directory by its path.
@@ -20,7 +21,7 @@ var LIMIT = 30
 function parseFound(text, ok, q) {
   // fd exits 0 with nothing found; anything else is a search that failed.
   if (!ok) throw "could not search"
-  var needle = String(q || "").toLowerCase()
+  var needle = Match.fold(q)
   var out = []
   var lines = String(text || "").split("\n")
   for (var i = 0; i < lines.length; i++) {
@@ -30,7 +31,7 @@ function parseFound(text, ok, q) {
     var dir = /\/$/.test(line)
     var path = line.replace(/\/+$/, "") || "/"
     var name = path.split("/").pop()
-    var low = name.toLowerCase()
+    var low = Match.fold(name)
     var rank = low === needle ? 0 : low.indexOf(needle) === 0 ? 1 : 2
     out.push({ path: path, name: name, dir: dir, rank: rank })
   }
@@ -117,7 +118,8 @@ function fileRow(path, name, isDir, score, home) {
   return row
 }
 
-function recentRows(needle, ctx, home) {
+function recentRows(typed, ctx, home) {
+  var needle = Match.fold(typed)
   var files = Array.isArray(ctx.files) ? ctx.files : []
   var max = (ctx.settings && ctx.settings.limit) || LIMIT
   var out = []
@@ -125,10 +127,11 @@ function recentRows(needle, ctx, home) {
     var f = files[i]
     if (!f || !f.path) continue
     var name = f.name || f.path.split("/").pop()
-    if (needle && name.toLowerCase().indexOf(needle) === -1 && f.path.toLowerCase().indexOf(needle) === -1) continue
+    var low = Match.folded(name)
+    if (needle && low.indexOf(needle) === -1 && Match.folded(f.path).indexOf(needle) === -1) continue
     var score = 94 - out.length * 0.01
-    if (needle && name.toLowerCase() === needle) score = 98
-    else if (needle && name.toLowerCase().indexOf(needle) === 0) score = 96 - out.length * 0.01
+    if (needle && low === needle) score = 98
+    else if (needle && low.indexOf(needle) === 0) score = 96 - out.length * 0.01
     out.push(fileRow(f.path, name, false, score, home))
   }
   // "file manager" with no such recent file: the rest of Nodi answers it.
@@ -158,7 +161,7 @@ function pathRows(typed, ctx, home) {
     var e = entries[i]
     if (!e || !e.name) continue
     if (e.name[0] === "." && prefix[0] !== ".") continue
-    if (prefix && e.name.toLowerCase().indexOf(prefix) !== 0) continue
+    if (prefix && Match.fold(e.name).indexOf(Match.fold(prefix)) !== 0) continue
     out.push(fileRow(base + "/" + e.name, e.name, !!e.dir, 96 - out.length * 0.01, home))
   }
   if (out.length === 0) return [{ title: "Nothing in " + tilde(dir, home) + " starts with \"" + prefix + "\"", subtitle: "Files", score: 40, copy: "" }]

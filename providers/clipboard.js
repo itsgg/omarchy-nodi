@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 
 // Omarchy's clipboard history, searchable. Nodi.qml reads Omarchy's history
 // file (newest first) into ctx.clipboard: [{ type, text, path, mime, capturedAt }].
@@ -92,6 +93,7 @@ var provider = {
     var m = String(query).match(/^\s*(?:cb|clip|clipboard)(?:\s+(.*))?$/i)
     if (!m) return []
     var needle = (m[1] || "").trim().toLowerCase()
+    var want = Match.fold(needle)
     var history = Array.isArray(ctx.clipboard) ? ctx.clipboard : []
 
     if (needle === "clear") {
@@ -117,11 +119,11 @@ var provider = {
       var score = 95 - out.length * 0.01
       if (item.type === "image") {
         if (!item.path) continue
-        if (needle && ("image " + item.path + " " + (item.capturedAt || "")).toLowerCase().indexOf(needle) === -1) continue
+        if (want && Match.folded("image " + item.path + " " + (item.capturedAt || "")).indexOf(want) === -1) continue
         out.push(imageRow(item, i, score))
       } else {
         if (!String(item.text || "").trim()) continue
-        if (needle && String(item.text).toLowerCase().indexOf(needle) === -1) continue
+        if (want && Match.folded(item.text).indexOf(want) === -1) continue
         out.push(textRow(item, i, score))
       }
     }

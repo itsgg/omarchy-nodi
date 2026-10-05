@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 .import "../lib/Sources.js" as Sources
 
 // Quit a running process. The user's own processes come from the
@@ -56,7 +57,7 @@ var provider = {
     var m = String(query).match(/^\s*kill(?:\s+(-9|-KILL|--force))?(?:\s+(.*))?$/i)
     if (!m) return []
     var force = !!m[1]
-    var needle = (m[2] || "").trim().toLowerCase()
+    var needle = Match.fold((m[2] || "").trim())
     // A number is a pid, matched whole and alone: "kill 12345" is the
     // process 12345, never one with 12345 in its arguments (codex 2026-10-05).
     var byPid = /^\d+$/.test(needle)
@@ -69,9 +70,9 @@ var provider = {
     var hits = []
     for (var i = 0; i < list.length; i++) {
       var p = list[i]
-      var name = String(p.name).toLowerCase()
+      var name = Match.fold(p.name)
       var r = !needle ? 1 : byPid ? (String(p.pid) === needle ? 3 : 0)
-        : name === needle ? 3 : name.indexOf(needle) === 0 ? 2 : (name + " " + String(p.args).toLowerCase()).indexOf(needle) !== -1 ? 1 : 0
+        : name === needle ? 3 : name.indexOf(needle) === 0 ? 2 : Match.folded(name + " " + String(p.args)).indexOf(needle) !== -1 ? 1 : 0
       if (r > 0) hits.push({ p: p, r: r })
     }
     if (hits.length === 0) return [{ title: needle ? "No process matches \"" + needle + "\"" : "No processes found", subtitle: "Processes", score: 40, copy: "" }]
