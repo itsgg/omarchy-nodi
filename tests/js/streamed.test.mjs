@@ -73,5 +73,5 @@ test("the pane shows the answer only while the query is its question", () => {
 test("Escape stops an answer on its way before it clears or closes anything", () => {
   const v = { palette: null, rows: 1, selected: 0, text: "a q", answering: true, prompting: true, armed: true };
   assert.deepEqual(plain(Keys.decide({ name: "Escape" }, v)), { do: "stopAnswer" });
-  assert.deepEqual(plain(Keys.decide({ name: "Escape" }, Object.assign({}, v, { answering: false, prompting: false, armed: false }))), { do: "clear" });
+  assert.deepEqual(plain(Keys.decide({ name: "Escape" }, Object.assign({}, v, { answering: false, prompting: false, armed: false }))), { do: "dismiss" });
 });

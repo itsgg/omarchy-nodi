@@ -188,9 +188,9 @@ Item {
     root.typedSinceOpen = false
   }
 
-  // The field changed since the bar opened: Escape clears it first. Until
-  // then it closes at once, though the field shows the last query, which
-  // took two presses to close (his report 2026-10-05).
+  // The field changed since the bar opened. Escape closes the bar either
+  // way; this only decides whether a help topic goes back to the topics
+  // (opened this time) or is closed over (the bar reopened on it).
   property bool typedSinceOpen: false
 
   property bool readsPending: false
@@ -725,7 +725,6 @@ Item {
     case "paletteRun": root.runPaletteAction(act.index); break
     case "disarm": root.armedKey = ""; break
     case "helpBack": root.helpBack(); break
-    case "clear": input.text = ""; break
     case "dismiss": root.dismiss(); break
     case "stopAnswer": answerSession.stop(); break
     case "cancelPrompt":
