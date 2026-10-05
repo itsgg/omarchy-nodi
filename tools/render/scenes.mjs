@@ -141,8 +141,15 @@ const scenes = [
     const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }));
     return { paletteOpen: true, paletteActions: actions, paletteIndex: 1, paletteRow: row };
   }),
+  // The chosen action past the fold: clear of the fade, the next one peeking.
+  scene("39-palette-deep", "firefox", {}, rows => {
+    const row = rows[0];
+    const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }));
+    return { paletteOpen: true, paletteActions: actions, paletteIndex: 8, paletteRow: row };
+  }),
   scene("13-nothing", "zzqx"),
   scene("14-omarchy-catalog", "omarchy "),
+  scene("38-long-list-selected", "omarchy ", {}, () => ({ selectedIndex: 8 })),
   scene("15-run", "> htop"),
   scene("16-second-row", "term", {}, () => ({ selectedIndex: 1 })),
   scene("17-keybindings", "keys "),

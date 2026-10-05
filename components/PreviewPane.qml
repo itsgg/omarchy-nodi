@@ -56,8 +56,8 @@ Rectangle {
     anchors.left: parent.left
     anchors.right: parent.right
     anchors.top: parent.top
-    anchors.margins: Style.space(16)
-    spacing: Style.space(6)
+    anchors.margins: Style.spacing.popupPadding
+    spacing: Style.spacing.md
 
     Text {
       width: parent.width
@@ -128,9 +128,9 @@ Rectangle {
     anchors.right: parent.right
     anchors.top: head.bottom
     anchors.bottom: parent.bottom
-    anchors.margins: Style.space(16)
+    anchors.margins: Style.spacing.popupPadding
     // No header (a preview of Markdown alone): the pane's own margin only.
-    anchors.topMargin: head.height > 0 ? Style.space(16) : 0
+    anchors.topMargin: head.height > 0 ? Style.spacing.popupPadding : 0
     fillMode: Image.PreserveAspectFit
     asynchronous: true
     smooth: true
@@ -148,9 +148,9 @@ Rectangle {
     anchors.right: parent.right
     anchors.top: head.bottom
     anchors.bottom: parent.bottom
-    anchors.margins: Style.space(16)
+    anchors.margins: Style.spacing.popupPadding
     // No header (a preview of Markdown alone): the pane's own margin only.
-    anchors.topMargin: head.height > 0 ? Style.space(16) : 0
+    anchors.topMargin: head.height > 0 ? Style.spacing.popupPadding : 0
     contentWidth: width
     contentHeight: bodyText.implicitHeight
     clip: true

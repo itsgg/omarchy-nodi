@@ -20,13 +20,15 @@ Item {
   width: ListView.view ? ListView.view.width : 0
   height: nodi.rowSize(modelData)
 
+  // Nearer the rows it heads than the group above it.
   Text {
     visible: rowItem.section !== ""
     anchors.left: parent.left
-    anchors.leftMargin: Style.spacing.md
+    anchors.leftMargin: Style.spacing.lg
     anchors.top: parent.top
     height: nodi.sectionHeight
-    verticalAlignment: Text.AlignVCenter
+    verticalAlignment: Text.AlignBottom
+    bottomPadding: Style.spacing.xs
     text: rowItem.section
     color: nodi.secondary
     font.family: nodi.fontFamily
@@ -51,7 +53,7 @@ Item {
     IconTile {
       id: tile
       anchors.left: parent.left
-      anchors.leftMargin: Style.spacing.md + nodi.rowInsetLeft
+      anchors.leftMargin: Style.spacing.lg + nodi.rowInsetLeft
       anchors.verticalCenter: parent.verticalCenter
       glyph: rowItem.modelData.icon || ""
       glyphFont: rowItem.modelData.iconFont || ""
@@ -70,7 +72,7 @@ Item {
       id: badge
       visible: rowItem.digit || rowItem.armed || rowItem.modelData.badge !== ""
       anchors.right: parent.right
-      anchors.rightMargin: Style.spacing.md + nodi.rowInsetRight
+      anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
       anchors.verticalCenter: parent.verticalCenter
       label: rowItem.digit ? String(rowItem.index + 1) : (rowItem.armed ? "Enter again" : rowItem.modelData.badge)
       strong: !rowItem.digit && (rowItem.armed || rowItem.modelData.badgeTone === "on")
@@ -82,13 +84,15 @@ Item {
       rounded: nodi.cornerRadius > 0
     }
 
+    // The shell's row padding between a tile and its words: md read tight
+    // beside a filled plate (Fable 2026-10-05).
     Column {
       anchors.left: tile.right
-      anchors.leftMargin: Style.spacing.md
+      anchors.leftMargin: Style.spacing.xxl
       anchors.right: badge.visible ? badge.left : parent.right
-      anchors.rightMargin: Style.spacing.md + (badge.visible ? 0 : nodi.rowInsetRight)
+      anchors.rightMargin: Style.spacing.lg + (badge.visible ? 0 : nodi.rowInsetRight)
       anchors.verticalCenter: parent.verticalCenter
-      spacing: rowItem.hero ? Style.space(4) : Style.space(2)
+      spacing: rowItem.hero ? Style.spacing.sm : Style.spacing.xxs
 
       Text {
         width: parent.width

@@ -1,75 +1,100 @@
 import QtQuick
 import qs.Commons
+import qs.Ui
+import "../lib/Scroll.js" as Scroll
 
-// Ctrl+K: the actions of the row it opened for, the row's own first.
+// Ctrl+K: the actions of the row it opened for, the row's own first. Drawn
+// as the list's rows are, and held as the list is: seven, then a part of
+// the next, scrolled to keep the chosen one clear (Fable 2026-10-05: its own
+// radius, colours, size and spacing, and no cap, so eleven actions made a
+// card that reached the bottom of the screen).
 Column {
   id: actionList
   property var nodi
-  spacing: Style.space(2)
 
   Text {
-    leftPadding: Style.spacing.md
+    leftPadding: Style.spacing.lg
     width: parent.width
     height: nodi.sectionHeight
-    verticalAlignment: Text.AlignVCenter
+    verticalAlignment: Text.AlignBottom
+    bottomPadding: Style.spacing.xs
     textFormat: Text.PlainText
     text: nodi.paletteRow ? nodi.paletteRow.title : ""
-    color: nodi.foreground
-    opacity: 0.5
+    color: nodi.secondary
     font.family: nodi.fontFamily
     font.pixelSize: Style.font.caption
     font.bold: true
     elide: Text.ElideRight
   }
 
-  Repeater {
+  Item {
+    width: actionList.width
+    height: actions.height
+
+  ListView {
+    id: actions
+    width: actionList.width
+    height: nodi.paletteHeight(count)
+    clip: true
+    boundsBehavior: Flickable.StopAtBounds
     model: nodi.paletteOpen ? nodi.paletteActions : []
+    currentIndex: nodi.paletteIndex
+    // Clear of the fades, as the list's selection is (lib/Scroll.js): with
+    // Contain alone the chosen action sat under one (Fable 2026-10-05).
+    onCurrentIndexChanged: Scroll.keep(actions, currentIndex, nodi.rowPeek, ListView.Contain)
+
     delegate: Rectangle {
       id: actionItem
       required property int index
       required property var modelData
       readonly property bool selected: index === nodi.paletteIndex
       readonly property bool armed: modelData.confirm && nodi.paletteArmed === modelData.label
-      width: actionList.width
+      width: actions.width
       height: nodi.rowHeight
-      radius: nodi.cornerRadius > 0 ? Style.space(8) : 0
+      radius: nodi.cornerRadius
       color: selected ? nodi.selectedBackground : "transparent"
+
+      BorderOverlay {
+        borderSpec: actionItem.selected ? nodi.selectedBorderSpec : Border.none()
+        radius: nodi.cornerRadius
+      }
 
       IconTile {
         id: actionTile
         anchors.left: parent.left
-        anchors.leftMargin: Style.spacing.md
+        anchors.leftMargin: Style.spacing.lg + nodi.rowInsetLeft
         anchors.verticalCenter: parent.verticalCenter
         glyph: actionItem.modelData.icon || "󰐊"
         selected: actionItem.selected
         size: nodi.tileSize
         radius: nodi.tileRadius
         foreground: nodi.foreground
-        selectedText: nodi.selectedText
+        selectedText: nodi.selectedInk
         fontFamily: nodi.fontFamily
       }
       Text {
         anchors.left: actionTile.right
-        anchors.leftMargin: Style.spacing.md
+        anchors.leftMargin: Style.spacing.xxl
         anchors.right: actionBadge.visible ? actionBadge.left : parent.right
-        anchors.rightMargin: Style.spacing.md
+        anchors.rightMargin: Style.spacing.lg + (actionBadge.visible ? 0 : nodi.rowInsetRight)
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: actionItem.modelData.label
-        color: actionItem.selected ? nodi.selectedText : nodi.foreground
+        color: actionItem.selected ? nodi.selectedInk : nodi.foreground
         font.family: nodi.fontFamily
-        font.pixelSize: Style.font.subtitle
+        font.pixelSize: Style.font.title
         elide: Text.ElideRight
       }
       Keycap {
         id: actionBadge
         visible: actionItem.armed
         anchors.right: parent.right
-        anchors.rightMargin: Style.spacing.md
+        anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
         anchors.verticalCenter: parent.verticalCenter
         label: "Enter again"
         strong: true
-        foreground: Color.urgent
+        foreground: nodi.foreground
+        tone: Color.urgent
         fontFamily: nodi.fontFamily
         rounded: nodi.cornerRadius > 0
       }
@@ -81,5 +106,33 @@ Column {
         onClicked: { nodi.runPaletteAction(actionItem.index); nodi.focusInput() }
       }
     }
+  }
+
+  // Actions hidden above or below fade the edge, as the list's do.
+  Rectangle {
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: parent.top
+    height: Math.min(nodi.rowPeek, parent.height / 2)
+    visible: opacity > 0
+    opacity: actions.contentHeight > actions.height ? Math.max(0, Math.min(1, (actions.contentY - actions.originY) / height)) : 0
+    gradient: Gradient {
+      GradientStop { position: 0; color: nodi.opaqueCard }
+      GradientStop { position: 1; color: Util.alpha(nodi.opaqueCard, 0) }
+    }
+  }
+  Rectangle {
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: Math.min(nodi.rowPeek, parent.height / 2)
+    visible: opacity > 0
+    opacity: actions.contentHeight > actions.height
+      ? Math.max(0, Math.min(1, (actions.originY + actions.contentHeight - actions.height - actions.contentY) / height)) : 0
+    gradient: Gradient {
+      GradientStop { position: 0; color: Util.alpha(nodi.opaqueCard, 0) }
+      GradientStop { position: 1; color: nodi.opaqueCard }
+    }
+  }
   }
 }

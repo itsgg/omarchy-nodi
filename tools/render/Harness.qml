@@ -42,6 +42,8 @@ Window {
     readonly property int inputFont: look.inputFont
     readonly property int inputHeight: look.inputHeight
     readonly property int rowHeight: look.rowHeight
+    readonly property int rowPeek: look.rowPeek
+    function paletteHeight(count) { return look.paletteHeight(count) }
     readonly property int heroHeight: look.heroHeight
     readonly property int sectionHeight: look.sectionHeight
     readonly property int footerHeight: look.footerHeight
@@ -125,11 +127,13 @@ Window {
     fake.rows = s.rows
     fake.mode = s.mode
     fake.selectedIndex = s.selectedIndex
+    // Open before the index: the palette's list takes its model on open,
+    // which puts its current index back to 0 (Fable 2026-10-05).
     fake.paletteActions = s.paletteActions
-    fake.paletteIndex = s.paletteIndex
-    fake.paletteArmed = s.paletteArmed
     fake.paletteRow = s.paletteRow
     fake.paletteOpen = s.paletteOpen
+    fake.paletteIndex = s.paletteIndex
+    fake.paletteArmed = s.paletteArmed
     fake.armedKey = s.armedKey
     fake.ctrlHeld = !!s.ctrlHeld
     fake.reads = s.reads || ({})
@@ -138,7 +142,7 @@ Window {
     fake.streamed = s.streamed || null
     fake.wordAsk = s.wordAsk || null
     card.input.text = s.query
-    card.list.positionViewAtIndex(s.selectedIndex, ListView.Contain)
+    card.keepVisible(s.selectedIndex)
   }
 
   // One scene at a time: set it, let it lay out and paint, grab it, and

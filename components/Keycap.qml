@@ -12,9 +12,9 @@ Rectangle {
   property bool rounded: true
   property bool strong: false
 
-  implicitWidth: Math.max(implicitHeight, capText.implicitWidth + Style.space(10))
-  implicitHeight: capText.implicitHeight + Style.space(4)
-  radius: rounded ? Style.space(4) : 0
+  implicitWidth: Math.max(implicitHeight, capText.implicitWidth + Style.spacing.xl)
+  implicitHeight: capText.implicitHeight + Style.spacing.sm
+  radius: rounded ? Style.spacing.sm : 0
   color: Util.alpha(cap.tone, cap.strong ? 0.16 : 0.08)
   border.width: 1
   border.color: Util.alpha(cap.tone, cap.strong ? 0.5 : 0.18)
