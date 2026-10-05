@@ -266,6 +266,8 @@ baseline query loses rank.
 40. **Keywords written once by the model**, beside the descriptions
     lib/Describe.js has it write. Q 11.
 41. **A leading verb dropped** ("open", "launch", "start", "run"). Q 15.
+    Done 2026-10-05: for apps, when the whole query names none; the verb
+    queries 0 of 3 first to 3 of 3, 91 of 100 in all.
 42. **His own picks, logged and replayed**: each Enter's query as it was
     typed keystroke by keystroke, the rows shown and the row picked with
     its rank, kept on this machine; the harness replays them in order, so
