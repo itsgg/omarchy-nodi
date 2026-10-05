@@ -185,7 +185,7 @@ Omarchy's menu runs them (`bash -lc`, arguments through a constant
 | Menu tree | load, on change | FileView on both files, merged as written and then normalized, so a user entry that only renames a row keeps its action (Omarchy's MenuModel loses it); guards in one bash batch, re-run on open when a minute old |
 | Toggle states | each open | one probe process from `lib/Toggles.js`; optimistic flip on Enter, reconciled after 1.5 s |
 | Themes | each open | the theme directories `omarchy-theme-list` reads, named as it names them (a test checks they agree), with each preview, and `omarchy-theme-current` |
-| Windows | each open | `hyprctl clients -j` |
+| Windows | kept | Quickshell's model of Hyprland's clients, asked again over its socket on a window event (no program started) |
 | Preferences | load, on change | FileView on `~/.local/state/nodi/prefs.json` |
 | Clipboard | on change | FileView on Omarchy's history file |
 | Recent files | on change | FileView on `recently-used.xbel`, newest first by its `modified` |
