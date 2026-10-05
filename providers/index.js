@@ -4,6 +4,7 @@
 .import "scripts.js" as Scripts
 .import "filters.js" as Filters
 .import "answers.js" as Answers
+.import "undo.js" as Undo
 .import "ask.js" as Ask
 .import "shell.js" as Shell
 .import "math.js" as Calculator
@@ -35,6 +36,7 @@ var all = [
   Scripts.provider,
   Filters.provider,
   Answers.provider,
+  Undo.provider,
   Ask.provider,
   Shell.provider,
   Calculator.provider,

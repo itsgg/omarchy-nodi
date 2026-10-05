@@ -266,6 +266,7 @@ Item {
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
       window: root.cameFrom,
+      undo: undoer.entries,
       desktop: desktop
     }
   }
@@ -319,7 +320,7 @@ Item {
     if (row.run) {
       if (row.confirmWord) {
         root.askWord({ title: row.title, word: row.confirmWord, run: row.run, risk: row.risk, toggle: row.toggle,
-                       key: row.remember ? row.key : "", snap: History.snapshot(row) })
+                       key: row.remember ? row.key : "", snap: History.snapshot(row), undoable: row.undoable })
         return
       }
       if (row.confirm && root.armedKey !== row.key) {
@@ -328,7 +329,7 @@ Item {
         return
       }
       root.armedKey = ""
-      root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title)
+      root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)
       return
     }
     if (row.complete && !row.copy) { root.complete(row); return }
@@ -342,13 +343,15 @@ Item {
   }
 
   // The one place a row's run starts a program. `key` is the row's, so what
-  // was run is remembered for ranking (lib/History.js).
-  function execute(run, toggleId, key, snap, name) {
+  // was run is remembered for ranking (lib/History.js). An undoable one is
+  // run where what it prints is read (components/Undoer.qml).
+  function execute(run, toggleId, key, snap, name, undoable) {
     var argv = Run.command(run, root.appAction)
     if (!argv) return
     var query = Match.normalise(input.text)
     root.finish()
-    Quickshell.execDetached(argv)
+    if (undoable && run.kind === "exec") undoer.run(argv, name || (snap && snap.title) || "")
+    else Quickshell.execDetached(argv)
     if (run.kind === "app") launchFeedback.begin(name || (snap && snap.title) || run.id)
     if (key) root.remember(key, query, snap)
     if (toggleId) {
@@ -393,7 +396,7 @@ Item {
     if (a.confirmWord) {
       var mine = index === 0 && row.remember
       root.askWord({ title: index === 0 ? row.title : a.label, word: a.confirmWord, run: a.run, risk: a.risk,
-                     toggle: index === 0 ? row.toggle : "", key: mine ? row.key : "", snap: mine ? History.snapshot(row) : null })
+                     toggle: index === 0 ? row.toggle : "", key: mine ? row.key : "", snap: mine ? History.snapshot(row) : null, undoable: a.undoable })
       return
     }
     if (a.nodi === "forget") {
@@ -403,7 +406,7 @@ Item {
     if (a.nodi) { root.setPref(a, row); return }
     var own = index === 0
     var remembered = own && row.remember
-    root.execute(a.run, own ? row.toggle : "", remembered ? row.key : "", remembered ? History.snapshot(row) : null, row.title)
+    root.execute(a.run, own ? row.toggle : "", remembered ? row.key : "", remembered ? History.snapshot(row) : null, own ? row.title : a.label, a.undoable)
   }
 
   function helpBack() {
@@ -528,7 +531,8 @@ Item {
     // The bar is not open: what is focused now is what a launch replaces,
     // not what was focused when the bar last opened (codex 2026-10-04).
     if (s.run.kind === "app") launchFeedback.opened()
-    Quickshell.execDetached(argv)
+    if (s.undoable && s.run.kind === "exec") undoer.run(argv, s.title)
+    else Quickshell.execDetached(argv)
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     root.remember(String(key), "", s)
     if (s.toggle) { root.toggleStates = Toggles.flipped(root.toggleStates, s.toggle); toggleReprobe.restart() }
@@ -551,7 +555,15 @@ Item {
       if (input.text.trim() !== root.wordAsk.word) return
       var w = root.wordAsk
       root.wordAsk = null
-      root.execute(w.run, w.toggle, w.key, w.snap, w.title)
+      root.execute(w.run, w.toggle, w.key, w.snap, w.title, w.undoable)
+      return
+    } else if (row.nodi === "undo") {
+      // Enter twice: the empty bar opens on it, and one Enter there is too
+      // easily the Enter for the row under it.
+      if (root.armedKey !== row.key) { root.armedKey = row.key; return }
+      root.armedKey = ""
+      var u = undoer.take(row.key)
+      if (u) root.execute(u.run, "", "", null, u.title, false)
       return
     } else if (row.nodi === "answer") {
       var spec = Answers.spec(input.text, root.config.answers, root.cameFrom)
@@ -997,6 +1009,14 @@ Item {
 
   // What Omarchy's launcher shows while a slow app starts.
   LaunchFeedback { id: launchFeedback }
+
+  // Actions that say how to take them back (lib/Undo.js).
+  Undoer {
+    id: undoer
+    env: ({ PATH: Quickshell.env("PATH") || "" })
+    onEntriesChanged: if (root.opened) root.recompute()
+    onFailed: function(title, why) { Quickshell.execDetached(["notify-send", "-a", "Nodi", (title || "An action") + " failed", why]) }
+  }
 
   // An answer a program of yours streams (providers/answers.js).
   Answer {
