@@ -333,6 +333,9 @@ baseline query loses rank.
 
 50. **Query history on Ctrl+R** (Up wraps the list), and a kept query that
     lasts two minutes, then the home view (his call). L 1, 12; X 9.
+    Done 2026-10-05: Ctrl+R from the queries picks were made for, newest
+    first (months of them, not only the pick log's); a kept query lasts two
+    minutes from the close, and a restart forgets it.
 51. **Readline keys in the field**: Ctrl+W, Ctrl+E, Ctrl+F, Ctrl+B. X 10.
     Done 2026-10-05: Ctrl+W takes the word before the cursor, or the
     selection (the kept query is selected at an open); Ctrl+E to the end;

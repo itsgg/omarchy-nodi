@@ -20,7 +20,7 @@ the Omarchy plugin marketplace (4,712 listings in `registry.json`, checked
 | Plugin id | `io.github.itsgg.nodi` (permanent once listed) |
 | Repository | `~/Work/GG/omarchy-nodi`, later `github.com/itsgg/omarchy-nodi` |
 | User config | `~/.config/omarchy/extensions/nodi.json` (JSONC) |
-| Cache | `~/.cache/nodi/` (rates, last query, launch counts, open times) |
+| Cache | `~/.cache/nodi/` (rates, launch counts, open times, picks) |
 | Open it | `omarchy-shell shell toggle io.github.itsgg.nodi` |
 
 ## Language
