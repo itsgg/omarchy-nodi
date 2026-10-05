@@ -353,6 +353,13 @@ baseline query loses rank.
     paste in sequence, send to a device. L 4.
 55. **URLs and bookmarks**: a typed domain opens; Chromium's bookmarks at
     root and under `bm`. L 5.
+    Done 2026-10-05: a URL, a domain with a known ending, localhost or an
+    IP opens as typed, over the rest; "notes.md" is no site, and a bare
+    name with an ending file types share ("notes.org", "main.cc") is one
+    under a recent file of that name or a window its title names, the
+    fallbacks under it. Chromium,
+    Brave or Chrome's bookmarks under `bm` and three at root, with their
+    folders.
 56. **Labels that remove a doubt**: the paste target's name, calculator
     history, Tab puts an answer into the field. L 6.
 57. **Script filters, further**: a cached list mode ranked at root;

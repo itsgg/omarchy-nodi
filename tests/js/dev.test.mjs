@@ -189,3 +189,57 @@ test("the views take only their own words: no network read while typing print, p
   assert.ok(asked.indexOf("prs") !== -1, "prs asks gh");
   assert.ok(run("pr ", lists).some(r => r.key && r.key.indexOf("pr:") === 0), "pr and a space is the view");
 });
+
+test("a typed site opens: a URL, a domain with a known ending, localhost; never a file name (ROADMAP 55)", () => {
+  assert.equal(D.typedUrl("github.com/itsgg"), "https://github.com/itsgg");
+  assert.equal(D.typedUrl("https://x.test/a?b=c"), "https://x.test/a?b=c");
+  assert.equal(D.typedUrl("localhost:3000"), "http://localhost:3000");
+  assert.equal(D.typedUrl("192.168.1.1:8080/admin"), "http://192.168.1.1:8080/admin");
+  assert.equal(D.typedUrl("www.wikipedia.org"), "https://www.wikipedia.org");
+  for (const not of ["notes.md", "build.sh", "report.pdf", "e.g.", "a b.com", "2+2", "firefox", "config.json", "1.5", "1.5.md", "2.0.app", "999.999.999.999"]) assert.equal(D.typedUrl(not), "", not);
+  assert.equal(D.typedUrl("1password.com"), "https://1password.com", "a name may start with a digit: a site, over https");
+  assert.ok(D.fileLike("notes.org") && D.fileLike("main.cc") && !D.fileLike("www.example.org") && !D.fileLike("example.org/x") && !D.fileLike("github.com"));
+  const windows = [{ address: "0xe1", cls: "emacs", title: "notes.org", workspace: "1", focus: 1 }];
+  assert.equal(top("notes.org", { windows }).key, "window:0xe1", "an editor's window of that name over the site (Fable 2026-10-06)");
+  assert.equal(top("main.cc", { windows: [{ address: "0xe2", cls: "code", title: "main.cc - nodi", workspace: "1", focus: 1 }] }).key, "window:0xe2");
+  const files = [{ path: "/home/u/old/notes.org", name: "notes.org" }, { path: "/home/u/notes.org", name: "notes.org" }];
+  assert.equal(top("notes.org", { files }).key, "file:/home/u/old/notes.org", "a recent file of that name, the newest, over the site (Fable 2026-10-06)");
+  assert.equal(top("Notes.ORG", { files }).key, "file:/home/u/old/notes.org");
+  assert.ok(!run("notes", { files }).some(r => r.key.indexOf("file:") === 0), "a name without its ending finds no file at root");
+  assert.equal(top("wikipedia.org", { files }).title, "Open wikipedia.org", "nothing else named: the site");
+  const guessed = run("main.cc");
+  assert.equal(guessed[0].title, "Open main.cc");
+  assert.ok(guessed.some(r => r.title === "Find files named main.cc"), "a guess leaves the fallbacks under it (Fable 2026-10-06)");
+  assert.ok(!run("github.com").some(r => r.provider === "fallback"), "a site no file is named like: no fallbacks");
+  assert.equal(top("Report 7.org", { files: [{ path: "/home/u/Report 7.org", name: "Report 7.org" }] }).key, "file:/home/u/Report 7.org",
+               "a name with a space (Fable 2026-10-06)");
+  assert.equal(top("github.com", { windows: [{ address: "0xe3", cls: "foot", title: "github.com", workspace: "1", focus: 1 }] }).title, "Open github.com",
+               "an ending no file type uses: the site over everything");
+  const row = top("github.com/itsgg");
+  assert.deepEqual([row.title, row.subtitle, row.run.kind, row.run.target], ["Open github.com/itsgg", "github.com", "open", "https://github.com/itsgg"]);
+  assert.notEqual(top("notes.md") && top("notes.md").title, "Open notes.md");
+});
+
+test("bookmarks: the folders walked, under bm and three at root (ROADMAP 55)", () => {
+  const file = { roots: {
+    bookmark_bar: { name: "Bookmarks bar", type: "folder", children: [
+      { type: "url", name: "Omarchy manual", url: "https://learn.omacom.io/2/the-omarchy-manual" },
+      { type: "folder", name: "Work", children: [{ type: "url", name: "Kanban board", url: "https://board.example.com/team" },
+                                                  { type: "url", name: "Bad", url: "javascript:alert(1)" }] }] },
+    other: { name: "Other bookmarks", type: "folder", children: [{ type: "url", name: "", url: "https://news.ycombinator.com/" }] } } };
+  const bookmarks = D.parseBookmarks(JSON.stringify(file), true);
+  assert.deepEqual(plain(bookmarks), [
+    { title: "Omarchy manual", url: "https://learn.omacom.io/2/the-omarchy-manual", folder: "Bookmarks bar" },
+    { title: "Kanban board", url: "https://board.example.com/team", folder: "Bookmarks bar > Work" },
+    { title: "", url: "https://news.ycombinator.com/", folder: "Other bookmarks" }], "only web pages, each with its folders");
+  assert.throws(() => D.parseBookmarks("", false));
+  const bm = plain(run("bm kanban", { bookmarks }));
+  assert.deepEqual(bm.map(r => [r.title, r.subtitle]), [["Kanban board", "board.example.com/team, Bookmarks bar > Work"]]);
+  assert.equal(plain(run("bm", { bookmarks })).length, 3, "bm alone: every one");
+  const root = plain(run("omarchy manual", { bookmarks }));
+  assert.ok(root.some(r => r.key === "bookmark:https://learn.omacom.io/2/the-omarchy-manual"), "at root, by its words");
+  assert.equal(plain(run("bm zzz", { bookmarks }))[0].title, "No bookmark matches zzz");
+  assert.ok(!plain(run("bar", { bookmarks })).some(r => r.key.startsWith("bookmark:")), "a folder's name matches no bookmark");
+  assert.equal(plain(run("bm", {}))[0].title, "Reading bookmarks...");
+});
+

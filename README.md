@@ -46,9 +46,10 @@ text already typed:
 | `full screen`, `keys ` | Keybindings, by what they do |
 | `> htop` | A command, in a terminal |
 | `12*8 + 15%`, `5 km to mi`, `100 usd to eur`, `3pm to tokyo` | Answers |
-| `:fire`, `cb`, `f `, `find report`, `~/Downloads/` | Emoji, clipboard, recent files, files, folders |
+| `:fire`, `cb`, `f `, `notes.org`, `find report`, `~/Downloads/` | Emoji, clipboard, recent files (one by its whole name in any search), files, folders |
 | `kill chromium`, `ports`, `services` | Processes, listening ports, user services |
 | `h github`, `prs`, `tmux`, `ssh `, `man ls` | Browser history, pull requests, tmux, SSH hosts, man pages |
+| `github.com/itsgg`, `localhost:3000`, `bm work` | Open a site as it is typed; your browser's bookmarks, three of them in any search |
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
 | `ask why is the sky blue`, or Tab | A quick answer from Claude; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `?` | Help, with every example answered live |
