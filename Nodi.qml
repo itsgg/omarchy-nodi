@@ -23,6 +23,7 @@ import "lib/Describe.js" as Describe
 import "lib/Pick.js" as Pick
 import "lib/Pane.js" as Pane
 import "lib/Opens.js" as Opens
+import "lib/PickLog.js" as PickLog
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 
@@ -191,6 +192,7 @@ Item {
     readsAfterFrame.restart()
     // A kept query: the field held text the payload did not give.
     if (starting && root.openRec) root.openRec.held = input.text !== "" && typeof payload.query !== "string"
+    if (starting) root.trail = PickLog.typed([], Match.normalise(input.text))
     root.recompute()
     Opens.stamp(root.openRec, "ranked", Date.now())
     var given = typeof payload.query === "string"
@@ -274,6 +276,28 @@ Item {
   function toggle() {
     if (root.opened) root.dismiss()
     else root.open("{}")
+  }
+
+  // ---------------------------------------------------------------- picks
+
+  // The queries this open, keystroke by keystroke, and every row run from
+  // one, for the ranking harness (lib/PickLog.js, ROADMAP 42).
+  property var trail: []
+  property var pickLog: []
+  property bool pickLogLoaded: false
+
+  function logPick(e) {
+    root.pickLog = PickLog.add(root.pickLog, e)
+    if (root.cacheReady && root.pickLogLoaded) pickLogFile.setText(PickLog.serialize(root.pickLog))
+  }
+
+  FileView {
+    id: pickLogFile
+    path: root.cacheDir + "/picks-log.json"
+    printErrors: false
+    atomicWrites: true
+    onLoaded: { root.pickLog = PickLog.parse(text()).concat(root.pickLog).slice(-PickLog.MAX); root.pickLogLoaded = true }
+    onLoadFailed: root.pickLogLoaded = true
   }
 
   // ---------------------------------------------------------------- open times
@@ -419,6 +443,9 @@ Item {
     var argv = Run.command(run, root.appAction)
     if (!argv) return
     var query = Match.normalise(input.text)
+    // What was typed and shown, before the bar empties (lib/PickLog.js);
+    // a pick's choice ranks nothing.
+    if (key && query && !root.pickSession) root.logPick(PickLog.entry(Date.now(), root.trail, query, key, root.rows))
     root.finish()
     if (undoable && run.kind === "exec") undoer.run(argv, name || (snap && snap.title) || "")
     else Quickshell.execDetached(argv)
@@ -698,6 +725,7 @@ Item {
   // in `ask `, the session starts warming while the question is typed.
   function queryChanged() {
     root.typedSinceOpen = true
+    root.trail = PickLog.typed(root.trail, Match.normalise(input.text))
     if (/^\s*ask\s/i.test(input.text)) askSession.warm()
     root.armedKey = ""
     root.paletteOpen = false

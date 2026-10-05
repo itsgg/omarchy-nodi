@@ -256,7 +256,9 @@ not read) or the command is misused, and 3 when Nodi cannot be reached
   Claude settings, and saves nothing.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`.
   Among the cache is how long its last 300 opens took (`opens.json`, read
-  by `make opens`), with nothing of what was typed. It binds its hotkey in the running Hyprland and edits no config file.
+  by `make opens`), with nothing of what was typed, and the last 1000 rows
+  run from a query (`picks-log.json`, read by `make picks`): the queries
+  typed, the row's key and its place, no titles. It binds its hotkey in the running Hyprland and edits no config file.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 
