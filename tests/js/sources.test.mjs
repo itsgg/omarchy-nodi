@@ -45,6 +45,9 @@ test("the window you came from: Hyprland's active window, filled in from the lis
   assert.deepEqual(plain(S.windowContext(null, list)), none, "no window had the focus");
   assert.deepEqual(plain(S.windowContext({ address: "0xzz;rm" }, list)), none, "an address that is not one");
   assert.equal(S.windowContext({ address: "1", title: "x".repeat(1000) }, []).title.length, 300);
+  assert.equal(S.windowContext({ address: "5b8f", workspace: "2", ipc: { workspace: { name: "1" } } }, list).workspace, "2",
+               "moved since its record: where it is now (Fable 2026-10-05)");
+  assert.equal(S.windowContext({ address: "5b8f", ipc: { workspace: { name: "1" } } }, list).workspace, "2", "the list before the record");
 });
 
 test("processes: names with spaces, ps itself left out", () => {

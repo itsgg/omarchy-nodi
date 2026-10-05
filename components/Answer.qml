@@ -62,7 +62,9 @@ Item {
     id: reader
     streaming: true
     cancelable: true
-    maxBytes: 262144
+    // Under the kernel's 128 KB cap on one argument: Paste and Copy hand
+    // the answer on as one, and failed silently past it (Fable 2026-10-05).
+    maxBytes: 122880
     extraEnvironment: answer.env
     onChunk: function(data, tag) {
       if (!tag || tag.seq !== answer.seq || !answer.running) return

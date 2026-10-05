@@ -153,4 +153,5 @@ test("dates: an apostrophe in quoted text, a long offset, and one past any date"
   assert.equal(P.fill('{date format="MMM" offset="+100001m"}', "", { now: at }).text, "Dec", "ten weeks in minutes is a move (codex 2026-10-05)");
   assert.equal(P.fill('{date format="MMM" offset="+999999999d"}', "", { now: at }).text, "", "past what a date holds: nothing, not a throw");
   assert.equal(P.fill('{date format="MMM" offset="+9999999999999999999999y"}', "", { now: at }).text, "");
+  assert.equal(P.fill('{date format="MMM" offset="+' + "9".repeat(320) + 'y"}', "", { now: at }).text, "", "digits past a number: no date either (Fable 2026-10-05)");
 });

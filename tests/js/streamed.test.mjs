@@ -60,8 +60,8 @@ test("the pane shows the answer only while the query is its question", () => {
   assert.ok(!A.shown("a q2", [helper], a));
   assert.ok(!A.shown("a q", [helper], Object.assign({}, a, { phase: "idle" })));
   assert.ok(!A.shown("b q", [helper, Object.assign({}, helper, { keyword: "b" })], a), "another answer's keyword");
-  const p = plain(Pane.choose({ answer: { question: "q", title: "Assistant", text: "**hi**" }, row: null }));
-  assert.deepEqual(p, { title: "q", subtitle: "Assistant", markdown: "**hi**", follow: true });
+  const p = plain(Pane.choose({ answer: { question: "q", title: "Assistant", text: "**hi**", seq: 3 }, row: null }));
+  assert.deepEqual(p, { title: "q", subtitle: "Assistant", markdown: "**hi**", follow: true, round: 3 }, "each run its round, so asked again it starts at its top");
   assert.equal(Pane.choose({ paletteOpen: true, answer: { question: "q", title: "t", text: "x" } }), null, "Ctrl+K's actions hide it");
   assert.equal(Pane.choose({ ask: { question: "q", model: "haiku", text: "" }, row: null }), null, "Claude's answer shows once it has words");
   const row = { title: "r", subtitle: "s", preview: { title: "own" } };

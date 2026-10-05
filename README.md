@@ -154,7 +154,8 @@ arguments never read as shell), `{"open": "url or /path"}`,
 `{"copy": "text"}`, `{"paste": "text"}` (into the window you were in) or
 `{"query": "text"}` (fills the bar in). `confirm` asks before it runs:
 `true` for a second Enter, or a word to type, such as `"send"` (up to 40
-characters, no space; anything else is a second Enter). A row that asks
+characters and no space; a longer word, or one with a space, is a second
+Enter); any other value asks nothing. A row that asks
 shows in the pane the exact command it runs, with `risk`, your words for
 what it may cost, once Enter has armed it or its word is asked, and from
 the start when it has no `preview`. It gets no hotkey or link, and
@@ -163,17 +164,20 @@ the start when it has no `preview`. It gets no hotkey or link, and
 "subtitle", "markdown"}`; pictures and HTML in it are shown as text, never
 loaded. A row with an `id` is remembered and ranked like any other.
 `actions` are what Ctrl+K offers, each with `exec`, `open`, `copy` or
-`paste`, and `confirm`, `risk` and `undoable` as a row has them.
+`paste`, and `confirm`, `risk` and `undoable` as a row has them. At most
+50 rows; a line that is not such an object is skipped. While a run is on
+its way, the last rows stay.
 
 A row or action with `"undoable": true` and an `exec` action is run by
 Nodi itself, which reads what it prints. If its last line is
 `{"undo": {"exec": ["my-notes", "restore", "meeting"], "title": "Restore the meeting note"}}`,
 that command is offered as a row for ten minutes: first on the empty bar,
 and found by its title or by `undo`; Enter twice runs it. Such an action
-runs in the filter's environment and must end within two minutes, and if
-it fails a notification says why. The offer lasts while the shell runs,
-not across a restart. At most 50 rows; a line that is not such an object is skipped.
-While a run is on its way, the last rows stay.
+is a command that does its work and ends: it runs in the filter's
+environment, not your session's whole one (no `DISPLAY`, `EDITOR` or
+`GDK_SCALE`, for one), and is ended after two minutes, so it is no way to
+open a window. If it fails, a notification says why. The offer lasts
+while the shell runs, not across a restart.
 
 An answer is a program that answers a question you type after a keyword,
 on Enter rather than as you type, and what it prints shows as Markdown in
@@ -188,7 +192,8 @@ the pane as it arrives:
 `a why is it slow`, then Enter, runs `my-ask --markdown "why is it slow"`
 with the same environment, argument and `NODI_QUERY` as a script filter.
 It runs for two minutes at most (`timeoutMs`, up to 600000) and may print
-256 KB. Write each piece as you have it: a program whose output is
+120 KB. What it prints shows a word at a time, at its spaces, so text
+with no spaces (Chinese, a long URL) shows once it ends. Write each piece as you have it: a program whose output is
 buffered when it goes into a pipe (Python's, for one) shows nothing until
 it flushes. Escape while it answers stops it, the program and what it
 started, and so does closing the bar. Once it has ended, Enter pastes the
