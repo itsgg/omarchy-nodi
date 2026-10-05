@@ -219,6 +219,9 @@ baseline query loses rank.
     letter above U+007F is a letter, without `\p{}` (Qt's engine fails it
     silently). Q 2, X 1. Check: Tamil, "beyonce", "muller"; the matcher's
     tests run in qml6 as well as node.
+    Done 2026-10-05: the accent and script queries from 2 of 8 first to 8
+    of 8, 76 of 100 in all; a keystroke in Qt still 9.4 ms at p95 with text
+    past ASCII in the bench.
 34. **Picks lift shorter queries**: a pick stored for "spotify" counts for
     "sp", weighted by how much of it was typed. Q 3.
 35. **The words a row shows are searched**: an app's comment and written

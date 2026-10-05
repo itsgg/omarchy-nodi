@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 .import "../lib/Score.js" as Score
 .import "../lib/Placeholders.js" as Placeholders
 
@@ -291,10 +292,10 @@ var provider = {
         var where = dirs(ctx.settings, String(ctx.home || "")).map(function(d) { return tilde(d, String(ctx.home || "")) }).join(", ")
         return [{ title: "No scripts found", subtitle: "Put executable files with a @nodi.title line in " + where, score: 50, copy: "", remember: false }]
       }
-      var words = String(listing[1] || "").trim().toLowerCase().split(/\s+/).filter(Boolean)
+      var words = Match.normalise(listing[1]).split(" ").filter(Boolean)
       var out = []
       for (var i = 0; i < all.length; i++) {
-        var hay = [all[i].title, all[i].packageName, all[i].keyword, all[i].description].join(" ").toLowerCase()
+        var hay = Match.folded([all[i].title, all[i].packageName, all[i].keyword, all[i].description].join(" "))
         if (words.some(function(w) { return hay.indexOf(w) === -1 })) continue
         out.push(row(all[i], "", ctx, { score: 97 - out.length * 0.01 }))
       }

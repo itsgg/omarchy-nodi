@@ -64,12 +64,17 @@ for (let i = 0; i < 300; i++) {
   history[key] = { n: 1 + (i * 7) % 40, t: now - i * 3600e3 };
 }
 const words = "build deploy release notes meeting agenda invoice draft review config server branch merge report budget".split(" ");
-const clipboard = Array.from({ length: 200 }, (_, i) => ({ type: "text", text: words[i % words.length] + " " + words[(i * 3) % words.length] + " line " + i + "\nsecond line of entry " + i }));
+// One entry in five, and four windows, in text past ASCII, so the bench
+// measures the fold where it calls normalize.
+const wide = ["Résumé für Müller, café", "தமிழ் விக்கிப்பீடியா", "Москва, Википедия", "Beyoncé - CUFF IT"];
+const clipboard = Array.from({ length: 200 }, (_, i) => ({ type: "text", text: words[i % words.length] + " " + words[(i * 3) % words.length] + " line " + i
+  + (i % 5 === 0 ? " " + wide[i % wide.length] : "") + "\nsecond line of entry " + i }));
+const allWindows = windows.concat(wide.map((title, i) => ({ address: "0xe" + i, cls: "chromium", title: title + " - Chromium", workspace: String(i + 1), focus: 10 + i })));
 const files = Array.from({ length: 500 }, (_, i) => ({ path: "/home/u/" + ["Documents", "Work", "Downloads", "notes"][i % 4] + "/" + words[i % words.length] + "-" + i + [".md", ".pdf", ".png", ".txt"][i % 4],
                                                         name: words[i % words.length] + "-" + i + [".md", ".pdf", ".png", ".txt"][i % 4], at: now - i * 60e3 }));
 
 process.stdout.write(JSON.stringify({
-  config, rates, zones, emojis, windows, apps, history, menu, clipboard, files,
+  config, rates, zones, emojis, windows: allWindows, apps, history, menu, clipboard, files,
   omarchyCommands, keybindings,
   now
 }));

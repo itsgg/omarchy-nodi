@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Match.js" as Match
 .import "../lib/Score.js" as Score
 .import "../lib/Placeholders.js" as Placeholders
 
@@ -142,10 +143,10 @@ var provider = {
       if (all.length === 0) return [{ title: "No snippets yet", subtitle: "Set in nodi.json", score: 50, copy: "", remember: false,
                                       run: ctx.home ? Run.exec(["omarchy-launch-editor", ctx.home + "/.config/omarchy/extensions/nodi.json"]) : null,
                                       actionLabel: "Edit" }]
-      var words = String(listing[1] || "").trim().toLowerCase().split(/\s+/).filter(Boolean)
+      var words = Match.normalise(listing[1]).split(" ").filter(Boolean)
       var out = []
       for (var i = 0; i < all.length && out.length < LIMIT; i++) {
-        var hay = [all[i].keyword, all[i].name, all[i].text].join(" ").toLowerCase()
+        var hay = Match.folded([all[i].keyword, all[i].name, all[i].text].join(" "))
         if (words.some(function(w) { return hay.indexOf(w) === -1 })) continue
         out.push(row(all[i], "", ctx, { score: 97 - out.length * 0.01 }))
       }
