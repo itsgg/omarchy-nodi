@@ -2,10 +2,10 @@
  "summary": {
   "intended": {
    "queries": 100,
-   "first": 88,
-   "topThree": 92,
-   "notShown": 5,
-   "mrr": 0.906
+   "first": 91,
+   "topThree": 95,
+   "notShown": 2,
+   "mrr": 0.936
   },
   "classes": {
    "name": {
@@ -42,7 +42,7 @@
    },
    "verb": {
     "queries": 3,
-    "first": 0
+    "first": 3
    },
    "window": {
     "queries": 2,
@@ -169,9 +169,9 @@
   "notes": 1,
   "pdf": 1,
   "stay awake": 1,
-  "open spotify": 0,
-  "launch slack": 0,
-  "start obs": 0,
+  "open spotify": 1,
+  "launch slack": 1,
+  "start obs": 1,
   "inbox": 1,
   "weekly review": 1,
   "beyonce": 1,

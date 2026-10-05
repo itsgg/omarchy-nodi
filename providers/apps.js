@@ -14,6 +14,19 @@
 
 var LIMIT = 6
 var ACTIONS = 3
+var VERB = /^(?:open|launch|start|run)\s+(\S.*)$/
+
+// Whether the whole query names an app by its words (keyword or better): a
+// description that has the verb ("Free and Open Source", OBS's comment)
+// keeps no verb (Fable 2026-10-05).
+function anyApp(q, known) {
+  var named = Score.ORDER.indexOf("keyword")
+  for (var i = 0; i < known.length; i++) {
+    var t = Score.tier(q, known[i])
+    if (t && Score.ORDER.indexOf(t) <= named) return true
+  }
+  return false
+}
 
 // What an app's entry says of it: its generic name or its comment, unless
 // that only repeats the name, as every web app Omarchy installs does
@@ -143,6 +156,12 @@ var provider = {
     var q = Match.normalise(query)
     var apps = ctx.apps || []
     if (!q || apps.length === 0) return []
+    // "open spotify": a verb in front of a name, when the whole names no
+    // app (Q L16, ROADMAP 41). "Open" and the rest are kept where an app
+    // is named by them all.
+    var verb = q.match(VERB)
+    var stripped = !!verb && !anyApp(q, fieldsOf(apps, ctx.descriptions))
+    if (stripped) q = verb[1]
     var qw = Match.words(q)
     if (qw.length === 0) return []
     var history = ctx.history || {}
@@ -195,6 +214,9 @@ var provider = {
           out.push(actionRow(hit.app, appActions[m], hit.t, { habitKey: "app:" + hit.app.id, offset: -0.005 - m * 0.001 }))
       }
     }
+    // Each row's fit is the name's, without the verb (lib/Rows.js; Fable
+    // 2026-10-05: "start obs" lost the tie "obs" breaks).
+    if (stripped) for (var f = 0; f < out.length; f++) out[f].fitQuery = q
     return out
   },
   // A saved row as it is now: "app:<id>", "app:<id>:#<action id>", or
