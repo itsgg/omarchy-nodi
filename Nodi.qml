@@ -169,7 +169,14 @@ Item {
     if (typeof payload.query === "string") {
       input.text = payload.query
       input.cursorPosition = payload.query.length
+    } else if (starting && input.text && Date.now() - root.closedAt > root.keepQueryMs) {
+      // A kept query lasts two minutes, then the bar opens on its home
+      // view (his call 2026-10-05; Raycast, PowerToys and Alfred keep one
+      // for 2 to 5 minutes). It is not kept across a restart: no file
+      // holds it since (Fable 2026-10-05).
+      input.text = ""
     }
+    root.recallAt = -1
     launchFeedback.opened()
     root.noteWindow()
     root.opens++
@@ -245,7 +252,11 @@ Item {
 
   Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
 
+  readonly property int keepQueryMs: 120000
+  property real closedAt: 0
+
   function close() {
+    root.closedAt = Date.now()
     card.animated = false
     root.keepOpenTime()
     // A pick closed without a choice: its command hears that nothing was.
@@ -260,7 +271,6 @@ Item {
     // Nobody sees an answer once the bar is closed: it stops, and the next
     // open asks afresh.
     answerSession.reset()
-    root.saveLastQuery()
   }
 
   function dismiss() {
@@ -727,6 +737,7 @@ Item {
   // in `ask `, the session starts warming while the question is typed.
   function queryChanged() {
     root.typedSinceOpen = true
+    if (!root.recalling) root.recallAt = -1
     root.trail = PickLog.typed(root.trail, Match.normalise(input.text))
     if (/^\s*ask\s/i.test(input.text)) askSession.warm()
     root.armedKey = ""
@@ -767,6 +778,7 @@ Item {
     case Qt.Key_E: return "E"
     case Qt.Key_F: return "F"
     case Qt.Key_B: return "B"
+    case Qt.Key_R: return "R"
     case Qt.Key_PageUp: return "PageUp"
     case Qt.Key_PageDown: return "PageDown"
     }
@@ -791,6 +803,25 @@ Item {
       page: Math.max(1, Math.floor(list.height / Math.max(1, root.rowHeight))),
       pane: card.paneScrolls
     }
+  }
+
+  // Ctrl+R: the queries picks were made for, newest first, one older on
+  // each press, the one in the field skipped; any other change starts over.
+  property var recallList: []
+  property int recallAt: -1
+  property bool recalling: false
+
+  function recall() {
+    if (root.recallAt === -1) {
+      var now = Match.normalise(input.text)
+      root.recallList = History.recentQueries(root.picks, 50).filter(function(q) { return q !== now })
+    }
+    if (root.recallList.length === 0) return
+    root.recallAt = (root.recallAt + 1) % root.recallList.length
+    root.recalling = true
+    input.text = root.recallList[root.recallAt]
+    input.cursorPosition = input.text.length
+    root.recalling = false
   }
 
   // A readline edit of the field, worked out by lib/Keys.js edited().
@@ -827,6 +858,7 @@ Item {
     case "dismiss": root.dismiss(); break
     case "stopAnswer": answerSession.stop(); break
     case "edit": root.edit(act.how); break
+    case "recall": root.recall(); break
     case "cancelPrompt":
       if (root.wordAsk) { root.endWord(); break }
       root.aliasRow = null; input.text = ""; root.recompute(); break
@@ -1039,25 +1071,6 @@ Item {
     id: cacheMaker
     timeoutMs: 3000
     onFinished: function(text, ok) { root.cacheReady = ok; if (ok) root.describeApps() }
-  }
-
-  property bool lastQueryLoaded: false
-
-  function saveLastQuery() {
-    if (!root.cacheReady || !root.lastQueryLoaded || lastQueryFile.text() === input.text) return
-    lastQueryFile.setText(input.text)
-  }
-
-  FileView {
-    id: lastQueryFile
-    path: root.cacheDir + "/last-query"
-    printErrors: false
-    atomicWrites: true
-    onLoaded: {
-      if (!root.lastQueryLoaded && !input.text) input.text = text().replace(/\n+$/, "")
-      root.lastQueryLoaded = true
-    }
-    onLoadFailed: root.lastQueryLoaded = true
   }
 
   FileView {

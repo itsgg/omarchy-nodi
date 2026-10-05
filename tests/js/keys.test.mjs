@@ -157,3 +157,14 @@ test("readline keys in the field: Ctrl+W, Ctrl+E, Ctrl+F, Ctrl+B (ROADMAP 51)", 
   assert.deepEqual(e("left", "abcdef", 6, 2, 5), { text: "abcdef", at: 2 }, "back from a selection: its start");
 });
 
+test("Ctrl+R brings back an earlier query, newest first (ROADMAP 50)", () => {
+  const History = load("lib/History.js");
+  assert.deepEqual(d("R", {}, true), { do: "recall" });
+  assert.equal(d("R", { pick: true }, true), null, "not in a pick");
+  assert.equal(d("R", { prompting: true }, true), null, "nor while a prompt asks");
+  const picks = { firefox: { "app:firefox": { n: 3, t: 10 } }, "lo c": { "app:calc": { n: 1, t: 30 }, "x": { n: 1, t: 5 } }, sp: { "app:spotify": { n: 1, t: 20 } } };
+  assert.deepEqual(plain(History.recentQueries(picks, 50)), ["lo c", "sp", "firefox"], "by each query's newest pick");
+  assert.deepEqual(plain(History.recentQueries(picks, 2)), ["lo c", "sp"]);
+  assert.deepEqual(plain(History.recentQueries(null)), []);
+});
+
