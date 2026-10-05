@@ -8,6 +8,9 @@
 //             when it is first (0: never, typed whole)
 //   noise     how many rows past the fallbacks some queries show: a count
 //             to watch, since a row there may be right
+//   learning  every app, picked once for its whole name: the letters then
+//             typed until it is first (Q H 5; three picks would be the
+//             most a pick can give, PICK_MAX, and measure that ceiling)
 // and compares them with tools/rank/baseline.json. Any difference fails,
 // gains as well as losses, each named, so a ranking change lands with its
 // baseline's diff in the commit (Q 1, H 8).
@@ -18,10 +21,11 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { root } from "../../tests/js/load.mjs";
+import { root, load } from "../../tests/js/load.mjs";
 import { Engine, config, services } from "../../tests/js/fixtures.mjs";
 import { intended, noise } from "./queries.mjs";
 
+const Match = load("lib/Match.js");
 const args = process.argv.slice(2);
 const live = args.includes("--live");
 const update = args.includes("--update");
@@ -87,6 +91,24 @@ for (const id of c.menu.order) {
   reach.menu[it.label] = lettersToFirst(it.label, "menu:" + id);
 }
 
+// ---------- learning ----------
+// Each app on its own, as if it had been picked once by its whole name a
+// moment ago, stored as Nodi stores a query (Match.normalise): what one
+// pick teaches the shorter queries.
+const learning = { apps: {} };
+const nowMs = svc.now().getTime();
+for (const a of c.apps) {
+  const name = a.name in learning.apps ? a.name + " (" + a.id + ")" : a.name;
+  const taught = Object.assign({}, svc, { picks: { [Match.normalise(a.name)]: { ["app:" + a.id]: { n: 1, t: nowMs } } } });
+  const q = a.name.toLowerCase();
+  let first = 0;
+  for (let n = 1; n <= q.length && !first; n++) {
+    const p = q.slice(0, n);
+    if (!p.endsWith(" ") && rankOf(Engine.run(p, config, taught), answers("app:" + a.id)) === 1) first = n;
+  }
+  learning.apps[name] = first;
+}
+
 // ---------- noise ----------
 const noisy = {};
 for (const q of noise) noisy[q] = rows(q).filter(r => r.provider !== "fallback").length;
@@ -106,9 +128,10 @@ const result = {
                 mrr: Math.round(ranked.reduce((a, r) => a + (r ? 1 / r : 0), 0) / ranked.length * 1000) / 1000 },
     classes,
     reach: { apps: reachSummary(reach.apps), menu: reachSummary(reach.menu) },
+    learning: { apps: reachSummary(learning.apps) },
     noise: Object.values(noisy).reduce((a, b) => a + b, 0)
   },
-  intended: ranks, reach, noise: noisy
+  intended: ranks, reach, learning, noise: noisy
 };
 
 function show(s) {
@@ -119,6 +142,8 @@ function show(s) {
     const r = s.reach[t];
     console.log(`rank: ${t} ${r.targets} targets, first after a median of ${r.median} letters (mean ${r.mean}), ${r.neverFirst} never first`);
   }
+  const l = s.learning.apps;
+  console.log(`rank: apps picked once, first after a median of ${l.median} letters (mean ${l.mean}), ${l.neverFirst} never first`);
   console.log(`rank: ${s.noise} rows of noise`);
 }
 
@@ -145,6 +170,11 @@ for (const t of ["apps", "menu"]) for (const n of keys((base.reach || {})[t], re
   // A target that goes is a row the whole label no longer finds: worse.
   if (was === undefined || now === undefined) { (now === undefined ? worse : better).push(`${t} "${n}": ${now === undefined ? "no longer" : "now"} a target`); continue; }
   if (was !== now) note(`${t} "${n}" letters to first`, was, now);
+}
+for (const n of keys((base.learning || {}).apps, result.learning.apps)) {
+  const was = ((base.learning || {}).apps || {})[n], now = result.learning.apps[n];
+  if (was === undefined || now === undefined) { (now === undefined ? worse : better).push(`learning "${n}": ${now === undefined ? "no longer" : "now"} a target`); continue; }
+  if (was !== now) note(`learning "${n}" letters to first after a pick`, was, now);
 }
 for (const q of keys(base.noise, result.noise)) {
   const was = (base.noise || {})[q], now = result.noise[q];

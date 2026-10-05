@@ -71,6 +71,14 @@
     "mean": 3.51
    }
   },
+  "learning": {
+   "apps": {
+    "targets": 52,
+    "neverFirst": 0,
+    "median": 1,
+    "mean": 1.4
+   }
+  },
   "noise": 17
  },
  "intended": {
@@ -326,6 +334,62 @@
    "Trackpad": 4,
    "Drive Encryption": 3,
    "User": 2
+  }
+ },
+ "learning": {
+  "apps": {
+   "1Password": 1,
+   "Discord": 1,
+   "Gmail": 2,
+   "Google Calendar": 2,
+   "Slack": 1,
+   "Telegram": 1,
+   "Whatsapp": 1,
+   "X": 1,
+   "YouTube": 1,
+   "Aether": 1,
+   "Audacity": 1,
+   "Avahi Zeroconf Browser": 1,
+   "Blender": 1,
+   "Avahi SSH Server Browser": 1,
+   "btop++": 1,
+   "Avahi VNC Server Browser": 1,
+   "Chromium": 1,
+   "cliamp": 1,
+   "Pinta": 1,
+   "Xournal++": 2,
+   "Moonlight": 1,
+   "OBS Studio": 2,
+   "Manage Printing": 1,
+   "Tensaku": 1,
+   "Dropbox": 1,
+   "Fcitx 5 Configuration": 2,
+   "Foot": 1,
+   "Foot Server": 2,
+   "Foot Client": 2,
+   "LibreOffice Base": 1,
+   "LibreOffice Calc": 1,
+   "LibreOffice Draw": 1,
+   "LibreOffice Impress": 1,
+   "LibreOffice Math": 1,
+   "LibreOffice": 1,
+   "LibreOffice Writer": 13,
+   "LocalSend": 2,
+   "mpv Media Player": 1,
+   "Neovim": 1,
+   "Obsidian": 1,
+   "Omacalc": 1,
+   "Omacut": 1,
+   "Omawrite": 2,
+   "Disks": 1,
+   "Document Viewer": 1,
+   "Files": 1,
+   "Inkscape": 1,
+   "Kdenlive": 1,
+   "Krita": 1,
+   "Spotify": 1,
+   "Print Settings": 1,
+   "uuctl": 1
   }
  },
  "noise": {
