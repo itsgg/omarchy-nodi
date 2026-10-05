@@ -261,7 +261,8 @@ not read) or the command is misused, and 3 when Nodi cannot be reached
 ## Develop
 
 ```sh
-make check     # tests, lint, compile, tests in Quickshell, renders, hygiene, manifest, validate
+make check     # tests, ranking, lint, compile, tests in Quickshell, renders, hygiene, manifest, validate
+make rank      # how well it ranks, against tools/rank/baseline.json (make rank-update accepts a change)
 make reload    # install, clear Quickshell's cache, restart the shell
 make shots     # the card drawn offscreen, as PNGs in shots/
 make bench     # how long a keystroke takes

@@ -191,6 +191,10 @@ link is set.
     fallbacks (noise); a baseline file, and a diff on any ranking change.
     Q 1.
     Check: it reports today's "susp" and "lo c" defects.
+    Done 2026-10-05: 70 of 100 queries first, apps first after a median
+    of 2 letters and menu labels after 3. The corpus holds only what
+    Omarchy ships: a first freeze carried his own bindings, which Fable
+    found.
 30. **The open, timed and cut.** Stamps for the key, the first ranking, the
     first frame and Hyprland's openlayer; then the held rows on the first
     frame and the ranking after it, a card-sized layer, and a window kept

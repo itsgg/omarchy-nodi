@@ -1,14 +1,26 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test rank rank-update lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 
-check: test lint compile qstest shots hygiene manifest validate
+check: test rank lint compile qstest shots hygiene manifest validate
 	@echo "all checks passed"
 
 test:
 	@node --test "tests/js/*.test.mjs"
+
+# How well the bar ranks, over a frozen corpus of what Omarchy ships: the
+# rank of each query's meant row, letters typed until each app and each
+# menu label is first, and a count of noise (tools/rank/rank.mjs). It fails on any difference
+# from tools/rank/baseline.json, gains too, naming each; `make
+# rank-update` accepts a change, and the baseline's diff goes in its
+# commit. `node tools/rank/rank.mjs --live` reads this machine's lists.
+rank:
+	@node tools/rank/rank.mjs
+
+rank-update:
+	@node tools/rank/rank.mjs --update
 
 # In `check` because a component the shell refuses to load passes every
 # JavaScript test.

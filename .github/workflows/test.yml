@@ -29,6 +29,8 @@ jobs:
           sudo mkdir -p /var/lib/pacman/local
       - name: Providers, libraries and the toggle probe
         run: node --test "tests/js/*.test.mjs"
+      - name: Ranking against its baseline
+        run: node tools/rank/rank.mjs
       - name: Hygiene
         run: node tools/hygiene.mjs
       - name: Manifest
