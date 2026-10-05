@@ -183,7 +183,15 @@ Item {
     root.recompute()
     var given = typeof payload.query === "string"
     Qt.callLater(function() { input.forceActiveFocus(); if (!given) input.selectAll() })
+    // Whatever the field holds now was not typed this time (the last query,
+    // a payload's): Escape closes over it (lib/Keys.js view.typed).
+    root.typedSinceOpen = false
   }
+
+  // The field changed since the bar opened: Escape clears it first. Until
+  // then it closes at once, though the field shows the last query, which
+  // took two presses to close (his report 2026-10-05).
+  property bool typedSinceOpen: false
 
   property bool readsPending: false
 
@@ -632,6 +640,7 @@ Item {
   // A new query: nothing armed, the palette closed, the top row selected;
   // in `ask `, the session starts warming while the question is typed.
   function queryChanged() {
+    root.typedSinceOpen = true
     if (/^\s*ask\s/i.test(input.text)) askSession.warm()
     root.armedKey = ""
     root.paletteOpen = false
@@ -683,6 +692,7 @@ Item {
                     && !!root.rows[0].helpTopic && input.cursorPosition === input.text.length,
       text: input.text,
       prompting: !!root.aliasRow || !!root.wordAsk,
+      typed: root.typedSinceOpen,
       pick: !!root.pickSession,
       answering: root.answerShown && answerSession.running,
       rows: root.rows.length,
