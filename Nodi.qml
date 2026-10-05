@@ -452,7 +452,9 @@ Item {
   // was run is remembered for ranking (lib/History.js). An undoable one is
   // run where what it prints is read (components/Undoer.qml).
   function execute(run, toggleId, key, snap, name, undoable) {
-    var argv = Run.command(run, root.appAction)
+    // Watched for failing, by the row's name (lib/Run.js watched), unless
+    // the Undoer runs it and says so itself.
+    var argv = Run.command(run, root.appAction, undoable && run.kind === "exec" ? "" : (name || (snap && snap.title) || ""))
     if (!argv) return
     var query = Match.normalise(input.text)
     // What was typed and shown, before the bar empties (lib/PickLog.js);
@@ -639,7 +641,7 @@ Item {
     var s = live ? History.snapshot(live) : saved
     // A moment's row (a kill by pid) is never run again (lib/History.js).
     var replayable = History.replayable(s)
-    var argv = replayable ? Run.command(s.run, root.appAction) : null
+    var argv = replayable ? Run.command(s.run, root.appAction, String(s.title || "")) : null
     if (!argv) return "unknown row"
     // A row that asks before it runs is run from the bar only: `nodi run`
     // names any remembered row, where a hotkey or a link is never given one.

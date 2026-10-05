@@ -252,6 +252,9 @@ not read) or the command is misused, and 3 when Nodi cannot be reached
 
 - It starts programs the way Omarchy's menu does: through a login shell,
   with arguments that are never read as shell.
+- A command or script a row runs that fails and says why is reported in a
+  notification, "<row> failed", with its last line of errors; a failure
+  that says nothing, or a program closed, is not.
 - It goes online for exchange rates (open.er-api.com, once a day, or every
   ten minutes while that fails), for `prs` (through `gh`), and for Claude,
   through Claude Code's `claude` command, under `ask` and, if turned on, to describe

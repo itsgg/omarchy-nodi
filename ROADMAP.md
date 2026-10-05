@@ -344,6 +344,11 @@ baseline query loses rank.
     action's chord on the right. X 7.
 53. **A failed command says so**: its last stderr line in a notification,
     as scripts already have. X 4.
+    Done 2026-10-05: a command or script a row runs is watched by a
+    wrapper (lib/Run.js watched) that keeps its errors' last 4 KB and, on a
+    non-zero exit that said why, notifies "<row> failed" with the last
+    line; an exit by a signal, or a failure that says nothing (a toggle's
+    ordinary exit), is quiet. Apps keep LaunchFeedback.
 54. **Clipboard**: pins, type filters, images found by their text (OCR),
     paste in sequence, send to a device. L 4.
 55. **URLs and bookmarks**: a typed domain opens; Chromium's bookmarks at
