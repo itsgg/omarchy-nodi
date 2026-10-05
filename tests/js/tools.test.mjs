@@ -178,6 +178,20 @@ test("the key is released on unload only when no Nodi took this one's place", ()
     writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "SPACE", description: "Nodi" }, { modmask: 64, key: "SPACE", description: "Resize", submap: "resize" }]));
     release("unknown");
     assert.equal(readFileSync(log, "utf8"), 'eval hl.unbind("SUPER + SPACE")\n');
+    // A bind named like Nodi is not Nodi's (codex 2026-10-05).
+    rmSync(log);
+    writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "SPACE", description: "Nodi" }, { modmask: 64, key: "SPACE", description: "Nodify" }]));
+    release("unknown");
+    assert.ok(!existsSync(log), "\"Nodify\" holds the chord too: left alone");
+    // A keycode chord another bind holds by its keycode (codex 2026-10-05).
+    const code = Hotkey.parseCombo("SUPER + code:20");
+    const releaseCode = () => { const a = Hotkey.releaseArgv(code, "io.github.itsgg.nodi", shell("unknown"), hyprctl, 0); execFileSync(a[0], a.slice(1)); };
+    writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "", keycode: 20, description: "Nodi" }, { modmask: 64, key: "", keycode: 20, description: "Other" }]));
+    releaseCode();
+    assert.ok(!existsSync(log), "another's keycode bind on the chord: left alone");
+    writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "", keycode: 20, description: "Nodi" }, { modmask: 64, key: "", keycode: 21, description: "Other" }]));
+    releaseCode();
+    assert.equal(readFileSync(log, "utf8"), 'eval hl.unbind("SUPER + code:20")\n', "Nodi's alone: released, its prefix as Hyprland reads it");
     assert.equal(Hotkey.releaseArgv(null, "x", "y"), null, "nothing bound, nothing to release");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

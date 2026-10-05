@@ -107,18 +107,27 @@ test("ports: Enter opens localhost, Ctrl+K stops the owner after asking; filter 
   assert.equal(top("ports", {}).title, "Reading ports...");
   assert.equal(top("ports", { failed: { ports: "ss failed" } }).title, "Could not read ports", "a failed read says so");
   assert.equal(top("services", { failed: { services: "no bus" } }).title, "Could not read your services");
-  // Opened where it listens: a wildcard or 127.0.0.1 is localhost; any other
-  // address is itself, an IPv6 one in brackets (codex 2026-10-04).
+  // Opened where it listens: localhost where both families do, else the one
+  // family's loopback; any other address is itself, an IPv6 one in brackets
+  // (codex 2026-10-04, 2026-10-05).
   const where = D.parsePorts([
     'LISTEN 0 5 192.168.1.20:8080 0.0.0.0:* users:(("lan",pid=7,fd=3))',
     'LISTEN 0 5 127.0.0.53%lo:5353 0.0.0.0:* users:(("dns",pid=8,fd=3))',
     'LISTEN 0 5 [fd00::5]:9090 [::]:* users:(("six",pid=9,fd=3))',
-    'LISTEN 0 5 *:7000 *:* users:(("any",pid=10,fd=3))'].join("\n"));
+    'LISTEN 0 5 *:7000 *:* users:(("any",pid=10,fd=3))',
+    'LISTEN 0 5 127.0.0.1:8081 0.0.0.0:* users:(("vfour",pid=11,fd=3))',
+    'LISTEN 0 5 [::1]:8081 [::]:* users:(("vsix",pid=12,fd=3))',
+    'LISTEN 0 5 0.0.0.0:8082 0.0.0.0:* users:(("wfour",pid=13,fd=3))',
+    'LISTEN 0 5 [::]:8083 [::]:* users:(("wsix",pid=14,fd=3))'].join("\n"));
   const opened = n => plain(Engine.run("ports " + n, config, services({ ports: where }))[0].run.target);
   assert.equal(opened("lan"), "http://192.168.1.20:8080");
   assert.equal(opened("dns"), "http://127.0.0.53:5353");
   assert.equal(opened("six"), "http://[fd00::5]:9090");
   assert.equal(opened("any"), "http://localhost:7000");
+  assert.equal(opened("vfour"), "http://127.0.0.1:8081", "IPv4's loopback alone: never localhost, which may be ::1");
+  assert.equal(opened("vsix"), "http://[::1]:8081", "a server on the same port by IPv6 is opened by its own");
+  assert.equal(opened("wfour"), "http://127.0.0.1:8082");
+  assert.equal(opened("wsix"), "http://[::1]:8083");
 });
 
 test("projects are ranked before the list is cut", () => {
