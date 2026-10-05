@@ -100,7 +100,8 @@ lib/
   Run.js                a row's run to one argv: the only place a command
                         is built
   Match.js, Score.js    word prefixes, acronyms, typos; the one scoring table
-  History.js            what was run, how often and when (~/.cache/nodi)
+  History.js            what was run, how often, when, and its use halving
+                        every 30 days (~/.cache/nodi)
   Opens.js              how long each open took, phase by phase
                         (~/.cache/nodi/opens.json, make opens)
   Prefs.js              aliases, favourites, hidden rows, row hotkeys

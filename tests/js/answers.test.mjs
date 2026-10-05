@@ -330,8 +330,9 @@ test("home: an empty bar shows the rows run most, then reminders", () => {
   };
   const reminders = [{ unit: "r1", label: "Tea", remaining: "5m", atTime: "17:05", seconds: 300 }, { unit: "r2", label: "Stretch", remaining: "40m", atTime: "17:40", seconds: 2400 }];
   const rows = run("", { history, reminders, toggleStates: { wifi: { on: false, value: "0" } } });
-  // Firefox 20 runs; Wi-Fi 6; Old 50 runs two hundred days ago, weighted a tenth; Foot 3.
-  assert.deepEqual(plain(rows.map(r => r.title)), ["Firefox", "Wi-Fi", "Old", "Foot", "Tea", "Stretch"]);
+  // Firefox 20 runs; Wi-Fi 6; Foot 3; Old 50 runs two hundred days ago,
+  // halved every 30 days to under one (ROADMAP 38: a count ages now).
+  assert.deepEqual(plain(rows.map(r => r.title)), ["Firefox", "Wi-Fi", "Foot", "Old", "Tea", "Stretch"]);
   assert.equal(rows.find(r => r.title === "Wi-Fi").badge, "OFF", "toggles show their state now, not when they were run");
   assert.equal(rows[0].section, "Recent");
   assert.equal(rows[4].section, "Reminders");
