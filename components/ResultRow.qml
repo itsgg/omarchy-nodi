@@ -100,8 +100,10 @@ Item {
         text: rowItem.modelData.title
         color: rowItem.selected ? nodi.selectedInk : nodi.foreground
         font.family: nodi.fontFamily
-        font.pixelSize: rowItem.hero ? Style.font.displayLarge : Style.font.title
-        font.bold: rowItem.hero
+        // Omarchy's menu draws its rows' names so: heading size, Medium
+        // (Menu.qml; his ask 2026-10-05, to look as the menu Nodi took over).
+        font.pixelSize: rowItem.hero ? Style.font.displayLarge : Style.font.heading
+        font.weight: rowItem.hero ? Font.Bold : Font.Medium
         elide: Text.ElideRight
       }
 

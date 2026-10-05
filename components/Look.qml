@@ -13,7 +13,8 @@ QtObject {
   property color background: Color.menu.background
   property color foreground: Color.menu.text
   property color border: Color.menu.border
-  property var borderSpec: Border.surfaceSpec("menu", "border", border, Style.spacing.hairline)
+  // Two pixels, as the shell's popups draw theirs (Menu.qml, Clipboard.qml).
+  property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   // The selected row's border, as Omarchy's menu draws it (Menu.qml): none
   // in a theme that sets no [menu] selected-border, as most do (item 24).
   readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Color.menu.selectedBorder, 0)
@@ -42,7 +43,10 @@ QtObject {
   property int contentMargin: Style.spacing.panelPadding
   readonly property int inputFont: Style.font.heading
   property int inputHeight: Math.max(Style.space(38), inputFont + Style.spacing.controlPaddingY * 2)
-  property int rowHeight: Math.max(Style.space(48), Style.font.title + Style.font.bodySmall + Style.spacing.md * 2)
+  // A heading-size name over a small subtitle needs about 8 px above and
+  // below: 48 crowded the two lines, and the menu's 58 cost 70 px on a full
+  // list (renders compared 2026-10-05).
+  property int rowHeight: Math.max(Style.space(52), Style.font.heading + Style.font.bodySmall + Style.spacing.md * 2)
   property int heroHeight: Math.max(Style.space(76), Style.font.displayLarge + Style.font.bodySmall + Style.spacing.md * 3)
   property int sectionHeight: Math.max(Style.space(26), Style.font.caption + Style.spacing.md * 2)
   property int footerHeight: Math.max(Style.space(32), Style.font.caption + Style.spacing.md * 2)

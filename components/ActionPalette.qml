@@ -82,7 +82,8 @@ Column {
         text: actionItem.modelData.label
         color: actionItem.selected ? nodi.selectedInk : nodi.foreground
         font.family: nodi.fontFamily
-        font.pixelSize: Style.font.title
+        font.pixelSize: Style.font.heading
+        font.weight: Font.Medium
         elide: Text.ElideRight
       }
       Keycap {
