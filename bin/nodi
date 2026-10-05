@@ -52,7 +52,8 @@ pick() {
     esac
     shift
   done
-  dir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/nodi-pick.XXXXXXXX") || fail "no directory for the rows"
+  runtime=${XDG_RUNTIME_DIR:-/tmp}
+  dir=$(mktemp -d "${runtime%/}/nodi-pick.XXXXXXXX") || fail "no directory for the rows"
   trap 'rm -rf -- "$dir"' EXIT
   cat > "$dir/rows" || fail "could not read stdin"
   mkfifo -m 600 "$dir/answer" || fail "no FIFO for the answer"
@@ -68,8 +69,9 @@ pick() {
   while ! IFS= read -r -t 2 reply <&3; do
     out=$("$ipc" shell call "$id" pickAlive "$rid" 2>/dev/null)
     [ "$out" = yes ] && continue
-    # Closed between the read and the question: its answer may be waiting.
-    IFS= read -r -t 0.3 reply <&3 || exit 1
+    # Closed between the read and the question: its answer may be on its
+    # way, a fork and an exec behind the close (Fable 2026-10-05).
+    IFS= read -r -t 1 reply <&3 || exit 1
     break
   done
   case $reply in

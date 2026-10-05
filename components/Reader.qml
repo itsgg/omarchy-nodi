@@ -25,9 +25,16 @@ Item {
   // keystroke replaced) is ended with the program and all it started.
   property bool cancelable: false
   // A read that streams (an answer, providers/answers.js): what the program
-  // prints is handed on as it arrives, `chunk`, not split into lines, and
-  // kept whole in `collected` too.
+  // prints is handed on a word at a time as it arrives, `chunk`, and kept
+  // whole in `collected` too. Split at spaces, never at what a read brings:
+  // the parser decodes each piece by itself, and a character cut between
+  // two reads became U+FFFD (Fable 2026-10-05); a space is never inside a
+  // multi-byte character. The spaces are put back as each word is handed
+  // on, which rebuilds the text exactly (measured on random text with runs
+  // of spaces, Tamil and emoji written in random pieces) but for spaces at
+  // its very end, which are dropped.
   property bool streaming: false
+  property bool streamedAny: false
   // The end of what the program wrote to stderr in this run, and its last
   // line, for saying why it failed. Read as it arrives and only the end
   // kept, so nothing on stderr is held whole, a line with no newline
@@ -72,6 +79,7 @@ Item {
     reader.active = true
     reader.tag = tag === undefined ? null : tag
     reader.collected = ""
+    reader.streamedAny = false
     reader.errorTail = ""
     reader.overflowed = false
     reader.timedOut = false
@@ -89,8 +97,14 @@ Item {
   // The read then ends as failed, its tag saying it was cancelled. Said
   // again every 50 ms until it has ended: a read cancelled as it starts may
   // not have started its children yet.
+  // A run waiting behind the cancelled one goes too: it was asked for
+  // before the cancel, and an Escape or a closed bar that left it to start
+  // once the old program died ran it unseen (Fable 2026-10-05). A caller
+  // that wants a new run asks for it after the cancel.
   function cancel() {
-    if (!reader.active || !reader.cancelable) return
+    if (!reader.cancelable) return
+    reader.queued = null
+    if (!reader.active) return
     if (reader.tag) reader.tag.cancelled = true
     cancelling.start()
     cancelling.triggered()
@@ -110,22 +124,24 @@ Item {
     id: proc
     clearEnvironment: true
     stdout: SplitParser {
-      splitMarker: reader.streaming ? "" : "\n"
+      splitMarker: reader.streaming ? " " : "\n"
       onRead: function(data) {
         if (reader.overflowed) return
-        var piece = reader.streaming ? data : data + "\n"
+        var piece = reader.streaming ? (reader.streamedAny ? " " : "") + data : data + "\n"
+        if (reader.streaming) reader.streamedAny = true
         if (reader.collected.length + piece.length > reader.maxBytes) {
           reader.overflowed = true
           proc.running = false
           return
         }
         reader.collected += piece
-        if (reader.streaming) reader.chunk(data, reader.tag)
+        if (reader.streaming) reader.chunk(piece, reader.tag)
       }
     }
+    // At spaces too, so a character is never cut; only the end is kept.
     stderr: SplitParser {
-      splitMarker: ""
-      onRead: function(data) { reader.errorTail = (reader.errorTail + data).slice(-600) }
+      splitMarker: " "
+      onRead: function(data) { reader.errorTail = (reader.errorTail + (reader.errorTail ? " " : "") + data).slice(-600) }
     }
     onExited: function(exitCode, exitStatus) {
       if (exitCode === Sources.OVERFLOW) reader.overflowed = true

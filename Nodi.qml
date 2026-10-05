@@ -388,7 +388,9 @@ Item {
   function runPaletteAction(index) {
     var a = root.paletteActions[index]
     if (!a) return
-    if (a.confirm && root.paletteArmed !== a.label) {
+    // A word is the action's one confirmation: no second Enter before it
+    // (Fable 2026-10-05).
+    if (a.confirm && !a.confirmWord && root.paletteArmed !== a.label) {
       root.paletteIndex = index
       root.paletteArmed = a.label
       return
@@ -522,6 +524,9 @@ Item {
   // io.github.itsgg.nodi runRow '<key>'` (lib/Hotkey.js deeplink). It runs
   // what the row ran when the hotkey or the link was set.
   function runRow(key) {
+    // The window focused at the press, as a provider resolving the row sees
+    // it, not the one of the bar's last open (Fable 2026-10-05).
+    root.noteWindow()
     var saved = Prefs.snapshotFor(root.prefs, String(key || ""), root.history)
     // The row as its provider gives it now, when it can (lib/Engine.js resolve).
     var live = saved ? Engine.resolve(String(key), saved, root.config, root.services()) : null
@@ -560,6 +565,9 @@ Item {
       if (input.text.trim() !== root.wordAsk.word) return
       var w = root.wordAsk
       root.wordAsk = null
+      // The query is what the row was picked for, not the word (Fable
+      // 2026-10-05: typing "send" later lifted the row).
+      input.text = w.query
       root.execute(w.run, w.toggle, w.key, w.snap, w.title, w.undoable)
       return
     } else if (row.nodi === "undo") {
@@ -585,47 +593,21 @@ Item {
 
   // ---------------------------------------------------------------- nodi pick
 
-  // `nodi pick` (bin/nodi): the rows a program gave on stdin, in the bar
-  // until one is chosen or the bar closes; the answer goes back through the
-  // FIFO the command waits on, "pick <line>" or "cancel". The field had
-  // what it had before the pick once it ends, so a pick never becomes the
-  // query the bar remembers. Null when no pick is open.
-  property var pickSession: null     // { id, dir, rows, placeholder, json, before }
+  // `nodi pick` (bin/nodi, components/PickSession.qml): the rows a program
+  // gave on stdin, in the bar until one is chosen or the bar closes. The
+  // field gets back what it held once the pick ends, so a pick never
+  // becomes the query the bar remembers.
+  readonly property var pickSession: picks.current
 
-  // From bin/nodi: { dir, id, placeholder, json }. The directory is the one
-  // it made under the runtime directory, named for the id, holding `rows`
-  // and the FIFO `answer`; nothing else is written to.
-  function pick(argJson) {
-    var a = Pick.request(argJson)
-    if (!a) return "bad request"
-    root.endPick("cancel")
-    root.pickSession = { id: a.id, dir: a.dir, rows: null, placeholder: String(a.placeholder || "").slice(0, 200), json: a.json === true, before: input.text }
-    pickReader.run(["/usr/bin/cat", "--", a.dir + "/rows"], a.id)
-    return "ok"
-  }
-
+  function pick(argJson) { return picks.request(argJson, input.text) }
   // Asked by bin/nodi while it waits, so a bar reloaded mid-pick ends it.
-  function pickAlive(id) { return root.pickSession && root.pickSession.id === String(id) ? "yes" : "no" }
+  function pickAlive(id) { return picks.alive(id) }
+  function endPick(answer) { picks.end(answer) }
 
-  function endPick(answer) {
-    var s = root.pickSession
-    if (!s) return
-    root.pickSession = null
-    Quickshell.execDetached(Pick.answerArgv(s.dir, answer))
-    input.text = s.before
-  }
-
-  Reader {
-    id: pickReader
-    timeoutMs: 5000
-    maxBytes: 8388608
-    onFinished: function(text, ok, tag) {
-      var s = root.pickSession
-      if (!s || s.id !== tag) return
-      if (!ok) { root.endPick("cancel"); return }
-      root.pickSession = { id: s.id, dir: s.dir, rows: Pick.parse(text, s.json), placeholder: s.placeholder, json: s.json, before: s.before }
-      root.open(JSON.stringify({ query: "", pick: s.id }))
-    }
+  PickSession {
+    id: picks
+    onReady: root.open(JSON.stringify({ query: "", pick: picks.current.id }))
+    onEnded: function(before) { input.text = before }
   }
 
   FileView {
@@ -1050,7 +1032,7 @@ Item {
   readonly property var preview: root.readPreview(Pane.choose({
     paletteOpen: root.paletteOpen,
     ask: root.askShown !== "" ? { question: askSession.question, model: askSession.model, text: root.askShown } : null,
-    answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text } : null,
+    answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
     word: root.wordAsk,
     row: root.selectedRow, armed: !!root.selectedRow && root.armedKey === root.selectedRow.key, anyPreview: root.anyPreview
   }))

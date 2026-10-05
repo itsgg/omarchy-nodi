@@ -47,19 +47,24 @@ test("an empty field shows every row in order; typing ranks by Nodi's tiers, tie
   assert.ok(Pick.rows("", rows).every(x => x.section === "" && !x.hero), "no section header over a pick");
 });
 
-test("a request names its own directory under the runtime directory, and nothing else", () => {
-  const ok = Pick.request(JSON.stringify({ dir: "/run/user/1000/nodi-pick.Ab12Cd34", id: "Ab12Cd34", placeholder: "Which?", json: true }));
+test("a request names its own directory, directly under the runtime directory or /tmp, and nothing else", () => {
+  const roots = ["/run/user/1000", "/tmp"];
+  const ok = Pick.request(JSON.stringify({ dir: "/run/user/1000/nodi-pick.Ab12Cd34", id: "Ab12Cd34", placeholder: "Which?", json: true }), roots);
   assert.deepEqual(plain(ok), { dir: "/run/user/1000/nodi-pick.Ab12Cd34", id: "Ab12Cd34", placeholder: "Which?", json: true });
+  assert.ok(Pick.request(JSON.stringify({ dir: "/tmp/nodi-pick.x1", id: "x1" }), roots), "/tmp, where bin/nodi goes without a runtime directory");
   for (const bad of [
     { dir: "/home/u", id: "x" },
+    { dir: "/home/u/nodi-pick.Ab12", id: "Ab12" },
+    { dir: "/run/user/1000/deeper/nodi-pick.Ab12", id: "Ab12" },
     { dir: "/run/user/1000/nodi-pick.Ab12", id: "Other" },
     { dir: "/run/user/1000/../../home/u/nodi-pick.Ab12", id: "Ab12" },
     { dir: "relative/nodi-pick.Ab12", id: "Ab12" },
     { dir: "/tmp/x\n/nodi-pick.Ab12", id: "Ab12" },
     { dir: "/tmp/nodi-pick.Ab12", id: "Ab;12" },
     "not an object"
-  ]) assert.equal(Pick.request(JSON.stringify(bad)), null, JSON.stringify(bad));
-  assert.equal(Pick.request("{"), null);
+  ]) assert.equal(Pick.request(JSON.stringify(bad), roots), null, JSON.stringify(bad));
+  assert.equal(Pick.request("{", roots), null);
+  assert.equal(Pick.request(JSON.stringify({ dir: "/tmp/nodi-pick.x1", id: "x1" }), []), null, "no roots, no pick");
 });
 
 test("the answer goes into the FIFO and nowhere else", () => {

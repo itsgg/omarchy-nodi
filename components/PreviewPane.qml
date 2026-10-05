@@ -22,7 +22,7 @@ Rectangle {
   // carried one row's scroll to the next (Fable 2026-10-04). An answer is
   // one pane for all its rows (Paste, Copy, Again...), so not by the row:
   // it kept its place as it finished and as the rows were arrowed through.
-  readonly property string ident: (p.follow ? "answer" : (nodi.selectedRow ? nodi.selectedRow.key : ""))
+  readonly property string ident: (p.follow ? "answer:" + (p.round || 0) : (nodi.selectedRow ? nodi.selectedRow.key : ""))
     + "\n" + (p.title || "") + "\n" + (p.subtitle || "") + "\n" + (p.image || "")
   onIdentChanged: { body.scrolled = false; body.contentY = 0 }
 
@@ -92,10 +92,12 @@ Rectangle {
       model: pane.p.labels || []
       Row {
         required property var modelData
+        id: labelRow
         width: head.width
-        spacing: Style.space(8)
+        spacing: Style.spacing.lg
+        readonly property int labelWidth: Style.space(90)
         Text {
-          width: Style.space(90)
+          width: labelRow.labelWidth
           textFormat: Text.PlainText
           text: String(modelData[0])
           color: nodi.secondary
@@ -103,14 +105,18 @@ Rectangle {
           font.pixelSize: Style.font.caption
           elide: Text.ElideRight
         }
+        // Wrapped, whole: a risk is the text the pane is there to have read,
+        // and its middle was cut (Fable 2026-10-05).
         Text {
-          width: parent.width - Style.space(98)
+          width: parent.width - labelRow.labelWidth - parent.spacing
           textFormat: Text.PlainText
           text: String(modelData[1])
           color: nodi.foreground
           font.family: nodi.fontFamily
           font.pixelSize: Style.font.caption
-          elide: Text.ElideMiddle
+          wrapMode: Text.Wrap
+          maximumLineCount: 14
+          elide: Text.ElideRight
         }
       }
     }
