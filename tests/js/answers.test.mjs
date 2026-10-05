@@ -223,6 +223,15 @@ test("windows", () => {
   assert.ok(run("w", extra).every(x => !x.run || x.run.kind !== "window"), "a bare w is a normal search");
 });
 
+test("windows: a web app's window is its app's, by the site Chromium names it after (Fable 2026-10-06)", () => {
+  const apps = [{ id: "Slack", name: "Slack", wmclass: "", generic: "", comment: "", keywords: [], icon: "Slack", actions: [],
+                  exec: 'omarchy-launch-webapp "https://app.slack.com/client/TAGQSSBA9/activity-inbox"' }];
+  const windows = [{ address: "0xf1", cls: "chrome-app.slack.com__client_TAGQSSBA9_activity-inbox-Default", title: "! Activity - Fluxon - Slack", workspace: "3", focus: 1 }];
+  const r = run("slack", { apps, windows });
+  assert.deepEqual([r[0].run.address, r[0].subtitle], ["0xf1", "Slack, workspace 3"], "switches to it, named by its app");
+  assert.equal(r[1].actionLabel, "Open new");
+});
+
 test("windows: center and pin act on the window that had the focus", () => {
   assert.deepEqual(plain(top("center window").run), { kind: "exec", argv: ["hyprctl", "dispatch", "hl.dsp.window.center()"] });
   assert.deepEqual(plain(top("pin window").run), { kind: "exec", argv: ["hyprctl", "dispatch", "hl.dsp.window.pin()"] });
@@ -514,3 +523,64 @@ test("a run that reads $1 only inside single quotes takes no words (Fable 2026-1
   assert.equal(Engine.run("ip", cfg, {})[0].run.kind, "shell", "runs as typed, awk's $1 its own");
   assert.equal(Engine.run("say", cfg, {})[0].run, null, "a real $1 asks for words");
 });
+
+test("labels that remove a doubt: a paste names where it lands; Tab puts a sum's answer in the field (ROADMAP 56)", () => {
+  const Rows = load("lib/Rows.js");
+  const apps = [{ id: "chromium", name: "Chromium", wmclass: "", generic: "", comment: "", keywords: [], icon: "", actions: [] }];
+  assert.equal(Rows.pasteTarget({ class: "chromium" }, apps), "Chromium", "the app's own name");
+  assert.equal(Rows.pasteTarget({ class: "com.mitchellh.ghostty" }, []), "Ghostty", "else the class made readable");
+  assert.equal(Rows.pasteTarget({ class: "org.telegram.desktop" }, []), "Telegram", "a generic last part gives way");
+  assert.equal(Rows.pasteTarget({ class: "" }, apps), "");
+  assert.equal(Rows.pasteTarget(null, apps), "");
+  // A web app's window, as Chromium names it on this machine (hyprctl clients, 2026-10-06; Fable).
+  const web = [{ id: "Slack", name: "Slack", exec: 'omarchy-launch-webapp "https://app.slack.com/client/TAGQSSBA9/activity-inbox"' },
+               { id: "Basecamp", name: "Basecamp", exec: "omarchy-launch-webapp https://launchpad.37signals.com" },
+               { id: "Discord", name: "Discord", exec: "chromium --app=https://discord.com/app" }];
+  assert.equal(Rows.pasteTarget({ class: "chrome-app.slack.com__client_TAGQSSBA9_activity-inbox-Default" }, web), "Slack");
+  assert.equal(Rows.pasteTarget({ class: "brave-launchpad.37signals.com-Default" }, web), "Basecamp", "no path; another browser");
+  assert.equal(Rows.pasteTarget({ class: "chrome-discord.com__app-Default" }, web), "Discord", "--app=");
+  assert.equal(Rows.pasteTarget({ class: "chrome-discord.com__app-Default" }, []), "discord.com", "no entry: its site");
+  assert.equal(Rows.pasteTarget({ class: "chrome-discord.com__channels_@me-Default" }, web), "discord.com", "another path is another app");
+  assert.equal(Rows.pasteTarget({ class: "chrome-localhost__admin-Default" }, []), "localhost", "a local web app (Fable 2026-10-06)");
+  assert.equal(Rows.pasteTarget({ class: "chrome-192.168.1.1__x-Default" }, []), "192.168.1.1");
+  const cb = run("cb hello", { clipboard: [{ type: "text", text: "hello world" }], window: { class: "chromium" }, apps })[0];
+  assert.equal(cb.actionLabel, "Paste into Chromium");
+  const History = load("lib/History.js");
+  const pasted = run("sig", { window: { class: "chromium" }, apps }, { ...config, snippets: [{ name: "Sig", keyword: "sig", text: "x" }] })[0];
+  assert.equal(pasted.actionLabel, "Paste into Chromium");
+  assert.equal(History.snapshot(pasted).actionLabel, "Paste", "saved, it says Paste: the window is the live row's to name, never the saved one's (Fable 2026-10-06)");
+  assert.equal(run("cb hello", { clipboard: [{ type: "text", text: "hello world" }] })[0].actionLabel, "Paste", "no window known: as before");
+  const sum = run("12*8")[0];
+  assert.equal(sum.complete, "96");
+  assert.ok(Rows.canComplete(sum), "Tab fills it");
+});
+
+test("= or calc alone: the answers copied before, newest first (ROADMAP 56)", () => {
+  const history = {
+    "math:96": { n: 2, t: 200, s: { title: "96", subtitle: "= 12*8", provider: "math", kind: "answer", run: { kind: "copy", text: "96" } } },
+    "math:1.18059e+21": { n: 1, t: 100, s: { title: "1.18059e+21", subtitle: "= 2^70", provider: "math", kind: "answer", run: { kind: "copy", text: "1.180591621e+21" } } },
+    "math:1,234.5": { n: 1, t: 300, s: { title: "1,234.5", subtitle: "= 2469/2", provider: "math", kind: "answer", run: { kind: "copy", text: "1234.5" } } },
+    "app:firefox": { n: 9, t: 400, s: { title: "Firefox", provider: "apps", run: { kind: "app", id: "firefox" } } }
+  };
+  const rows = plain(run("=", { history }));
+  assert.deepEqual(rows.map(r => [r.title, r.subtitle]), [["1,234.5", "= 2469/2"], ["96", "= 12*8"], ["1.18059e+21", "= 2^70"]]);
+  assert.equal(rows[0].copy, "1234.5", "copied as a number");
+  assert.equal(rows[2].copy, "1.180591621e+21", "the full value the answer copied, not its shown rounding");
+  assert.notEqual(plain(run("calc", { history }))[0].title, "1,234.5", "calc is LibreOffice Calc's, not the history's");
+  assert.equal(plain(run("=", { history: {} }))[0].title, "No answers yet");
+  // As the bar keeps it: Enter on the answer runs its copy and records
+  // its snapshot (Nodi.qml execute); the home never offers it again.
+  const History = load("lib/History.js");
+  const sum = run("2^70")[0];
+  assert.equal(sum.run.kind, "copy");
+  const kept = History.record({}, sum.key, 500, History.snapshot(sum));
+  assert.deepEqual(plain(run("=", { history: kept })).map(r => [r.title, r.copy]), [["1.18059e+21", "1.180591621e+21"]],
+                   "a copied sum is listed (Fable 2026-10-06: none was)");
+  assert.ok(!run("", { history: kept }).some(r => r.key === sum.key), "a sum's answer is a moment, not a recent row");
+  const Prefs = load("lib/Prefs.js");
+  const keeps = row => plain(Rows.actionsFor(row, { prefs: Prefs.empty() }).map(a => a.label)).includes("Add to favourites");
+  assert.ok(!keeps(sum), "a sum is not kept");
+  const snip = { ...config, snippets: [{ name: "Sig", keyword: "sig", text: "Regards,\nGanesh" }] };
+  assert.ok(keeps(run("sig", {}, snip)[0]), "a snippet by its keyword is (Fable 2026-10-06: the kind gate took it away)");
+});
+

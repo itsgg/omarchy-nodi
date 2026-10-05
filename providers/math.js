@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Score.js" as Score
+.import "../lib/Run.js" as Run
 
 // Calculator: a tokenizer and a recursive-descent parser, never eval().
 // Ported from omarchy-commandbar (Saikomantisu, MIT).
@@ -218,6 +219,25 @@ function factorial(n) {
   return r
 }
 
+function pastAnswers(history) {
+  var out = []
+  for (var key in history) {
+    var e = history[key]
+    if (!Object.prototype.hasOwnProperty.call(history, key) || !e || !e.s || e.s.provider !== "math") continue
+    out.push({ e: e, key: key })
+  }
+  out.sort(function(a, b) { return (b.e.t || 0) - (a.e.t || 0) })
+  if (out.length === 0) return [{ title: "No answers yet", subtitle: "A sum you copy is kept here", score: 50, copy: "", remember: false }]
+  return out.slice(0, 20).map(function(x, i) {
+    var value = String(x.e.s.title || "")
+    // The full number the answer copied (its run's text), not its shown
+    // rounding: 2^70 shows 1.18059e+21 (Fable 2026-10-06).
+    var full = x.e.s.run && x.e.s.run.kind === "copy" && x.e.s.run.text ? String(x.e.s.run.text) : value.replace(/[^0-9eE.+-]/g, "")
+    return { key: x.key, title: value, subtitle: String(x.e.s.subtitle || ""), icon: "󰃬", score: 96 - i * 0.01,
+             copy: full || value, complete: full, group: "Calculator", remember: false }
+  })
+}
+
 // Returns { value, trivial } or null when the text isn't a complete expression.
 // `trivial` is true for a bare number, which the calculator shouldn't echo back.
 function evaluate(src) {
@@ -245,9 +265,13 @@ var provider = {
   ],
   help: [
     { id: "calc", title: "Calculator", about: "Sums, percentages, powers, sqrt and pi",
-      examples: ["12*8 + 15%", "sqrt(2) * pi", "15% of 200", "5!"] }
+      examples: ["12*8 + 15%", "sqrt(2) * pi", "15% of 200", "5!", { q: "=", note: "The answers copied before" }] }
   ],
   match: function(query, ctx) {
+    // "=" alone: the last 20 answers copied, newest first, from what
+    // History keeps of them (ROADMAP 56), as Alfred and PowerToys keep a
+    // calculator's history. Not "calc", which opens LibreOffice Calc.
+    if (/^\s*=\s*$/.test(query)) return pastAnswers(ctx.history || {})
     var text = query.replace(/=\s*$/, "")
     var r = evaluate(text)
     if (!r || r.trivial) return []
@@ -260,7 +284,13 @@ var provider = {
       title: ctx.format(rounded),
       subtitle: "= " + text.trim(),
       score: 80,
-      copy: ctx.plain(rounded)
+      copy: ctx.plain(rounded),
+      // Copied by its run, so Enter keeps what `=` lists (pastAnswers);
+      // a row with only `copy` was kept with no snapshot (Fable 2026-10-06).
+      run: Run.copy(ctx.plain(rounded)),
+      // Tab puts the answer in the field, to go on from it ("*3"), as
+      // Alfred's does (ROADMAP 56).
+      complete: ctx.plain(rounded)
     }])
   }
 }

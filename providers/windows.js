@@ -3,6 +3,7 @@
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 .import "apps.js" as Apps
+.import "../lib/WindowClass.js" as WindowClass
 
 // Switch to an open window. Nodi.qml takes a snapshot of Hyprland's windows
 // (hyprctl clients) each time it opens, in ctx.windows:
@@ -16,25 +17,11 @@
 var LIMIT = 8
 
 // The desktop entry a window belongs to, for its name and icon.
-function appFor(win, apps) {
-  var cls = String(win.cls).toLowerCase()
-  for (var i = 0; i < apps.length; i++) {
-    var a = apps[i]
-    if (a.id.toLowerCase() === cls || (a.wmclass && a.wmclass.toLowerCase() === cls)) return a
-  }
-  // "com.mitchellh.ghostty" matches an entry whose id ends in "ghostty".
-  var tail = cls.split(".").pop()
-  for (var j = 0; j < apps.length; j++) {
-    if (apps[j].id.toLowerCase().split(".").pop() === tail) return apps[j]
-  }
-  return null
-}
+function appFor(win, apps) { return WindowClass.forClass(win.cls, apps) }
 
 function describe(win, apps) {
   var app = appFor(win, apps)
-  // No desktop entry: "com.mitchellh.ghostty" reads as "Ghostty".
-  var tail = String(win.cls).split(".").pop()
-  var name = app ? app.name : tail.charAt(0).toUpperCase() + tail.slice(1)
+  var name = app ? app.name : WindowClass.nameForClass(win.cls, [])
   return {
     app: app,
     name: name,
