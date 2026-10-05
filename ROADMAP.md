@@ -226,6 +226,9 @@ baseline query loses rank.
     "sp", weighted by how much of it was typed. Q 3.
 35. **The words a row shows are searched**: an app's comment and written
     description, a row's subtitle source. Q 4.
+    Done 2026-10-05: the description queries from 2 of 8 first to 8 of 8,
+    82 of 100 in all; noise from 25 rows to 17, as a word under three
+    letters no longer names a row by its description alone.
 36. **Typos on generic names and keywords**, a typo costing one step
     instead of the floor; a plural folded. Q 7.
 37. **An fzf-style score inside each tier**: initials, camel case and

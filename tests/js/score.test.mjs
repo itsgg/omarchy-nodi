@@ -174,3 +174,16 @@ test("a word split by its case is matched whole too", () => {
   assert.equal(Score.tier("gihtub", { name: "Open GitHub" }), "fuzzy", "a typo of the whole word");
 });
 
+
+test("a word under three letters names a row by its name or keywords, not by its description alone (ROADMAP 35)", () => {
+  const foot = { name: "Foot", generic: "Terminal", description: "A wayland native terminal emulator" };
+  assert.equal(Score.tier("wa", foot), "", "\"wa\" starts wayland, in the description only");
+  assert.equal(Score.tier("wayland", foot), "description", "a whole word there still names it");
+  assert.equal(Score.tier("native term", foot), "description", "longer words from the description and the generic name");
+  const cmd = { name: "omarchy hyprland window pop", whole: true, description: "Toggle to pop-out a tile to stay fixed on a display basis" };
+  assert.equal(Score.tier("wi fi", cmd), "", "two short words that start description words are no match");
+  const wifi = { name: "Wi-Fi", keywords: ["wireless"], description: "Turn the radio on or off" };
+  assert.equal(Score.tier("wi fi", wifi), "exact", "where the name has them, as before");
+  assert.equal(Score.tier("wi radio", wifi), "description", "a short word the name holds, the rest from the description");
+  assert.equal(Score.tier("radio on", wifi), "", "on is in the description only");
+});

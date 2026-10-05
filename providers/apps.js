@@ -47,22 +47,40 @@ function about(app, descriptions) {
 // An app a model may be asked to describe: its entry says nothing of it.
 function undescribed(app) { return given(app) === "" }
 
+// What an app is described by, matched as its description: what its row
+// says under the name, and its entry's comment where the row shows the
+// generic name instead ("organize files" finds Files, "handwritten notes"
+// Xournal++; Q 4, ROADMAP 35). Not the "Application" a row says when
+// nothing describes it, nor a comment that only repeats the name.
+function describedAs(app, descriptions) {
+  var name = String(app.name || "").trim().toLowerCase()
+  var shown = about(app, descriptions)
+  var comment = String(app.comment || "").trim()
+  var out = shown === "Application" ? [] : [shown]
+  if (comment && comment.toLowerCase() !== name && comment !== shown) out.push(comment)
+  return out.join(" ")
+}
+
 // What an app is matched on: the generic name ("Terminal") names an app up
-// to a whole-word match; the id and the keywords are keywords.
-function fields(app) {
+// to a whole-word match; the id and the keywords are keywords; what its
+// row says is its description.
+function fields(app, descriptions) {
   return Score.prepare({
     name: app.name,
     generic: app.generic,
     keywords: [String(app.id || "").replace(/[._-]+/g, " ")].concat(app.keywords || []),
+    description: describedAs(app, descriptions),
     letters: true
   })
 }
 
-// Worked out once per list of apps, not on every keystroke (tools/bench.sh).
-var fieldsCache = { apps: null, fields: null }
+// Worked out once per list of apps and of descriptions, not on every
+// keystroke (tools/bench.sh).
+var fieldsCache = { apps: null, descriptions: null, fields: null }
 
-function fieldsOf(apps) {
-  if (fieldsCache.apps !== apps) fieldsCache = { apps: apps, fields: apps.map(fields) }
+function fieldsOf(apps, descriptions) {
+  if (fieldsCache.apps !== apps || fieldsCache.descriptions !== descriptions)
+    fieldsCache = { apps: apps, descriptions: descriptions, fields: apps.map(function(a) { return fields(a, descriptions) }) }
   return fieldsCache.fields
 }
 
@@ -133,7 +151,7 @@ var provider = {
     var isRunning = runningOf(ctx.windows || [])
 
     var hits = []
-    var known = fieldsOf(apps)
+    var known = fieldsOf(apps, ctx.descriptions)
     for (var i = 0; i < apps.length; i++) {
       var t = Score.tier(q, known[i])
       if (t) hits.push({ app: apps[i], t: t, s: Score.score(t, "app", Score.habit(history["app:" + apps[i].id], nowMs)) })
