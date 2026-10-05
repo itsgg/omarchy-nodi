@@ -149,12 +149,18 @@ JSON object a line, each a row; only `title` is required:
 `action` is one of `{"exec": [argv]}` (started through a login shell, its
 arguments never read as shell), `{"open": "url or /path"}`,
 `{"copy": "text"}`, `{"paste": "text"}` (into the window you were in) or
-`{"query": "text"}` (fills the bar in). `confirm` asks for a second Enter.
+`{"query": "text"}` (fills the bar in). `confirm` asks before it runs:
+`true` for a second Enter, or a word to type, such as `"send"` (up to 40
+characters, no space; anything else is a second Enter). A row that asks
+shows in the pane the exact command it runs, with `risk`, your words for
+what it may cost, once Enter has armed it or its word is asked, and from
+the start when it has no `preview`. It gets no hotkey or link, and
+`nodi run` refuses it.
 `preview` is Markdown for the pane beside the list, or `{"title",
 "subtitle", "markdown"}`; pictures and HTML in it are shown as text, never
 loaded. A row with an `id` is remembered and ranked like any other.
 `actions` are what Ctrl+K offers, each with `exec`, `open`, `copy` or
-`paste`. At most 50 rows; a line that is not such an object is skipped.
+`paste`, and `confirm` and `risk` as a row has them. At most 50 rows; a line that is not such an object is skipped.
 While a run is on its way, the last rows stay.
 
 An answer is a program that answers a question you type after a keyword,

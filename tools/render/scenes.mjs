@@ -175,6 +175,14 @@ const scenes = [
   scene("32-keys-help", "?shortcuts"),
   scene("30-filter-markdown", "n meet", { filter: () => Filters.parse(filterOutput, { keyword: "n", title: "Notes", icon: "󰎞" }) }, null, withFilter),
   (() => {
+    // A row that runs only once a word is typed, its command and risk shown.
+    const Run = load("lib/Run.js");
+    const wordAsk = { title: "Send the weekly report", word: "send", risk: "Mails the report to 40 people on the team list; it cannot be called back.",
+                      run: Run.exec(["mailer", "send", "--list", "team", "reports/weekly 2026-10-04.md"]) };
+    return { name: "35-confirm-word", query: "sen", rows: plain(Engine.wordPrompt("sen", wordAsk)), mode: { label: "Confirm", icon: "󰀦" }, wordAsk,
+             selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0, paletteArmed: "", paletteRow: null, armedKey: "" };
+  })(),
+  (() => {
     // An answer a program streams (providers/answers.js), halfway through.
     const withAnswers = Object.assign({}, config, { answers: [{ keyword: "a", title: "Assistant", icon: "󰚩", command: ["my-ask"] }] });
     const said = "The cache is cold after a reboot, so the first open reads every desktop entry.\n\n"
