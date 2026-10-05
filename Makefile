@@ -1,5 +1,5 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test rank rank-update lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test rank rank-update opens lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
@@ -21,6 +21,12 @@ rank:
 
 rank-update:
 	@node tools/rank/rank.mjs --update
+
+# How long the bar's opens took on this machine, from the times Nodi keeps
+# as it is used (lib/Opens.js): key to ranking, to the first frame, and to
+# Hyprland's openlayer. `node tools/opens.mjs --since <time>` for a range.
+opens:
+	@node tools/opens.mjs
 
 # In `check` because a component the shell refuses to load passes every
 # JavaScript test.

@@ -22,6 +22,7 @@ import "lib/tzcities.js" as Tz
 import "lib/Describe.js" as Describe
 import "lib/Pick.js" as Pick
 import "lib/Pane.js" as Pane
+import "lib/Opens.js" as Opens
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 
@@ -150,6 +151,11 @@ Item {
 
   // payloadJson may carry a starting query: '{"query": ":"}' opens emoji search.
   function open(payloadJson) {
+    // This open's times (lib/Opens.js), from its start: an open while the
+    // bar is up is not one, and leaves the record as it was.
+    var starting = !root.opened
+    if (starting) root.openRec = Opens.start(Date.now(), root.openBy || "call", false)
+    root.openBy = ""
     // Sizes change at once until the card is up (startReads).
     card.animated = false
     var payload = {}
@@ -178,11 +184,15 @@ Item {
     // The reads (windows, toggles, themes...) start 60 ms after, once the
     // card is on screen: each start forks the shell, and started here they
     // held the first frame back about 70 ms (161 ms from the key to the
-    // screen against 92, measured 2026-10-04). Quickshell's PanelWindow has
-    // no frame signal to wait for instead.
+    // screen against 92, measured 2026-10-04). The window's frameSwapped
+    // reaches QML through card.Window.window (the open times below), so
+    // ROADMAP 30 may wait for the frame instead of a clock.
     root.readsPending = true
     readsAfterFrame.restart()
+    // A kept query: the field held text the payload did not give.
+    if (starting && root.openRec) root.openRec.held = input.text !== "" && typeof payload.query !== "string"
     root.recompute()
+    Opens.stamp(root.openRec, "ranked", Date.now())
     var given = typeof payload.query === "string"
     Qt.callLater(function() { input.forceActiveFocus(); if (!given) input.selectAll() })
     // Whatever the field holds now was not typed this time (the last query,
@@ -233,6 +243,7 @@ Item {
 
   function close() {
     card.animated = false
+    root.keepOpenTime()
     // A pick closed without a choice: its command hears that nothing was.
     root.endPick("cancel")
     root.opened = false
@@ -263,6 +274,47 @@ Item {
   function toggle() {
     if (root.opened) root.dismiss()
     else root.open("{}")
+  }
+
+  // ---------------------------------------------------------------- open times
+
+  // Each open's start, first ranking, first frame and Hyprland's openlayer
+  // (lib/Opens.js), kept on the close for `make opens`: measured as he
+  // uses the bar, since a test open would show on his screen (ROADMAP 30).
+  property var openRec: null
+  property string openBy: ""
+  property var openTimes: []
+  property bool openTimesLoaded: false
+
+  function keepOpenTime() {
+    if (!root.openRec) return
+    root.openTimes = Opens.add(root.openTimes, root.openRec)
+    root.openRec = null
+    if (root.cacheReady && root.openTimesLoaded) openTimesFile.setText(Opens.serialize(root.openTimes))
+  }
+
+  FileView {
+    id: openTimesFile
+    path: root.cacheDir + "/opens.json"
+    printErrors: false
+    atomicWrites: true
+    onLoaded: { root.openTimes = Opens.parse(text()).concat(root.openTimes).slice(-Opens.MAX); root.openTimesLoaded = true }
+    onLoadFailed: root.openTimesLoaded = true
+  }
+
+  // The first frame the bar's window swaps after the open.
+  Connections {
+    target: card.Window.window
+    ignoreUnknownSignals: true
+    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1) Opens.stamp(root.openRec, "frame", Date.now()) }
+  }
+
+  // Hyprland maps the layer: what the compositor shows.
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      if (root.openRec && event.name === "openlayer" && event.data === Hotkey.NAMESPACE) Opens.stamp(root.openRec, "layer", Date.now())
+    }
   }
 
   // ---------------------------------------------------------------- queries
@@ -771,7 +823,7 @@ Item {
     appid: root.pluginId
     name: "toggle"
     description: "Open or close Nodi"
-    onPressed: root.toggle()
+    onPressed: { root.openBy = root.opened ? "" : "key"; root.toggle() }
   }
   property string lastBinds: "[]"         // the binds as last read, for checking a chord being set
   property var boundRows: ({})            // combo -> the row key this Nodi bound it to
