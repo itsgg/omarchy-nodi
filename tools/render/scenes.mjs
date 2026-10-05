@@ -170,6 +170,9 @@ const scenes = [
     { name, preview: "/usr/share/omarchy/themes/" + name.toLowerCase().replace(/ /g, "-") + "/preview.png" })) } }),
   scene("23-scripts", "scripts ", { scripts, scriptOutput: { [join(scriptsDir, "uptime.sh")]: "up 3 days, 4 hours" } }),
   scene("docs-home", "", Object.assign({}, docsBase, { history: docsHistory })),
+  // An undoable action ran a minute ago: its undo is on offer first.
+  scene("36-undo-home", "", { history, undo: [{ key: "undo:1", title: "Restore the meeting note",
+    run: { kind: "exec", argv: ["my-notes", "restore", "meeting"] }, at: services().now().getTime() - 60000 }] }),
   scene("31-pane-overflow", "cb ", { clipboard: [
     { type: "text", text: Array.from({ length: 40 }, (_, i) => "line " + (i + 1) + " of a long entry, more than the pane shows").join("\n") } ] }),
   scene("32-keys-help", "?shortcuts"),

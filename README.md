@@ -160,7 +160,16 @@ the start when it has no `preview`. It gets no hotkey or link, and
 "subtitle", "markdown"}`; pictures and HTML in it are shown as text, never
 loaded. A row with an `id` is remembered and ranked like any other.
 `actions` are what Ctrl+K offers, each with `exec`, `open`, `copy` or
-`paste`, and `confirm` and `risk` as a row has them. At most 50 rows; a line that is not such an object is skipped.
+`paste`, and `confirm`, `risk` and `undoable` as a row has them.
+
+A row or action with `"undoable": true` and an `exec` action is run by
+Nodi itself, which reads what it prints. If its last line is
+`{"undo": {"exec": ["my-notes", "restore", "meeting"], "title": "Restore the meeting note"}}`,
+that command is offered as a row for ten minutes: first on the empty bar,
+and found by its title or by `undo`; Enter twice runs it. Such an action
+runs in the filter's environment and must end within two minutes, and if
+it fails a notification says why. The offer lasts while the shell runs,
+not across a restart. At most 50 rows; a line that is not such an object is skipped.
 While a run is on its way, the last rows stay.
 
 An answer is a program that answers a question you type after a keyword,

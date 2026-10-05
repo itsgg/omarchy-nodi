@@ -25,6 +25,8 @@
 //     "confirm": true,                      Enter twice, or "send": type the
 //                                           word, then Enter (lib/Rows.js)
 //     "risk": "Sends 3 messages",           shown with the command it runs
+//     "undoable": true,                     its last line may name its undo
+//                                           (an exec action; lib/Undo.js)
 //     "preview": "## Markdown"              or { "title", "subtitle", "markdown" }
 //     "actions": [{ "title": "Copy link", "action": { "copy": "..." } }] }   Ctrl+K
 //
@@ -131,13 +133,15 @@ function parse(textOut, f) {
       risk: text(o.risk, MAX.risk),
       // What a program's row runs is shown before it runs, once it asks.
       showsCommand: true,
+      undoable: o.undoable === true,
       remember: !!id,
       preview: previewOf(o.preview),
       group: f.title || f.keyword,
       actions: Array.isArray(o.actions) ? o.actions.slice(0, 12).map(function(a) {
         var x = actionOf(a && a.action)
         var c = confirmOf(a && a.confirm)
-        return x.run ? { label: text(a.title, MAX.title), icon: "", run: x.run, confirm: c.confirm, confirmWord: c.confirmWord, risk: text(a && a.risk, MAX.risk) } : null
+        return x.run ? { label: text(a.title, MAX.title), icon: "", run: x.run, confirm: c.confirm, confirmWord: c.confirmWord, risk: text(a && a.risk, MAX.risk),
+                         undoable: !!a && a.undoable === true } : null
       }).filter(function(a) { return a && a.label }) : []
     }
     rows.push(row)
