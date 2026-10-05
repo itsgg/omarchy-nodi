@@ -56,18 +56,18 @@ test("keys in the list", () => {
   assert.equal(d("Backspace"), null, "Backspace edits the text");
 });
 
-test("Escape steps back one thing at a time", () => {
+test("Escape steps back from what is open, then closes the bar in one press", () => {
   assert.deepEqual(d("Escape", { armed: true, helpTopic: true }), { do: "disarm" }, "first a second Enter that was waiting");
   assert.deepEqual(d("Escape", { helpTopic: true }), { do: "helpBack" }, "then a help topic");
-  assert.deepEqual(d("Escape"), { do: "clear" }, "then the text");
-  assert.deepEqual(d("Escape", { text: "" }), { do: "dismiss" }, "then the bar");
+  assert.deepEqual(d("Escape"), { do: "dismiss" }, "then the bar, text or not: the query stays for next time");
+  assert.deepEqual(d("Escape", { text: "" }), { do: "dismiss" });
   assert.deepEqual(d("Backspace", { backToTopics: true }), { do: "helpBack" });
   assert.deepEqual(d("Escape", { prompting: true, armed: true }), { do: "cancelPrompt" }, "a prompt being typed (an alias, a confirm word) goes first");
   // The bar reopens on the last query, selected: one Escape closes it until
   // something is typed (his report 2026-10-05).
   assert.deepEqual(d("Escape", { text: "firefox", typed: false }), { do: "dismiss" });
   assert.deepEqual(d("Escape", { text: "?units", helpTopic: true, typed: false }), { do: "dismiss" });
-  assert.deepEqual(d("Escape", { text: "firefox", typed: true }), { do: "clear" }, "typed: clears first, as before");
+  assert.deepEqual(d("Escape", { text: "firefox", typed: true }), { do: "dismiss" }, "typed too: one press (his report 2026-10-05)");
   assert.deepEqual(d("Escape", { text: "x", typed: false, armed: true }), { do: "disarm" }, "an armed row is disarmed first");
 });
 

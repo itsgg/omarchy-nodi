@@ -90,6 +90,6 @@ test("in a pick, Enter chooses and nothing else acts: no actions, no fill-in, no
   assert.deepEqual(plain(Keys.decide({ name: "Return" }, v)), { do: "activate", index: 1 });
   for (const key of [{ name: "Tab" }, { name: "K", ctrl: true }, { name: "Return", ctrl: true }])
     assert.deepEqual(plain(Keys.decide(key, v)), { do: "nothing" }, JSON.stringify(key));
-  assert.deepEqual(plain(Keys.decide({ name: "Escape" }, v)), { do: "clear" });
+  assert.deepEqual(plain(Keys.decide({ name: "Escape" }, v)), { do: "dismiss" }, "Escape ends the pick, nothing chosen");
   assert.deepEqual(plain(Keys.decide({ name: "Escape" }, Object.assign({}, v, { text: "" }))), { do: "dismiss" });
 });
