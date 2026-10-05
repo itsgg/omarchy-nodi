@@ -139,7 +139,13 @@ Parser.prototype.term = function() {
     this.sawOperation = true
     if (op === "*" || op === "of") left = { v: left.v * right.v }
     else if (op === "/") left = { v: left.v / right.v }
-    else left = { v: ((left.v % right.v) + right.v) % right.v }
+    else {
+      // The divisor's sign, added only where the remainder needs it: always
+      // adding it lost the remainder of 1 mod 1e20 (codex 2026-10-05).
+      var r = left.v % right.v
+      if (r !== 0 && (r < 0) !== (right.v < 0)) r += right.v
+      left = { v: r }
+    }
   }
   return left
 }

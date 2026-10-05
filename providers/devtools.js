@@ -138,7 +138,9 @@ function answer(query, ctx) {
       return [{ key: "uuid", title: id, subtitle: "UUID v4", icon: "󰡷", score: 95, copy: id }]
     }
 
-    var b = raw.match(/^(?:b64|base64)(?:\s+(?:(encode|decode)\s+)?([\s\S]*))?$/i)
+    // Matched before the trim: what follows the word is the payload as
+    // typed, its trailing spaces and newlines included (codex 2026-10-05).
+    var b = String(query || "").replace(/^\s+/, "").match(/^(?:b64|base64)(?:\s+(?:(encode|decode)\s+)?([\s\S]*))?$/i)
     if (b) {
       var how = (b[1] || "").toLowerCase()
       var text = b[2] === undefined ? "" : b[2]
@@ -178,14 +180,20 @@ function answer(query, ctx) {
 
     var c = parseColor(raw)
     if (c) {
-      var hex = "#" + hex2(c.r) + hex2(c.g) + hex2(c.b)
+      // A colour that is see-through stays so in every form: #RRGGBBAA, and
+      // its alpha in rgb() and hsl() (codex 2026-10-05: #ff000000 copied as
+      // opaque red). The swatch is Qt's colour, alpha first.
+      var alpha = c.a < 1 ? hex2(Math.round(c.a * 255)) : ""
+      var hex = "#" + hex2(c.r) + hex2(c.g) + hex2(c.b) + alpha
+      var swatch = "#" + alpha + hex2(c.r) + hex2(c.g) + hex2(c.b)
       var hsl = rgbToHsl(c.r, c.g, c.b)
-      var rgb = "rgb(" + c.r + ", " + c.g + ", " + c.b + (c.a < 1 ? ", " + Number(c.a.toFixed(2)) : "") + ")"
-      var hslText = "hsl(" + hsl.h + ", " + hsl.s + "%, " + hsl.l + "%)"
+      var a = c.a < 1 ? ", " + Number(c.a.toFixed(2)) : ""
+      var rgb = "rgb(" + c.r + ", " + c.g + ", " + c.b + a + ")"
+      var hslText = "hsl(" + hsl.h + ", " + hsl.s + "%, " + hsl.l + "%" + a + ")"
       return [
-        { key: "color:hex", title: hex, subtitle: "Hex", swatch: hex, score: 96, copy: hex },
-        { key: "color:rgb", title: rgb, subtitle: "RGB", swatch: hex, score: 95, copy: rgb },
-        { key: "color:hsl", title: hslText, subtitle: "HSL", swatch: hex, score: 94, copy: hslText }
+        { key: "color:hex", title: hex, subtitle: "Hex", swatch: swatch, score: 96, copy: hex },
+        { key: "color:rgb", title: rgb, subtitle: "RGB", swatch: swatch, score: 95, copy: rgb },
+        { key: "color:hsl", title: hslText, subtitle: "HSL", swatch: swatch, score: 94, copy: hslText }
       ]
     }
     return []

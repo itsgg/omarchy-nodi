@@ -12,19 +12,18 @@
 // Read through ctx.request when asked for; the power list can take seconds
 // (powerprofilesctl), so it shows "Reading..." until it lands.
 
-function lines(text) {
-  return String(text || "").split("\n").map(function(l) { return l.trim() }).filter(function(l) { return l })
-}
-
 // "@current<TAB>name", then a name per line.
 function parseList(text, ok) {
   if (!ok) throw "could not read the list"
   var current = ""
   var list = []
-  var all = lines(text)
-  for (var i = 0; i < all.length; i++) {
-    if (all[i].indexOf("@current\t") === 0) { current = all[i].slice(9).trim(); continue }
-    if (list.indexOf(all[i]) === -1) list.push(all[i])
+  // The marker read before lines are trimmed: an empty one, "@current\t",
+  // trimmed to "@current", was a font named so (codex 2026-10-05).
+  var raw = String(text || "").split("\n")
+  for (var i = 0; i < raw.length; i++) {
+    if (/^@current(\t|$)/.test(raw[i])) { current = raw[i].slice(9).trim(); continue }
+    var name = raw[i].trim()
+    if (name && list.indexOf(name) === -1) list.push(name)
   }
   return { current: current, list: list }
 }

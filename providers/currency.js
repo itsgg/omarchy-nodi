@@ -21,7 +21,20 @@ var NAMES = {
 }
 
 // Used before the first rates download so the parser still recognises codes.
-var COMMON = ["USD", "EUR", "GBP", "JPY", "CNY", "INR", "LKR", "AUD", "CAD", "CHF", "SGD", "AED", "SAR", "MYR", "THB", "KRW", "NZD", "HKD", "SEK", "NOK", "DKK", "PKR", "BDT", "NPR", "MVR", "QAR", "KWD", "OMR", "BHD"]
+// Every code open.er-api.com gives a rate for (its USD list, read
+// 2026-10-05), so a conversion asked before any rates are saved is read as
+// one and fetches them: "100 usd to rub" once read as nothing, as RUB was
+// not among the common codes this list replaces, and nothing was fetched
+// (codex 2026-10-05). A code the rates turn out to lack converts to nothing.
+var CODES = (
+  "AED AFN ALL AMD ANG AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BRL BSD BTN BWP BYN " +
+  "BZD CAD CDF CHF CLF CLP CNH CNY COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP FOK " +
+  "GBP GEL GGP GHS GIP GMD GNF GTQ GYD HKD HNL HRK HTG HUF IDR ILS IMP INR IQD IRR ISK JEP JMD JOD " +
+  "JPY KES KGS KHR KID KMF KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU " +
+  "MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB " +
+  "RWF SAR SBD SCR SDG SEK SGD SHP SLE SLL SOS SRD SSP STN SYP SZL THB TJS TMT TND TOP TRY TTD TVD " +
+  "TWD TZS UAH UGX USD UYU UZS VES VND VUV WST XAF XCD XCG XDR XOF XPF YER ZAR ZMW ZWG ZWL"
+).split(" ")
 
 // "rupee"/"rs" mean your home currency when it's a rupee, else INR.
 var RUPEES = ["INR", "LKR", "PKR", "NPR", "MUR", "SCR"]
@@ -39,8 +52,7 @@ function knownCode(word, rates) {
   if (has(NAMES, w)) return NAMES[w]
   var up = word.toUpperCase()
   if (!/^[A-Z]{3}$/.test(up)) return null
-  if (rates && rates[up] !== undefined) return up
-  if (!rates && COMMON.indexOf(up) !== -1) return up
+  if (CODES.indexOf(up) !== -1 || (rates && rates[up] !== undefined)) return up
   return null
 }
 
@@ -111,8 +123,7 @@ function parseRates(text, ok) {
   if (!ok) throw "Could not reach open.er-api.com"
   var data = JSON.parse(text)
   if (!data || data.result !== "success" || !data.rates || typeof data.rates !== "object") throw "unexpected response"
-  return { rates: data.rates, updated: data.time_last_update_unix, next: data.time_next_update_unix,
-           stale: Date.now() > (data.time_next_update_unix + 86400) * 1000 }
+  return { rates: data.rates, updated: data.time_last_update_unix, next: data.time_next_update_unix }
 }
 
 var provider = {
@@ -179,7 +190,9 @@ var provider = {
     }
 
     var asOf = data.updated ? "rates as of " + ctx.formatDate(data.updated) : ""
-    if (data.stale) asOf += " (stale)"
+    // Stale by the clock now: a session long open keeps rates read days ago,
+    // and a flag set when they were read never turned (codex 2026-10-05).
+    if (data.next && ctx.now().getTime() > (data.next + 86400) * 1000) asOf += " (stale)"
 
     var out = []
     for (var j = 0; j < targets.length; j++) {

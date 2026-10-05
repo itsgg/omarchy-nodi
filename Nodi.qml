@@ -336,9 +336,12 @@ Item {
     if (row.copy) root.execute(Run.copy(row.copy), "", row.remember ? row.key : "", null)
   }
 
-  function appAction(id, index) {
+  // A desktop action's command, by its place; a run that names the action's
+  // id gets it only if that place still holds that action, else nothing.
+  function appAction(id, index, actionId) {
     var entry = root.appEntries[id]
     var action = entry && entry.actions ? entry.actions[index] : null
+    if (action && actionId && String(action.id || "") !== actionId) action = null
     return action ? Array.prototype.slice.call(action.command || []) : null
   }
 
@@ -523,7 +526,9 @@ Item {
     // The row as its provider gives it now, when it can (lib/Engine.js resolve).
     var live = saved ? Engine.resolve(String(key), saved, root.config, root.services()) : null
     var s = live ? History.snapshot(live) : saved
-    var argv = s ? Run.command(s.run, root.appAction) : null
+    // A moment's row (a kill by pid) is never run again (lib/History.js).
+    var replayable = History.replayable(s)
+    var argv = replayable ? Run.command(s.run, root.appAction) : null
     if (!argv) return "unknown row"
     // A row that asks before it runs is run from the bar only: `nodi run`
     // names any remembered row, where a hotkey or a link is never given one.
@@ -1156,7 +1161,7 @@ Item {
       var keywords = []
       try { for (var k = 0; k < e.keywords.length; k++) keywords.push(String(e.keywords[k])) } catch (err) {}
       var actions = []
-      try { for (var a = 0; a < e.actions.length; a++) actions.push({ index: a, name: String(e.actions[a].name || "") }) } catch (err2) {}
+      try { for (var a = 0; a < e.actions.length; a++) actions.push({ index: a, id: String(e.actions[a].id || ""), name: String(e.actions[a].name || "") }) } catch (err2) {}
       byId[id] = e
       list.push({ id: id, name: String(e.name || id), generic: String(e.genericName || ""), comment: String(e.comment || ""),
                   keywords: keywords, icon: String(e.icon || ""), wmclass: String(e.startupClass || ""), actions: actions,

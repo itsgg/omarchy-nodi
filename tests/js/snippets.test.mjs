@@ -137,8 +137,8 @@ test("Nodi settings opens nodi.json in your editor, and no snippets yet offers i
   assert.deepEqual(plain(top("snip ").run.argv), ["omarchy-launch-editor", "/home/u/.config/omarchy/extensions/nodi.json"]);
 });
 
-test("a run keyword taking {q}, typed alone, asks for it rather than running with nothing", () => {
-  const cfg = Object.assign({}, config, { keywords: [{ keyword: "up", title: "Say", run: 'notify-send "{q}"' }] });
+test("a run keyword taking $1, typed alone, asks for it rather than running with nothing", () => {
+  const cfg = Object.assign({}, config, { keywords: [{ keyword: "up", title: "Say", run: 'notify-send "$1"' }] });
   const r = top("up", {}, cfg);
   assert.equal(r.hint, "up <text>"); assert.ok(!r.run);
   assert.equal(top("up hello", {}, cfg).run.kind, "shell");

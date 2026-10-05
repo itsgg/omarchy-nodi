@@ -74,7 +74,7 @@ that does not parse changes nothing, and a notification says why.
   // Merged with the default keywords; "disabled": true removes one.
   "keywords": [
     { "keyword": "g", "title": "Search DuckDuckGo", "open": "https://duckduckgo.com/?q={q}" },
-    { "keyword": "say", "title": "Notify", "run": "notify-send {q}" },
+    { "keyword": "say", "title": "Notify", "run": "notify-send \"$1\"" },
     { "keyword": "tr", "title": "Translate",
       "open": "https://translate.google.com/?sl=auto&tl={argument name=\"to\"}&text={argument name=\"text\"}" }
   ],
@@ -90,11 +90,14 @@ that does not parse changes nothing, and a notification says why.
 With that, `g omarchy` searches DuckDuckGo, `say hello` posts a
 notification, `tr ta good morning` translates into Tamil, `sig` pastes a
 signature and `mt Ravi 4pm` a filled-in sentence (Enter pastes it where
-you were, Ctrl+Enter copies it). Placeholders:
+you were, Ctrl+Enter copies it). Placeholders, in `open` and in snippets:
 `{q}` or `{argument name="..." default="..."}` for the words typed after
 the keyword (the last one takes the rest), `{clipboard}`, `{date}`,
 `{time}` (with `format="d MMM yyyy"` and `offset="+1d"`) and `{uuid}`. In
-`run`, `{q}` reaches the command as one argument, never as shell.
+`run`, what you type is the command's `$1`, never written into its text, so
+use it as a script would: `"$1"`, quoted, and kept out of arithmetic such
+as `$((...))`, where bash evaluates what it holds. A `run` written with
+`{q}` says to write `"$1"` instead, and runs nothing.
 
 Script commands are executable files in `~/.config/omarchy/nodi/scripts`
 with a header:

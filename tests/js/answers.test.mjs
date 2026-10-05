@@ -32,6 +32,18 @@ test("currency", () => {
     ["50 eur", /LKR$/], ["usd lkr", "300.5 LKR"], ["usd to lkr", "300.5 LKR"], ["12*50 usd", "180,300 LKR"], ["1 lkr", /USD$/]]) expectTop(q, want);
   expectTop("usd", null);
   assert.equal(top("100 usd to lkr").subtitle, "100 USD to LKR, rates as of " + Engine.formatDate(rates.updated));
+  // Before any rates are saved, a code beyond the common ones is still read
+  // as one, and asks for them (codex 2026-10-05).
+  const asked = [];
+  const first = Engine.run("100 usd to rub", config, services({ rates: undefined, asked }));
+  assert.equal(first[0].title, "Fetching exchange rates...");
+  assert.ok(asked.includes("rates"), JSON.stringify(asked));
+  // Stale by the clock now, however long ago the rates were read.
+  const nowS = Math.floor(services().now().getTime() / 1000);
+  const past = Object.assign({}, rates, { next: nowS - 2 * 86400 });
+  const fresh = Object.assign({}, rates, { next: nowS + 3600 });
+  assert.match(Engine.run("100 usd to lkr", config, services({ rates: past }))[0].subtitle, /\(stale\)$/);
+  assert.doesNotMatch(Engine.run("100 usd to lkr", config, services({ rates: fresh }))[0].subtitle, /stale/);
 });
 
 test("time zones and dates", () => {
@@ -44,6 +56,22 @@ test("time zones and dates", () => {
   for (const q of ["in 99999999999 days", "9999999999 days from now", "today + 99999999999 days"])
     assert.ok(!run(q).some(r => /NaN|undefined/.test(r.title + r.subtitle + r.copy)), q);
   assert.match(top("3pm lkt to pst").subtitle, /^15:00 Colombo \(UTC\+5:30\) to Los Angeles \(UTC-7\)$/);
+  // A date with no year counts from the last one or to the next one that
+  // falls (codex 2026-10-05), and a year under 100 stays itself.
+  const at = iso => services({ now: () => new Date(iso) });
+  const timeTop = (q, iso) => Engine.run(q, config, at(iso)).filter(r => r.provider === "time")[0];
+  assert.match(timeTop("days since dec 25", "2026-10-05T10:00").title, /^284 days/, "since the last one, not the next");
+  assert.match(timeTop("days until feb 29", "2026-10-05T10:00").subtitle, /29 Feb 2028$/, "to the next leap day");
+  assert.match(timeTop("days until feb 29", "2024-03-01T10:00").subtitle, /29 Feb 2028$/, "never March 1");
+  assert.match(timeTop("days since feb 29", "2026-10-05T10:00").subtitle, /^Thu, 29 Feb 2024/);
+  assert.equal(timeTop("days until feb 30", "2026-10-05T10:00"), undefined, "a day no year has");
+  assert.equal(timeTop("0099-01-01", "2026-10-05T10:00").copy, "0099-01-01");
+  assert.equal(timeTop("0099-01-01 + 1 day", "2026-10-05T10:00").title, "Fri, 2 Jan 0099");
+  assert.match(timeTop("today + 9000 years", "2026-10-05T10:00").title, / 11026$/, "a year past 9999 whole");
+  // Without years, the second date follows the first (Fable 2026-10-05).
+  assert.match(timeTop("feb 29 to mar 1", "2026-10-05T10:00").title, /^1 day/);
+  assert.match(timeTop("dec 25 to jan 1", "2026-10-05T10:00").title, /^7 days/);
+  assert.match(timeTop("jan 1 to sep 23", "2026-10-05T10:00").title, /^265 days/);
 });
 
 test("units", () => {
@@ -67,30 +95,31 @@ test("keywords: open, run, and quoting", () => {
   assert.equal(top("yt x").subtitle, "Opens youtube.com");
   assert.equal(top("g foo & bar").run.target, "https://www.google.com/search?q=foo%20%26%20bar");
 
-  // A run keyword's {q} arrives as $1, one word, quoted for where it stands:
-  // what you type cannot change the command, be split or be globbed.
+  // A run keyword's words are its "$1": Nodi never writes them into the
+  // command, so nothing typed can change it, be split or be globbed, in any
+  // context the command uses it (codex 2026-10-05 found two the {q} lexer
+  // missed, arithmetic and backticks; it was replaced).
   const say = (template, q) => {
     const cfg = { providers: ["keywords"], keywords: [{ keyword: "x", run: template }] };
     const row = Engine.run("x " + q, cfg, {})[0];
     assert.equal(row.run.kind, "shell");
+    assert.equal(row.run.script, template, "the command as written");
     assert.equal(row.remember, false, "a search is not learned");
     assert.equal(row.subtitle, "Runs " + template);
-    return execFileSync("bash", ["-c", row.run.script, "nodi", ...row.run.args], { cwd: root }).toString();
+    return execFileSync("bash", ["-c", row.run.script, "nodi", ...row.run.args], { cwd: root, stdio: ["ignore", "pipe", "pipe"] }).toString();
   };
   const nasty = "$(echo pwned) `id` \"x\" it's  two  *";
-  const args = "printf '<%s>' ";
-  for (const t of ["{q}", '"{q}"', "'{q}'", '"a {q} b"', "'a {q} b'", "''{q}''", "\"'{q}'\""]) {
-    const want = { "{q}": nasty, '"{q}"': nasty, "'{q}'": nasty, '"a {q} b"': "a " + nasty + " b", "'a {q} b'": "a " + nasty + " b", "''{q}''": nasty, "\"'{q}'\"": "'" + nasty + "'" }[t];
-    assert.equal(say(args + t, nasty), "<" + want + ">", t);
-  }
-  // Inside $( and backticks, the quotes inside them decide (Fable 2026-10-02).
-  for (const t of ['"$(echo "{q}")"', '"$(printf "%s" "$(echo "{q}")")"', '"$(echo {q})"', '"`echo "{q}"`"', '"$(echo $((1+1)) "{q}")"', '"$(echo \')\' "{q}")"'])
-    assert.equal(say("printf '<%s>' " + t, nasty), "<" + (t.includes("1+1") ? "2 " : t.includes("')'") ? ") " : "") + nasty + ">", t);
-  assert.equal(say(args + '"${q}"', nasty), "<" + nasty + ">", "${q} is read as {q}");
-  assert.equal(say(args + "$'a\\'{q}'", nasty), "<a'" + nasty + ">", "ANSI-C quoting with an escaped quote");
-  assert.equal(say(args + "{q} # it's\nprintf '<%s>' {q}", "a b"), "<a b><a b>", "an apostrophe in a comment ends with the line");
-  assert.equal(say(args + "'{q}{q}'", "a b"), "<a ba b>");
-  assert.equal(say(args + "\\{q} {q}", "*"), "<{q}><*>", "an escaped brace is text");
+  assert.equal(say("printf '<%s>' \"$1\"", nasty), "<" + nasty + ">");
+  assert.equal(say("printf '<%s>' \"$(echo \"$1\")\"", nasty), "<" + nasty + ">", "inside $( ) as in any script");
+  // The two that ran what was typed through {q} (codex 2026-10-05): the
+  // command now holds no text of the query, and an arithmetic use of $1 is
+  // the command's own, as in any script; quoted, a backtick's is one word.
+  assert.equal(say("printf '<%s>' \"`printf '%s' \"$1\"`\"", "two words"), "<two words>");
+  // A template still written with {q} says how to write it, and runs nothing.
+  const cfg = { providers: ["keywords"], keywords: [{ keyword: "x", title: "Say", run: "notify-send {q}" }] };
+  const old = Engine.run("x hello", cfg, {})[0];
+  assert.equal(old.run, null);
+  assert.match(old.subtitle, /Write "\$1" where \{q\} is/);
 });
 
 test("emoji", () => {
@@ -105,6 +134,20 @@ test("emoji", () => {
   assert.deepEqual(plain(r.run), { kind: "exec", argv: ["omarchy-menu-emoji-insert", "🔥"] });
   const c = Engine.run(":fire", { providers: ["emoji"], emoji: { onEnter: "copy" } }, { emojis })[0];
   assert.equal(c.run, null); assert.equal(c.copy, "🔥");
+});
+
+test("a pid is matched whole; a kill row is never learned or run again (codex 2026-10-05)", () => {
+  const withNumber = processes.concat([{ pid: 300, rss: 1000, cpu: 0, name: "python", args: "python -m http.server 104" }]);
+  const byPid = run("kill 104", { processes: withNumber }).filter(r => r.provider === "processes");
+  assert.deepEqual(plain(byPid.map(r => r.title)), ["Quit node"], "pid 104, not the server with 104 in its arguments");
+  assert.equal(byPid[0].confirm, false, "named by its pid");
+  assert.equal(top("kill chrome").remember, false, "Quit all names this moment's pids");
+  const History = load("lib/History.js");
+  const saved = History.snapshot(Object.assign({}, top("kill chrome"), { remember: true }));
+  assert.equal(History.replayable(saved), false);
+  const history = { "kill:all:chrome": { n: 9, t: services().now().getTime(), s: saved } };
+  assert.ok(!Engine.run("", config, services({ history })).some(r => r.key === "kill:all:chrome"), "a kill saved before is not on the home");
+  assert.equal(History.replayable(History.snapshot(top("firefox"))), true);
 });
 
 test("processes", () => {
@@ -400,4 +443,73 @@ test("a word named like an object's own property is a word (codex 2026-10-04)", 
   const Sources = load("lib/Sources.js");
   assert.deepEqual(plain(Sources.themes("constructor\t/p\ntoString\t\n").list.map(t => t.name)), ["Constructor", "ToString"]);
   for (const q of ["constructor(2)", "10 constructor to usd", "valueOf 3"]) assert.ok(run(q).every(r => r.provider !== "math" && r.provider !== "currency"), q);
+});
+
+test("a folder listing that failed says so, never Reading... for ever (codex 2026-10-05)", () => {
+  const r = Engine.run("/etc/", config, services({ failed: { directory: "Output limit exceeded" } }))[0];
+  assert.deepEqual([r.title, r.subtitle], ["Cannot read /etc", "Output limit exceeded"]);
+  assert.match(Engine.run("/etc/", config, services({}))[0].title, /^Reading \/etc/, "pending is still reading");
+});
+
+test("a saved app action is the same action after the app is updated, or nothing (codex 2026-10-05)", () => {
+  const A = load("providers/apps.js");
+  const Run = load("lib/Run.js");
+  const ff = (actions) => ({ id: "firefox", name: "Firefox", generic: "", comment: "", keywords: [], icon: "firefox", wmclass: "", actions });
+  const before = ff([{ index: 0, id: "new-window", name: "New Window" }, { index: 1, id: "new-private-window", name: "New Private Window" }]);
+  const row = Engine.run("firefox new private", config, services({ apps: [before] })).find(r => r.title === "New Private Window");
+  assert.equal(row.key, "app:firefox:#new-private-window");
+  assert.deepEqual(plain(row.run), { kind: "app", id: "firefox", action: 1, actionId: "new-private-window" });
+  // Updated: the private window moved to the front.
+  const after = ff([{ index: 0, id: "new-private-window", name: "New Private Window" }, { index: 1, id: "new-window", name: "New Window" }]);
+  const ctx = { apps: [after], windows: [], descriptions: {} };
+  assert.deepEqual(plain(A.provider.resolve(row.key, ctx).run), { kind: "app", id: "firefox", action: 0, actionId: "new-private-window" }, "found by its id");
+  // Dropped: nothing, never the action at its old place.
+  assert.equal(A.provider.resolve(row.key, { apps: [ff([{ index: 0, id: "new-window", name: "New Window" }, { index: 1, id: "profiles", name: "Profiles" }])] }), null);
+  // A run saved with its old place runs nothing when that place holds another action now.
+  const commands = { "new-window": ["firefox", "--new-window"], "new-private-window": ["firefox", "--private-window"] };
+  const appAction = (id, index, actionId) => { const a = after.actions[index]; return a && (!actionId || a.id === actionId) ? commands[a.id] : null; };
+  assert.equal(Run.command(row.run, appAction), null);
+  assert.equal(Run.problem({ kind: "app", id: "firefox", action: 0, actionId: "" }), "bad action id");
+});
+
+test("a mode that answers nothing gives the query to the rest of Nodi (codex 2026-10-05 asked)", () => {
+  const fonts = { list: ["JetBrainsMono Nerd Font"], current: "" };
+  const fm = { id: "font-manager", name: "Font Manager", generic: "", comment: "", keywords: [], icon: "x", wmclass: "", actions: [] };
+  assert.equal(Engine.run("font manager", config, services({ fonts, apps: [fm] }))[0].title, "Font Manager");
+  assert.equal(Engine.run("font jet", config, services({ fonts, apps: [fm] }))[0].provider, "lists");
+});
+
+test("a colour keeps its alpha, base64 its trailing spaces, mod its remainder, a list its empty marker (codex 2026-10-05)", () => {
+  const see = run("#ff000080").filter(r => r.provider === "devtools");
+  assert.deepEqual(plain(see.map(r => r.copy)), ["#FF000080", "rgb(255, 0, 0, 0.5)", "hsl(0, 100%, 50%, 0.5)"]);
+  assert.equal(see[0].swatch, "#80FF0000", "Qt's form for the swatch, alpha first");
+  assert.equal(run("#ff5722").filter(r => r.provider === "devtools")[0].copy, "#FF5722", "an opaque colour is as before");
+  assert.equal(run("b64 encode hello ").find(r => r.key === "b64:encode").copy, "aGVsbG8g");
+  assert.equal(run("b64 encode a\n").find(r => r.key === "b64:encode").copy, "YQo=", "a pasted newline is kept");
+  for (const [q, want] of [["1 mod 1e20", "1"], ["-1 mod 3", "2"], ["1 mod -3", "-2"], ["-10 % 3", "2"], ["9 mod 3", "0"]])
+    assert.equal(run(q).find(r => r.provider === "math").copy, want, q);
+  const L = load("providers/lists.js");
+  assert.deepEqual(plain(L.parseList("@current\t\nHack Nerd Font\n  \nHack Nerd Font\n", true)), { current: "", list: ["Hack Nerd Font"] });
+  assert.deepEqual(plain(L.parseList("@current\tHack\nHack\nJet\n", true)), { current: "Hack", list: ["Hack", "Jet"] });
+});
+
+test("an app action saved by its place is found again by its name, or not run (Fable 2026-10-05)", () => {
+  const ff = (actions) => ({ id: "firefox", name: "Firefox", generic: "", comment: "", keywords: [], icon: "firefox", wmclass: "", actions });
+  const now = ff([{ index: 0, id: "new-private-window", name: "New Private Window" }, { index: 1, id: "new-window", name: "New Window" }]);
+  const saved = { run: { kind: "app", id: "firefox", action: 1 }, confirm: false, title: "New Private Window", subtitle: "Firefox", provider: "apps", kind: "app" };
+  const history = { "app:firefox:1": { n: 5, t: services().now().getTime(), s: saved } };
+  const home = Engine.run("", config, services({ history, apps: [now] }));
+  const row = home.find(r => r.key === "app:firefox:1");
+  assert.deepEqual(plain(row.run), { kind: "app", id: "firefox", action: 0, actionId: "new-private-window" }, "by its name, at its new place");
+  const gone = Engine.run("", config, services({ history, apps: [ff([{ index: 0, id: "new-window", name: "New Window" }, { index: 1, id: "profiles", name: "Profiles" }])] }));
+  assert.ok(!gone.some(r => r.key === "app:firefox:1"), "no action of that name: not on the home, never the action at its old place");
+  const History = load("lib/History.js");
+  assert.equal(History.replayable(saved), false);
+  assert.equal(History.replayable(Object.assign({}, saved, { run: { kind: "app", id: "firefox", action: 0, actionId: "x" } })), true);
+});
+
+test("a run that reads $1 only inside single quotes takes no words (Fable 2026-10-05)", () => {
+  const cfg = { providers: ["keywords"], keywords: [{ keyword: "ip", run: "ip -4 route get 1 | awk '{print $1}'" }, { keyword: "say", run: "notify-send \"$1\"" }] };
+  assert.equal(Engine.run("ip", cfg, {})[0].run.kind, "shell", "runs as typed, awk's $1 its own");
+  assert.equal(Engine.run("say", cfg, {})[0].run, null, "a real $1 asks for words");
 });

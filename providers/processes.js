@@ -57,6 +57,9 @@ var provider = {
     if (!m) return []
     var force = !!m[1]
     var needle = (m[2] || "").trim().toLowerCase()
+    // A number is a pid, matched whole and alone: "kill 12345" is the
+    // process 12345, never one with 12345 in its arguments (codex 2026-10-05).
+    var byPid = /^\d+$/.test(needle)
     var got = ctx.request ? ctx.request("processes") : { state: "pending" }
     var list = got.value
     if (!list) return [{ title: got.state === "error" ? "Could not list your processes" : "Reading your processes...", subtitle: "Processes", score: 40, copy: "" }]
@@ -67,7 +70,8 @@ var provider = {
     for (var i = 0; i < list.length; i++) {
       var p = list[i]
       var name = String(p.name).toLowerCase()
-      var r = !needle ? 1 : name === needle ? 3 : name.indexOf(needle) === 0 ? 2 : (name + " " + String(p.args).toLowerCase()).indexOf(needle) !== -1 ? 1 : 0
+      var r = !needle ? 1 : byPid ? (String(p.pid) === needle ? 3 : 0)
+        : name === needle ? 3 : name.indexOf(needle) === 0 ? 2 : (name + " " + String(p.args).toLowerCase()).indexOf(needle) !== -1 ? 1 : 0
       if (r > 0) hits.push({ p: p, r: r })
     }
     if (hits.length === 0) return [{ title: needle ? "No process matches \"" + needle + "\"" : "No processes found", subtitle: "Processes", score: 40, copy: "" }]
@@ -84,6 +88,9 @@ var provider = {
         for (var g = 0; g < group.length; g++) { rss += group[g].p.rss; pids.push(group[g].p.pid) }
         out.push({
           key: "kill:all:" + hits[0].p.name,
+          // Its pids are this moment's: never learned or run again (codex
+          // 2026-10-05; lib/History.js replayable holds the ones saved before).
+          remember: false,
           title: verb + " all " + group.length + " \"" + hits[0].p.name + "\" processes",
           subtitle: megabytes(rss) + " total, pids " + pids.slice(0, 6).join(", ") + (pids.length > 6 ? "..." : ""),
           score: 97,

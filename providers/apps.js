@@ -103,9 +103,12 @@ function appRow(app, tier, isRunning, descriptions) {
   }
 }
 
+// Keyed and run by the action's id where it has one, so a saved action is
+// the same action after the entry is updated, never the one now at its old
+// place (codex 2026-10-05); by its place only where it has no id.
 function actionRow(app, action, tier, extra) {
-  var row = { key: "app:" + app.id + ":" + action.index, title: action.name, subtitle: app.name, image: app.icon,
-              tier: tier, kind: "app", copy: "", run: Run.app(app.id, action.index) }
+  var row = { key: "app:" + app.id + ":" + (action.id ? "#" + action.id : action.index), title: action.name, subtitle: app.name, image: app.icon,
+              tier: tier, kind: "app", copy: "", run: Run.app(app.id, action.index, action.id || undefined) }
   for (var k in extra) row[k] = extra[k]
   return row
 }
@@ -176,19 +179,36 @@ var provider = {
     }
     return out
   },
-  // A saved row as it is now: "app:<id>", or "app:<id>:<action index>";
-  // an id may hold a colon, so the whole is tried as an id first.
-  resolve: function(key, ctx) {
+  // A saved row as it is now: "app:<id>", "app:<id>:#<action id>", or
+  // "app:<id>:<action index>" for an action with no id; an id may hold a
+  // colon, so the whole is tried as an id first.
+  resolve: function(key, ctx, saved) {
     var k = String(key)
     if (k.indexOf("app:") !== 0) return null
     var apps = ctx.apps || []
     var byId = function(id) { for (var i = 0; i < apps.length; i++) if (apps[i].id === id) return apps[i]; return null }
     var whole = byId(k.slice(4))
     if (whole) return appRow(whole, "exact", runningOf(ctx.windows || []), ctx.descriptions)
-    var m = k.match(/^app:(.+):(\d+)$/)
+    var m = k.match(/^app:(.+):(#.+|\d+)$/)
     var app = m ? byId(m[1]) : null
     var actions = app ? app.actions || [] : []
-    for (var a = 0; a < actions.length; a++) if (String(actions[a].index) === m[2]) return actionRow(app, actions[a], "exact", {})
+    for (var a = 0; a < actions.length; a++) {
+      var named = m[2].charAt(0) === "#" ? actions[a].id === m[2].slice(1) : !actions[a].id && String(actions[a].index) === m[2]
+      if (named) return actionRow(app, actions[a], "exact", {})
+    }
+    // Saved before actions had ids, by place: found again by the name it
+    // had when saved, under the key it was saved with, and run by its id
+    // from then on (Fable 2026-10-05). lib/History.js replayable keeps the
+    // old place from being run when the name is not found.
+    if (/^\d+$/.test(m[2]) && saved && saved.title) {
+      for (var b = 0; b < actions.length; b++) {
+        if (actions[b].id && actions[b].name === saved.title) {
+          var again = actionRow(app, actions[b], "exact", {})
+          again.key = k
+          return again
+        }
+      }
+    }
     return null
   }
 }
