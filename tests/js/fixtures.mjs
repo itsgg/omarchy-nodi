@@ -81,6 +81,7 @@ export function requester(data, asked) {
       : name === "ports" ? data.ports
       : name === "services" ? data.userServices
       : name === "browser-history" ? data.browserHistory
+      : name === "bookmarks" ? data.bookmarks
       : name === "prs" ? data.prs
       : name === "clipboard-text" ? data.clipboardText
       : name === "scripts" ? data.scripts

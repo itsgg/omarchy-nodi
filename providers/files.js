@@ -7,6 +7,7 @@
 //
 //   f report, recent       recently used files (GTK's recently-used.xbel),
 //                          newest first, from ctx.files: [{ path, name }]
+//   notes.org              at root, a recent file of that whole name
 //   ~/Downl, /etc/         a directory's entries, from the "directory" source
 //                          below through ctx.request, read again after 2 s
 //   find report            every file under home named so (fd, which skips
@@ -229,6 +230,23 @@ var provider = {
     var m = String(query).match(/^\s*(?:(?:f|file)\s+(.*)|recent(?:\s+(.*))?)$/i)
     if (m) return recentRows((m[1] || m[2] || "").trim().toLowerCase(), ctx, home)
     if (/^(~\/|~$|\/)/.test(raw) && home) return pathRows(raw === "~" ? "~/" : String(query).replace(/^\s+/, ""), ctx, home)
+    // A recent file's whole name at root ("notes.org", "main.cc"): the most
+    // recent such file, as a thing named exactly, so a name that is also a
+    // site's opens the file (Fable 2026-10-06).
+    if (/^[^\/]+\.[^\s\/.]+$/.test(raw)) {
+      var files = Array.isArray(ctx.files) ? ctx.files : []
+      var want = Match.folded(raw)
+      for (var i = 0; i < files.length; i++) {
+        var f = files[i]
+        var name = f && f.path ? (f.name || f.path.split("/").pop()) : ""
+        if (name && Match.folded(name) === want) {
+          var row = fileRow(f.path, name, false, undefined, home)
+          row.tier = "exact"
+          row.kind = "item"
+          return [row]
+        }
+      }
+    }
     return []
   }
 }

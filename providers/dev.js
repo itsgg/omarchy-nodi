@@ -164,6 +164,80 @@ function parseHistory(text, ok) {
     .map(function(r) { return { url: String(r.url), title: String(r.title || ""), visits: Number(r.visits) || 0, at: Number(r.at) || 0 } })
 }
 
+// A Chromium-family Bookmarks file: its folders walked, each bookmark with
+// the folders it sits in ("Bookmarks bar > Work"), 5000 at most.
+function parseBookmarks(text, ok) {
+  if (!ok) throw "no bookmarks to read"
+  var data = JSON.parse(String(text || "{}") || "{}")
+  var out = []
+  var walk = function(node, path) {
+    if (!node || typeof node !== "object" || out.length >= 5000) return
+    if (node.type === "url" && /^https?:\/\//.test(String(node.url))) { out.push({ title: String(node.name || ""), url: String(node.url), folder: path.join(" > ") }); return }
+    var kids = Array.isArray(node.children) ? node.children : []
+    for (var i = 0; i < kids.length; i++) walk(kids[i], node.name ? path.concat([String(node.name)]) : path)
+  }
+  var roots = data && data.roots && typeof data.roots === "object" ? data.roots : {}
+  for (var r in roots) if (Object.prototype.hasOwnProperty.call(roots, r)) walk(roots[r], [])
+  return out
+}
+
+// What was typed, as a page to open (ROADMAP 55): a URL with its scheme,
+// or a bare domain with a known ending, localhost or an IP, a port and a
+// path allowed; https unless it is local. "" for anything else: "notes.md"
+// and "build.sh" are files, those endings left out. Some endings are both a
+// site's and a file type's (wikipedia.org, notes.org): such a bare name is
+// a site ranked as a keyword names a thing to open (fileLike), under a
+// window its title names ("notes.org" in an editor), and a guess: the
+// fallbacks ("Find files named main.cc") come under it (Fable 2026-10-06).
+var TLDS = /^(com|org|net|io|dev|app|ai|co|me|info|biz|gov|edu|uk|de|fr|in|jp|cn|ru|br|au|ca|us|eu|nl|se|no|es|it|ch|at|be|pl|xyz|site|online|tech|gg|tv|fm|ly|so|to|cc|is|lk|sg|nz|ie|dk|fi|pt|kr|tw|hk|mx|ar|za|il|ae|cloud|page|blog|news|wiki)$/
+// A bare name whose ending is also a file type's (org-mode, C++, Perl, a
+// shared library, autoconf, Illustrator, a bundle, info, a wiki page), and
+// nothing else (a path, a port, www., a scheme) says it is a site (Fable
+// 2026-10-06).
+var FILE_ENDINGS = /^(org|cc|pl|so|in|ai|app|info|wiki)$/
+function fileLike(text) {
+  var t = String(text || "").trim().toLowerCase()
+  return !/^https?:\/\//.test(t) && !/^www\./.test(t) && t.indexOf("/") === -1 && t.indexOf(":") === -1 && FILE_ENDINGS.test(t.split(".").pop())
+}
+
+function typedUrl(text) {
+  var t = String(text || "").trim()
+  if (!t || /\s/.test(t)) return ""
+  if (/^https?:\/\/[^\s\/]+/i.test(t)) return t
+  var m = t.match(/^((?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}|localhost|\d{1,3}(?:\.\d{1,3}){3})(:\d{1,5})?(\/\S*)?$/i)
+  if (!m) return ""
+  var host = m[1].toLowerCase()
+  // An IP is four numbers to 255, not a name that starts with a digit
+  // ("1password.com" is a site, "1.5.md" a file; Fable 2026-10-06).
+  var ip = /^\d{1,3}(\.\d{1,3}){3}$/.test(host) && host.split(".").every(function(n) { return Number(n) <= 255 })
+  var local = host === "localhost" || ip
+  // Numbers before the ending read as a version ("2.0.app", "1.5.md").
+  var labels = host.split(".")
+  if (!local && (labels.slice(0, -1).every(function(l) { return /^\d+$/.test(l) }) || !TLDS.test(labels[labels.length - 1]))) return ""
+  return (local ? "http://" : "https://") + t
+}
+
+function bookmarkRows(q, ctx, all) {
+  var got = ctx.request ? ctx.request("bookmarks") : { state: "pending" }
+  if (!got.value) return all ? [{ title: got.state === "error" ? "No bookmarks to read" : "Reading bookmarks...", subtitle: "Bookmarks", score: 40, copy: "", remember: false }] : []
+  var hits = []
+  for (var i = 0; i < got.value.length; i++) {
+    var b = got.value[i]
+    // By its title and its site; its folder shows, and matches nothing:
+    // "bar" is no bookmark of "Bookmarks bar" (Fable 2026-10-06).
+    var t = !q ? "prefix" : Score.tier(q, { name: b.title || host(b.url), whole: true, keywords: [host(b.url)] })
+    if (t) hits.push({ b: b, t: t })
+  }
+  hits.sort(function(x, y) { return Score.ORDER.indexOf(x.t) - Score.ORDER.indexOf(y.t) })
+  var limit = all ? 30 : 3
+  var out = hits.slice(0, limit).map(function(h, n) {
+    return { key: "bookmark:" + h.b.url, title: h.b.title || host(h.b.url), subtitle: host(h.b.url) + (h.b.folder ? ", " + h.b.folder : ""),
+             icon: "󰃀", tier: h.t, kind: "item", offset: -n * 0.001, copy: h.b.url, run: Run.open(h.b.url), actionLabel: "Open", group: "Bookmarks" }
+  })
+  if (all && out.length === 0) return [{ title: q ? "No bookmark matches " + q : "No bookmarks", subtitle: "Bookmarks", score: 40, copy: "", remember: false }]
+  return out
+}
+
 // gh search prs --json: [{ number, title, repository: { nameWithOwner }, url, author: { login } }].
 function parsePrs(text, ok) {
   if (!ok) throw "gh could not search"
@@ -291,6 +365,7 @@ var PORTS = /^\s*(?:ports|port(?=\s))(?:\s+(.*))?$/i
 var SERVICES = /^\s*(?:services|systemctl|service(?=\s))(?:\s+(.*))?$/i
 var HISTORY = /^\s*(?:h|history)\s+(.*)$/i
 var PRS = /^\s*(?:prs|pull\s+requests?|pr(?=\s))(?:\s+(.*))?$/i
+var BOOKMARKS = /^\s*(?:bm|bookmarks?)(?:\s+(.*))?$/i
 
 function rest(m) { return Match.normalise(m[1]) }
 
@@ -411,6 +486,20 @@ var provider = {
       timeoutMs: 4000,
       maxBytes: 8388608
     },
+    // The first Chromium-family bookmarks found (a plain JSON file), kept a
+    // minute: at root and under `bm` (ROADMAP 55).
+    bookmarks: {
+      argv: function() {
+        return ["/usr/bin/bash", "-c",
+          'for f in "$HOME/.config/chromium/Default/Bookmarks" "$HOME/.config/BraveSoftware/Brave-Browser/Default/Bookmarks" "$HOME/.config/google-chrome/Default/Bookmarks"; do '
+          + '[ -f "$f" ] && exec cat -- "$f"; done; exit 1']
+      },
+      parse: parseBookmarks,
+      maxAgeMs: 60 * 1000,
+      retryMs: 60 * 1000,
+      timeoutMs: 3000,
+      maxBytes: 8388608
+    },
     // Network-bound (about 2 s): asked only under `prs`, kept ten minutes.
     prs: {
       argv: function() { return ["/usr/bin/bash", "-lc", "exec gh search prs --involves=@me --state=open --json number,title,repository,url,author --limit 30"] },
@@ -424,19 +513,21 @@ var provider = {
     { pattern: PORTS, label: "Ports", icon: "󰌘", exclusive: true, hint: "ports [port or program]" },
     { pattern: SERVICES, label: "Services", icon: "󰒓", exclusive: true, hint: "services [name]" },
     { pattern: HISTORY, label: "History", icon: "󰋚", exclusive: true, hint: "h <words>" },
-    { pattern: PRS, label: "Pull requests", icon: "󰐅", exclusive: true, hint: "prs [words]" }
+    { pattern: PRS, label: "Pull requests", icon: "󰐅", exclusive: true, hint: "prs [words]" },
+    { pattern: BOOKMARKS, label: "Bookmarks", icon: "󰃀", exclusive: true, hint: "bm [words]" }
   ],
   commands: [
     { title: "tmux sessions", keywords: "tmux sessions attach terminal", text: "Attach to one", complete: "tmux" },
     { title: "Listening ports", keywords: "ports port listening listen server localhost", text: "What listens, and its process", complete: "ports" },
     { title: "User services", keywords: "services service systemd systemctl units daemon", text: "Logs, restart, stop", complete: "services" },
     { title: "Browser history", keywords: "history browser chromium pages visited", text: "A page you visited, by its words", complete: "h " },
-    { title: "Pull requests", keywords: "pull requests prs github review", text: "Open ones that involve you", complete: "prs" }
+    { title: "Pull requests", keywords: "pull requests prs github review", text: "Open ones that involve you", complete: "prs" },
+    { title: "Bookmarks", keywords: "bookmarks bookmark favourites saved pages", text: "A saved page, by its words", complete: "bm " }
   ],
   help: [
-    { id: "dev", title: "Developer", icon: "󰅩", about: "Projects, sessions, hosts, pages, ports, services, history, pull requests",
+    { id: "dev", title: "Developer", icon: "󰅩", about: "Projects, sessions, hosts, pages, ports, services, history, bookmarks, pull requests",
       examples: [{ q: "nodi", note: "A project by its folder's name" }, { q: "tmux" }, { q: "ssh " }, { q: "man ls" }, { q: "tldr tar" },
-                 { q: "ports" }, { q: "services" }, { q: "h github" }, { q: "prs" }] }
+                 { q: "ports" }, { q: "services" }, { q: "h github" }, { q: "prs" }, { q: "bm " }, { q: "github.com", note: "A site, opened as typed" }] }
   ],
   match: function(query, ctx) {
     var home = String(ctx.home || "")
@@ -446,6 +537,15 @@ var provider = {
     if ((m = String(query).match(SERVICES))) return serviceRows(rest(m), ctx)
     if ((m = String(query).match(HISTORY))) return historyRows(rest(m), ctx)
     if ((m = String(query).match(PRS))) return prRows(rest(m), ctx)
+    if ((m = String(query).match(BOOKMARKS))) return bookmarkRows(rest(m), ctx, true)
+    // A typed site, opened as it is typed: over the rest, as an answer is.
+    var url = typedUrl(query)
+    if (url) {
+      var site = { key: "url:" + url, title: "Open " + String(query).trim(), subtitle: url.replace(/^https?:\/\//, "").split(/[\/?#]/)[0],
+                   icon: "󰖟", copy: url, run: Run.open(url), actionLabel: "Open", remember: false }
+      if (fileLike(query)) { site.tier = "keyword"; site.kind = "item"; site.guess = true } else site.score = 99
+      return [site]
+    }
     var page = String(query).match(/^\s*(man|tldr)\s+([A-Za-z0-9._+-]+)(?:\s+([0-9a-z]+))?\s*$/)
     if (page) {
       var cmd = page[1] === "man" ? (page[3] ? ["man", "--", page[3], page[2]] : ["man", "--", page[2]]) : ["tldr", "--", page[2]]
@@ -463,6 +563,7 @@ var provider = {
     var projects = projectRows(q, ctx, home)
     projects.sort(function(a, b) { return (Score.score(b.tier, b.kind) + b.offset) - (Score.score(a.tier, a.kind) + a.offset) })
     rows = rows.concat(projects.slice(0, LIMIT))
+    rows = rows.concat(bookmarkRows(q, ctx, false))
     return rows
   }
 }
