@@ -150,6 +150,8 @@ Item {
 
   // payloadJson may carry a starting query: '{"query": ":"}' opens emoji search.
   function open(payloadJson) {
+    // Sizes change at once until the card is up (startReads).
+    card.animated = false
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
     // A pick stays open only for its own opening: anything else that opens
@@ -213,6 +215,8 @@ Item {
   }
 
   function startReads() {
+    // The card is on screen by now: its size changes animate from here on.
+    card.animated = true
     if (!root.readsPending) return
     root.readsPending = false
     readsAfterFrame.stop()
@@ -228,6 +232,7 @@ Item {
   Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
 
   function close() {
+    card.animated = false
     // A pick closed without a choice: its command hears that nothing was.
     root.endPick("cancel")
     root.opened = false
