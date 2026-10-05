@@ -1,0 +1,125 @@
+// What a query means, for the ranking harness (tools/rank/rank.mjs): the
+// query, the row or rows that answer it (any of them first counts), and the
+// kind of match it tests. A query Nodi gets wrong today stays here with its
+// rank in the baseline, so the change that fixes it shows as a gain.
+// Keys are the corpus's (tests/js/fixtures/rank/corpus.json): apps are
+// "app:<desktop id>", menu rows "menu:<id>", windows "window:<address>".
+
+export const intended = [
+  // Names and their starts.
+  ["spotify", "app:spotify", "name"],
+  ["sp", "app:spotify", "prefix"],
+  ["chrom", "app:chromium", "prefix"],
+  ["obs", "app:com.obsproject.Studio", "name"],
+  ["files", "app:org.gnome.Nautilus", "name"],
+  ["foot", "app:foot", "name"],
+  ["neovim", "app:nvim", "name"],
+  ["nvim", "app:nvim", "name"],
+  ["krita", "app:org.kde.krita", "name"],
+  ["kden", "app:org.kde.kdenlive", "prefix"],
+  ["writer", "app:libreoffice-writer", "name"],
+  ["impress", "app:libreoffice-impress", "name"],
+  ["slack", "app:Slack", "name"],
+  ["whatsapp", "app:Whatsapp", "name"],
+  ["1pass", "app:1password", "prefix"],
+  ["lock", "menu:system.lock", "name"],
+  ["reboot", "menu:system.reboot", "name"],
+  ["shutdown", "menu:system.shutdown", "name"],
+  ["logout", "menu:system.logout", "name"],
+  ["hibernate", "menu:system.hibernate", "name"],
+  ["susp", "menu:system.suspend", "prefix"],
+  ["suspend", "menu:system.suspend", "name"],
+  ["screensh", "menu:trigger.capture.screenshot", "prefix"],
+  ["screenshot", "menu:trigger.capture.screenshot", "name"],
+  ["screenrec", "menu:trigger.capture.screenrecord", "prefix"],
+  ["theme", "menu:style.theme", "name"],
+  ["font", "menu:style.font", "name"],
+  ["nightlight", "menu:trigger.toggle.nightlight", "name"],
+  ["gaps", "menu:trigger.toggle.window-gaps", "name"],
+  ["wifi", "toggle:wifi", "name"],
+  ["bluetooth", "toggle:bluetooth", "name"],
+  ["volume", "volume:prompt", "name"],
+  ["brightness", "brightness:prompt", "name"],
+  ["mic", "toggle:microphone", "prefix"],
+  ["keybindings", "menu:learn.keybindings", "name"],
+  ["emoji", "emoji:Emoji", "name"],
+  ["omarchy update", "omarchy:omarchy-update", "name"],
+  // Initials and letters in order.
+  ["lo c", "app:libreoffice-calc", "initials"],
+  ["lo w", "app:libreoffice-writer", "initials"],
+  ["gcal", "app:Google Calendar", "inorder"],
+  ["tg", "app:Telegram", "inorder"],
+  ["slk", "app:Slack", "inorder"],
+  ["sptfy", "app:spotify", "inorder"],
+  ["wa", "app:Whatsapp", "inorder"],
+  ["wfi", "toggle:wifi", "inorder"],
+  ["blth", "toggle:bluetooth", "inorder"],
+  ["scrnsht", "menu:trigger.capture.screenshot", "inorder"],
+  ["bt", "toggle:bluetooth", "inorder"],
+  // Typos.
+  ["spotfy", "app:spotify", "typo"],
+  ["chromuim", "app:chromium", "typo"],
+  ["termnal", ["app:foot", "keys:SUPER + RETURN"], "typo"],
+  ["browsr", "app:chromium", "typo"],
+  ["nightlite", "menu:trigger.toggle.nightlight", "typo"],
+  ["scrennshot", "menu:trigger.capture.screenshot", "typo"],
+  ["bluetoth", "toggle:bluetooth", "typo"],
+  // What an app is, by its generic name.
+  ["terminal", ["app:foot", "keys:SUPER + RETURN"], "generic"],
+  ["term", ["app:foot", "keys:SUPER + RETURN"], "generic"],
+  ["browser", "app:chromium", "generic"],
+  ["spreadsheet", "app:libreoffice-calc", "generic"],
+  ["word processor", "app:libreoffice-writer", "generic"],
+  ["presentation", "app:libreoffice-impress", "generic"],
+  ["image editor", "app:com.github.PintaProject.Pinta", "generic"],
+  ["video editor", "app:org.kde.kdenlive", "generic"],
+  ["text editor", "app:nvim", "generic"],
+  ["calculator", "app:omacalc", "generic"],
+  ["system monitor", "app:btop", "generic"],
+  ["sound editor", "app:audacity", "generic"],
+  ["music", ["app:spotify", "app:cliamp"], "generic"],
+  // The words a row shows under its name.
+  ["organize files", "app:org.gnome.Nautilus", "description"],
+  ["airdrop", "app:localsend", "description"],
+  ["handwritten notes", "app:com.github.xournalpp.xournalpp", "description"],
+  ["password manager", "app:1password", "description"],
+  ["3d modeling", "app:blender", "description"],
+  ["record audio", "app:audacity", "description"],
+  ["vector graphics", "app:org.inkscape.Inkscape", "description"],
+  ["manage drives", "app:org.gnome.DiskUtility", "description"],
+  // Other words for the same thing.
+  ["sleep", "menu:system.suspend", "synonym"],
+  ["restart", "menu:system.reboot", "synonym"],
+  ["light mode", "menu:style.theme", "synonym"],
+  ["wallpaper", "menu:style.background", "synonym"],
+  ["dnd", "menu:trigger.toggle.notifications", "synonym"],
+  ["do not disturb", "menu:trigger.toggle.notifications", "synonym"],
+  ["keyboard layout", "menu:setup.input", "synonym"],
+  ["photo editor", "app:com.github.PintaProject.Pinta", "synonym"],
+  ["notes", ["app:obsidian", "app:com.github.xournalpp.xournalpp", "app:omawrite"], "synonym"],
+  ["pdf", "app:org.gnome.Evince", "synonym"],
+  ["stay awake", "menu:trigger.toggle.idle-lock", "name"],
+  // A verb in front of the name.
+  ["open spotify", "app:spotify", "verb"],
+  ["launch slack", "app:Slack", "verb"],
+  ["start obs", "app:com.obsproject.Studio", "verb"],
+  // Windows, accented, in another script, by title.
+  ["inbox", "window:0xa1", "window"],
+  ["weekly review", "window:0xa8", "window"],
+  ["beyonce", "window:0xa2", "accent"],
+  ["pokemon", "window:0xa3", "accent"],
+  ["resume", "window:0xa4", "accent"],
+  ["résumé", "window:0xa4", "accent"],
+  ["beyoncé", "window:0xa2", "accent"],
+  ["தமிழ்", "window:0xa5", "script"],
+  ["விக்கி", "window:0xa5", "script"],
+  ["москва", "window:0xa9", "script"]
+];
+
+// Queries whose rows, past the fallbacks, should be few or none: nonsense,
+// and the words a split or a short word turns into false hits. Counted,
+// not ranked, so a count to watch: a row there may be right ("résumé"
+// finds the résumé window and two commands about resuming).
+// "ir" is no word start in "Document Viewer" or "firefox": letters in
+// order start at a word (Fable 2026-10-05 found a fold that broke it).
+export const noise = ["zzqx", "qwxz", "résumé", "wi fi", "tm", "ab", "ir"];

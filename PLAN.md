@@ -210,12 +210,23 @@ hardcoded per-provider colours, the Ctrl+N badge on every row and the fixed
 
 ## Verification
 
-- `make check`: `node --test`, qmllint with the shell's `qs` imports,
+- `make check`: `node --test`, the ranking harness, qmllint with the shell's `qs` imports,
   `tools/compile-check.sh` (Quickshell compiles every QML file),
   `tools/qs-test.sh` (components run inside Quickshell), the shots rendered
   offscreen, `tools/hygiene.mjs`, `tools/check-manifest.mjs`,
   `omarchy plugin validate`. `make installed` says whether the installed
   copy is the repository's and whether the shell has loaded it.
+- `make rank` (tools/rank/rank.mjs) ranks over a corpus frozen from what
+  Omarchy ships (tests/js/fixtures/rank/corpus.json, written by
+  tools/rank/freeze.mjs; no history): the rank of each query's meant row
+  in tools/rank/queries.mjs, by kind of match; the letters typed until each
+  app, and one menu row per label that the whole label finds, is first; and
+  how many rows past the fallbacks some queries show, a count to watch. It
+  fails on any difference from tools/rank/baseline.json, gains as well as
+  losses, each named, so a ranking change commits its baseline's diff, and
+  the baseline holds where the ranking stands. It began on 2026-10-05 at 70
+  of 100 queries first, apps first after a median of 2 letters, menu
+  labels 3.
 - `make bench` times every keystroke of a set of queries through
   lib/Engine.js, on node and in Qt's own engine (qml6, offscreen), over
   Omarchy's emoji, menu, command list, keybindings and desktop entries and
