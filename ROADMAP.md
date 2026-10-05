@@ -247,6 +247,14 @@ baseline query loses rank.
     at the same tier); a
     keystroke's ranking still under a frame at p95 in Qt's engine (9.8 ms
     before, `make bench`).
+    Done 2026-10-05: Nodi's tiers kept, with a fit inside them (how much
+    of the title the query covers, whole words more) and the initials of
+    a query of several words; letters in order for any row from three
+    letters, close together. Rows a provider orders itself (windows by
+    recency, lists by place) keep that order. 88 of 100 queries first, 82
+    before, no query or target worse; a keystroke in Qt at p95 13.2 ms
+    against 14.6 for its parent, both measured under load from other
+    sessions.
 38. **A decaying frecency** in place of counts. Q 9.
 39. **A group leads by at most three rows** before a stronger row of the
     next one (his call). Q 10. Check: the fourth row of a group waits for

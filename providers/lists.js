@@ -103,6 +103,8 @@ function profileRows(q, ctx, asked) {
 
 var provider = {
   id: "lists",
+  // Its own order, by recency or place, stands over a closer title (lib/Rows.js).
+  keepsOrder: true,
   name: "Fonts and power",
   icon: "",
   modes: [{ pattern: /^\s*fonts?\s/i, label: "Fonts", icon: "", exclusive: true }],

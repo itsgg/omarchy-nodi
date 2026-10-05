@@ -121,3 +121,13 @@ test("a group leads by three rows at most before a stronger row of another group
   const weak = [r("m1", "Menu", 90), r("m2", "Menu", 80), r("m3", "Menu", 70), r("m4", "Menu", 60), r("a1", "Apps", 55)];
   assert.deepEqual(plain(Engine.group(weak.map(x => Object.assign({}, x)), 3)).map(x => x.key), ["m1", "m2", "m3", "m4", "a1"], "no stronger row: the group goes on");
 });
+
+test("fit leaves a provider's own order: windows stay by recency, whatever their titles (Fable 2026-10-05)", () => {
+  const wins = [
+    { address: "0x1", cls: "brave-browser", title: "Pull requests and GitHub issues - a long page title - Brave", workspace: "1", focus: 1 },
+    { address: "0x2", cls: "brave-browser", title: "GitHub - Brave", workspace: "2", focus: 2 },
+    { address: "0x0", cls: "foot", title: "~", workspace: "1", focus: 0 }
+  ];
+  const rows = Engine.run("github", config, services({ windows: wins }));
+  assert.deepEqual(plain(rows.filter(r => r.provider === "windows").map(r => r.key)), ["window:0x1", "window:0x2"], "the more recent first");
+});

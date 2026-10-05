@@ -176,6 +176,8 @@ function batteryRow(q, b) {
 
 var provider = {
   id: "desktop",
+  // Its own order, by recency or place, stands over a closer title (lib/Rows.js).
+  keepsOrder: true,
   name: "Desktop",
   icon: "󰍹",
   commands: [

@@ -10,6 +10,8 @@ import { run } from "./fixtures.mjs";
 
 const Match = load("lib/Match.js");
 const Score = load("lib/Score.js");
+// Letters in order as Score asks: on folded text, over its word starts.
+const inOrder = (n, t) => Match.inOrder(Match.fold(n), Match.fold(t), Match.starts(Match.fold(t)));
 
 test("fold: lower case, accents off, other scripts kept", () => {
   assert.equal(Match.fold("Résumé"), "resume");
@@ -29,7 +31,7 @@ test("words: only separators split, every other character is a letter", () => {
   assert.deepEqual(plain(Match.words("\ud83d\udd25 Hot \u201cquoted\u201d stuff\u2026")), ["hot", "quoted", "stuff"], "emoji, curly quotes and an ellipsis separate");
   assert.deepEqual(plain(Match.words("VSCodium")), ["vs", "codium", "vscodium"], "the case split as before");
   assert.equal(Match.collapse("wi-fi 6"), "wifi6");
-  assert.equal(Match.subsequence("bync", "Beyoncé"), Match.subsequence("bync", "beyonce"), "letters in order on the folded text");
+  assert.equal(inOrder("bync", "Beyoncé"), true, "letters in order on the folded text");
 });
 
 test("the tiers fold the query and the name alike", () => {
@@ -54,8 +56,15 @@ test("the providers' own searches fold too", () => {
 });
 
 test("what the first fold missed: emoji-glued words, punctuation-led names, accented camel case, kill and themes (Fable 2026-10-05)", () => {
-  assert.ok(Match.subsequence("nts", "📝Notes") > 0, "a word start after an emoji glued to it");
-  assert.equal(Match.subsequence("ir", "x firefox"), 0, "a separator two back starts no word (Fable 2026-10-05)");
+  assert.equal(inOrder("nts", "📝Notes"), true, "a word start after an emoji glued to it");
+  assert.equal(inOrder("ir", "x firefox"), false, "a separator two back starts no word (Fable 2026-10-05)");
+  assert.equal(inOrder("frfx", "Firefox"), true);
+  assert.equal(inOrder("xfr", "Firefox"), false, "the first letter at a word start");
+  assert.equal(inOrder("f", "Firefox"), false, "two letters at least");
+  assert.equal(inOrder("abc", "With desktop + microphone audio + webcam"), false, "letters spread over a long label are no match");
+  assert.equal(inOrder("new", "Network"), true);
+  assert.equal(inOrder("fx", "Foot Firefox"), true, "a later start when the first is too far (Fable 2026-10-05)");
+  assert.equal(inOrder("sn", "Stop Screenrecording"), true);
   const t = (q, name) => Score.tier(q, { name });
   assert.equal(t("beta", "(beta) app"), "prefix");
   assert.equal(t("net", ".NET SDK"), "prefix");

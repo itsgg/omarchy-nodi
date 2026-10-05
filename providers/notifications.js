@@ -61,6 +61,8 @@ function rowFor(n, tier, nowMs, i) {
 
 var provider = {
   id: "notifications",
+  // Its own order, by recency or place, stands over a closer title (lib/Rows.js).
+  keepsOrder: true,
   name: "Notifications",
   icon: "󰂚",
   sources: {
