@@ -389,6 +389,14 @@ test("a word named like an object's own property is a word (codex 2026-10-04)", 
   const O = load("providers/omarchy.js");
   const commands = O.parse(readFileSync(join(root, "tests/js/fixtures/omarchy-commands.json"), "utf8"));
   assert.ok(run("omarchy version", { omarchyCommands: commands }).some(r => r.provider === "omarchy"));
+  // A command named so is found by its name, where the inherited lookup
+  // made "constructor" an installer gate that hid it (codex 2026-10-05:
+  // the version query above passes either way).
+  const built = O.parse(JSON.stringify({ ok: true, commands: [{ route: "omarchy constructor", binary: "omarchy-constructor", group: "constructor",
+    name: "", summary: "Build a thing", requires_sudo: false, hidden: false, args: "", examples: [], aliases: [],
+    filename_route: "omarchy constructor", routes: ["omarchy constructor"] }] }));
+  for (const q of ["omarchy constructor", "constructor"])
+    assert.ok(run(q, { omarchyCommands: built }).some(r => r.provider === "omarchy" && r.title === "Build a thing"), q);
   const Sources = load("lib/Sources.js");
   assert.deepEqual(plain(Sources.themes("constructor\t/p\ntoString\t\n").list.map(t => t.name)), ["Constructor", "ToString"]);
   for (const q of ["constructor(2)", "10 constructor to usd", "valueOf 3"]) assert.ok(run(q).every(r => r.provider !== "math" && r.provider !== "currency"), q);

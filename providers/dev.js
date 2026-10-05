@@ -177,12 +177,27 @@ function host(url) {
   return m ? m[1].replace(/^www\./, "") + (m[2] && m[2] !== "/" ? m[2] : "") : String(url)
 }
 
-// Where to open what listens: localhost for a wildcard or 127.0.0.1 (or ::1),
-// else the address itself, so a server on 192.168.1.20 alone or on
-// 127.0.0.53 is reached where it listens (codex 2026-10-04).
+// Where to open what listens. localhost where both families listen (ss's
+// "*", or both loopbacks, or both wildcards); else the loopback of the one
+// family that does (0.0.0.0 and 127.0.0.1 are 127.0.0.1, :: and ::1 are
+// [::1]), as a browser may take localhost for either, and a server on one
+// family's loopback was reached through the other's (codex 2026-10-05);
+// any other address is itself, an IPv6 one in brackets, so a server on
+// 192.168.1.20 alone or on 127.0.0.53 is reached where it listens (codex
+// 2026-10-04).
 function hostFor(addresses) {
   var a = addresses || []
-  for (var i = 0; i < a.length; i++) if (/^(\*|0\.0\.0\.0|::|127\.0\.0\.1|::1|)$/.test(a[i])) return "localhost"
+  var v4 = false
+  var v6 = false
+  for (var i = 0; i < a.length; i++) {
+    var x = String(a[i])
+    if (x === "*" || x === "") { v4 = true; v6 = true }
+    else if (x === "0.0.0.0" || x === "127.0.0.1") v4 = true
+    else if (x === "::" || x === "::1") v6 = true
+  }
+  if (v4 && v6) return "localhost"
+  if (v4) return "127.0.0.1"
+  if (v6) return "[::1]"
   var first = String(a[0] || "localhost")
   return first.indexOf(":") !== -1 ? "[" + first + "]" : first
 }
@@ -377,9 +392,10 @@ var provider = {
     // browser that writes it (immutable=1), newest 3000 pages. A plain
     // read-only open fails while Chromium runs, "database is locked", since
     // it holds the file in exclusive locking mode, and so would a backup;
-    // a read that catches a page mid-write can show a stale or missing row
-    // until the next read, which history searched a minute later starts
-    // (codex 2026-10-04 asked for locking).
+    // a read that catches the file mid-write can return wrong or missing
+    // rows, or fail, and what it returned stands until history is searched
+    // again after the minute its rows are kept (codex 2026-10-04 asked for
+    // locking; 2026-10-05, that this is a risk taken, not removed).
     "browser-history": {
       argv: function() {
         return ["/usr/bin/bash", "-c",
