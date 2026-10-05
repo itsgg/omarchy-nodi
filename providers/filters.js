@@ -22,7 +22,9 @@
 //     "badge": "3", "id": "notes/meeting",  an id lets Nodi remember the row
 //     "action": { "exec": ["argv", ...] }   or { "open": "https://..." },
 //               { "copy": "text" }, { "paste": "text" }, { "query": "n meeting " }
-//     "confirm": true,                      Enter twice
+//     "confirm": true,                      Enter twice, or "send": type the
+//                                           word, then Enter (lib/Rows.js)
+//     "risk": "Sends 3 messages",           shown with the command it runs
 //     "preview": "## Markdown"              or { "title", "subtitle", "markdown" }
 //     "actions": [{ "title": "Copy link", "action": { "copy": "..." } }] }   Ctrl+K
 //
@@ -30,7 +32,7 @@
 // on its way, the rows of the one before stay on show.
 
 var LIMIT = 50
-var MAX = { title: 200, subtitle: 300, badge: 24, markdown: 65536, id: 200 }
+var MAX = { title: 200, subtitle: 300, badge: 24, markdown: 65536, id: 200, risk: 500 }
 
 function text(v, max) { return typeof v === "string" ? v.slice(0, max) : "" }
 
@@ -80,6 +82,14 @@ function actionOf(a) {
   return {}
 }
 
+// How a line asks before it runs: { confirm, confirmWord }. true is a
+// second Enter; a word is that word, typed (lib/Rows.js checks its shape).
+function confirmOf(c) {
+  if (c === true) return { confirm: true, confirmWord: "" }
+  if (typeof c === "string" && c) return { confirm: true, confirmWord: c }
+  return { confirm: false, confirmWord: "" }
+}
+
 function previewOf(p) {
   if (typeof p === "string") return p ? { markdown: p.slice(0, MAX.markdown) } : null
   if (!p || typeof p !== "object") return null
@@ -116,13 +126,18 @@ function parse(textOut, f) {
       copy: act.copy || "",
       run: act.run || null,
       complete: act.complete || "",
-      confirm: o.confirm === true,
+      confirm: confirmOf(o.confirm).confirm,
+      confirmWord: confirmOf(o.confirm).confirmWord,
+      risk: text(o.risk, MAX.risk),
+      // What a program's row runs is shown before it runs, once it asks.
+      showsCommand: true,
       remember: !!id,
       preview: previewOf(o.preview),
       group: f.title || f.keyword,
       actions: Array.isArray(o.actions) ? o.actions.slice(0, 12).map(function(a) {
         var x = actionOf(a && a.action)
-        return x.run ? { label: text(a.title, MAX.title), icon: "", run: x.run, confirm: a.confirm === true } : null
+        var c = confirmOf(a && a.confirm)
+        return x.run ? { label: text(a.title, MAX.title), icon: "", run: x.run, confirm: c.confirm, confirmWord: c.confirmWord, risk: text(a && a.risk, MAX.risk) } : null
       }).filter(function(a) { return a && a.label }) : []
     }
     rows.push(row)

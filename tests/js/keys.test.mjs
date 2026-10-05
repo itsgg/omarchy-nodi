@@ -62,7 +62,7 @@ test("Escape steps back one thing at a time", () => {
   assert.deepEqual(d("Escape"), { do: "clear" }, "then the text");
   assert.deepEqual(d("Escape", { text: "" }), { do: "dismiss" }, "then the bar");
   assert.deepEqual(d("Backspace", { backToTopics: true }), { do: "helpBack" });
-  assert.deepEqual(d("Escape", { aliasing: true, armed: true }), { do: "cancelAlias" }, "an alias being typed goes first");
+  assert.deepEqual(d("Escape", { prompting: true, armed: true }), { do: "cancelPrompt" }, "a prompt being typed (an alias, a confirm word) goes first");
 });
 
 test("keys in Ctrl+K", () => {
@@ -106,7 +106,7 @@ test("a held key moves the selection and does nothing else: Enter held never con
 });
 
 test("the pane scrolls with Shift, the list pages with PageUp and PageDown", () => {
-  const v = (extra) => Object.assign({ palette: null, armed: false, helpTopic: false, backToTopics: false, text: "x", aliasing: false, rows: 30, selected: 10, page: 8, pane: true }, extra || {});
+  const v = (extra) => Object.assign({ palette: null, armed: false, helpTopic: false, backToTopics: false, text: "x", prompting: false, rows: 30, selected: 10, page: 8, pane: true }, extra || {});
   const k = (name, shift, extra, repeat) => JSON.parse(JSON.stringify(Keys.decide({ name, ctrl: false, shift: !!shift, repeat: !!repeat }, v(extra))));
   assert.deepEqual(k("Down", true), { do: "paneScroll", lines: 3 });
   assert.deepEqual(k("Up", true), { do: "paneScroll", lines: -3 });

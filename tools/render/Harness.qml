@@ -50,11 +50,11 @@ Window {
     readonly property int cardWidth: look.cardWidth
     readonly property int listColumn: look.listColumn
     readonly property int paneMin: look.paneMin
-    readonly property bool anyPreview: rows.some(function(r) { return !!r.preview })
+    readonly property bool anyPreview: rows.some(Pane.hasPane)
     readonly property var preview: readPreview(Pane.choose({
       paletteOpen: paletteOpen,
       ask: answerShown !== "" ? { question: typed.replace(/^\s*ask\s+/i, ""), model: "haiku", text: answerShown } : null,
-      answer: streamed, row: selectedRow, anyPreview: anyPreview
+      answer: streamed, word: wordAsk, row: selectedRow, armed: !!selectedRow && armedKey === selectedRow.key, anyPreview: anyPreview
     }))
     // A scene's `reads` stand in for the reader: path -> what file-head gives.
     property var reads: ({})
@@ -67,6 +67,8 @@ Window {
     property string answerShown: ""
     // A streamed answer's { question, title, text }, as Nodi.qml hands Pane.js one.
     property var streamed: null
+    // A confirm word being asked: { title, word, run, risk }.
+    property var wordAsk: null
 
     property var rows: []
     property int selectedIndex: 0
@@ -134,6 +136,7 @@ Window {
     fake.aliasRow = s.aliasRow || null
     fake.answerShown = s.answer || ""
     fake.streamed = s.streamed || null
+    fake.wordAsk = s.wordAsk || null
     card.input.text = s.query
     card.list.positionViewAtIndex(s.selectedIndex, ListView.Contain)
   }

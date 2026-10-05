@@ -153,6 +153,8 @@ Item {
     // A pick stays open only for its own opening: anything else that opens
     // the bar ends it, nothing chosen.
     if (root.pickSession && payload.pick !== root.pickSession.id) root.endPick("cancel")
+    // So is a confirm word, before the payload's query is typed.
+    root.endWord()
     if (typeof payload.query === "string") {
       input.text = payload.query
       input.cursorPosition = payload.query.length
@@ -222,6 +224,7 @@ Item {
     root.ctrlHeld = false     // a Ctrl+digit closes the bar before Ctrl is let go
     root.paletteOpen = false
     root.aliasRow = null
+    root.endWord()
     root.endCapture()
     askSession.recycle()
     // Nobody sees an answer once the bar is closed: it stops, and the next
@@ -275,6 +278,9 @@ Item {
     } else if (root.aliasRow) {
       root.results = Engine.aliasPrompt(input.text, root.aliasRow)
       root.mode = { label: "Alias", icon: "󰌌" }
+    } else if (root.wordAsk) {
+      root.results = Engine.wordPrompt(input.text, root.wordAsk)
+      root.mode = { label: "Confirm", icon: "󰀦" }
     } else if (root.pickSession) {
       root.results = Pick.rows(input.text, root.pickSession.rows || [])
       root.mode = { label: "Pick", icon: Pick.PROVIDER.icon }
@@ -311,6 +317,11 @@ Item {
     if (!row) return
     if (row.nodi) { root.doNodi(row); return }
     if (row.run) {
+      if (row.confirmWord) {
+        root.askWord({ title: row.title, word: row.confirmWord, run: row.run, risk: row.risk, toggle: row.toggle,
+                       key: row.remember ? row.key : "", snap: History.snapshot(row) })
+        return
+      }
       if (row.confirm && root.armedKey !== row.key) {
         root.selectedIndex = index
         root.armedKey = row.key
@@ -379,6 +390,12 @@ Item {
     root.paletteOpen = false
     var row = root.paletteRow
     if (!row) return
+    if (a.confirmWord) {
+      var mine = index === 0 && row.remember
+      root.askWord({ title: index === 0 ? row.title : a.label, word: a.confirmWord, run: a.run, risk: a.risk,
+                     toggle: index === 0 ? row.toggle : "", key: mine ? row.key : "", snap: mine ? History.snapshot(row) : null })
+      return
+    }
     if (a.nodi === "forget") {
       root.forget(row.key)
       return
@@ -442,6 +459,28 @@ Item {
     root.prefs = next
     if (root.prefsLoaded) prefsFile.setText(Prefs.serialize(next))
     if (keysChanged) root.ensureHotkey()
+  }
+
+  // A row that runs only once a word is typed (Rows confirmWord): the field
+  // takes the word, Enter on it runs the row, Esc gives it up and the query
+  // comes back. { title, word, run, risk, toggle, key, snap, query }.
+  property var wordAsk: null
+
+  function askWord(w) {
+    w.query = input.text
+    root.armedKey = ""
+    root.wordAsk = w
+    input.text = ""
+    root.recompute()
+  }
+
+  function endWord() {
+    if (!root.wordAsk) return
+    var q = root.wordAsk.query
+    root.wordAsk = null
+    input.text = q
+    input.cursorPosition = q.length
+    root.recompute()
   }
 
   // The row a hotkey is being set for: the next chord pressed is it, unless
@@ -508,6 +547,12 @@ Item {
     } else if (row.nodi === "ask") {
       var q = input.text.replace(/^\s*ask\s+/i, "").trim()
       if (q) askSession.send(q)
+    } else if (row.nodi === "runWord" && root.wordAsk) {
+      if (input.text.trim() !== root.wordAsk.word) return
+      var w = root.wordAsk
+      root.wordAsk = null
+      root.execute(w.run, w.toggle, w.key, w.snap, w.title)
+      return
     } else if (row.nodi === "answer") {
       var spec = Answers.spec(input.text, root.config.answers, root.cameFrom)
       if (spec) answerSession.start(spec)
@@ -636,7 +681,7 @@ Item {
       backToTopics: root.inHelpTopic && !root.pickSession && !input.selectedText && /^\s*\?[a-z]+$/.test(input.text) && root.showingHelp
                     && !!root.rows[0].helpTopic && input.cursorPosition === input.text.length,
       text: input.text,
-      aliasing: !!root.aliasRow,
+      prompting: !!root.aliasRow || !!root.wordAsk,
       pick: !!root.pickSession,
       answering: root.answerShown && answerSession.running,
       rows: root.rows.length,
@@ -657,7 +702,7 @@ Item {
       // Tab fills in what the row offers; with nothing to fill in, it asks
       // the query (providers/ask.js), as Raycast's Tab to AI does.
       if (root.selectedRow && Rows.canComplete(root.selectedRow)) root.complete(root.selectedRow)
-      else if (input.text.trim() && !root.mode && !root.aliasRow && !root.captureRow) { input.text = "ask " + input.text.trim(); input.cursorPosition = input.text.length }
+      else if (input.text.trim() && !root.mode && !root.aliasRow && !root.captureRow && !root.wordAsk && !root.pickSession) { input.text = "ask " + input.text.trim(); input.cursorPosition = input.text.length }
       break
     case "copy":
       var r = root.rows[act.index]
@@ -672,7 +717,9 @@ Item {
     case "clear": input.text = ""; break
     case "dismiss": root.dismiss(); break
     case "stopAnswer": answerSession.stop(); break
-    case "cancelAlias": root.aliasRow = null; input.text = ""; root.recompute(); break
+    case "cancelPrompt":
+      if (root.wordAsk) { root.endWord(); break }
+      root.aliasRow = null; input.text = ""; root.recompute(); break
     }
   }
 
@@ -974,12 +1021,13 @@ Item {
   readonly property bool answerShown: Answers.shown(input.text, root.config.answers,
     { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question })
   // The pane beside the list (item 26), as lib/Pane.js chooses it.
-  readonly property bool anyPreview: root.rows.some(function(r) { return !!r.preview })
+  readonly property bool anyPreview: root.rows.some(Pane.hasPane)
   readonly property var preview: root.readPreview(Pane.choose({
     paletteOpen: root.paletteOpen,
     ask: root.askShown !== "" ? { question: askSession.question, model: askSession.model, text: root.askShown } : null,
     answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text } : null,
-    row: root.selectedRow, anyPreview: root.anyPreview
+    word: root.wordAsk,
+    row: root.selectedRow, armed: !!root.selectedRow && root.armedKey === root.selectedRow.key, anyPreview: root.anyPreview
   }))
 
   // A preview that names a read gets it now, for the selected row only; the
