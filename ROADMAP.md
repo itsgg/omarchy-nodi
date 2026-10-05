@@ -206,6 +206,15 @@ link is set.
 31. **The list updated in place**: a model diffed by row key instead of an
     array replaced on every keystroke. Q 5. Check: a bench of a
     keystroke's view cost, about 10.5 ms before.
+    Tried 2026-10-05 and not kept: a model that grows and shrinks at its
+    end, each row reading its row by place, so new rows rebind the rows on
+    screen. Measured offscreen with the research's own probe (Q L2), a
+    swap took 6.14 ms with it and 5.87 without, a difference inside the
+    probe's own spread (Fable's runs of the control alone gave 7.22 and
+    10.84): no gain measured. The research's 2.3 ms came from a fixed pool
+    of 12 rows that broke scrolling past them. Open: what in a row costs
+    (text, images, bindings), measured with repeated runs before another
+    try.
 32. **Windows from the live model**: Quickshell.Hyprland's toplevels
     instead of `hyprctl clients -j` after each open, so `w` has its
     windows at the first keystroke. X 18.
