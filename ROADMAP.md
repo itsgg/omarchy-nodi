@@ -219,6 +219,9 @@ link is set.
     instead of `hyprctl clients -j` after each open, so `w` has its
     windows at the first keystroke. X 18.
 
+    Done 2026-10-05: kept current between opens from Quickshell's model,
+    asked again over Hyprland's socket on its window events, and read at
+    the open for the first ranking; no `hyprctl` started on an open.
 ## Phase H: ranking
 
 Each item is checked by item 29's harness: its own queries improve, and no

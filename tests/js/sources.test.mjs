@@ -17,16 +17,16 @@ test("windows: mapped, visible ones, and the active workspace", () => {
     { address: "0xb", mapped: false, class: "x", title: "unmapped", workspace: { name: "1" }, focusHistoryID: 2 },
     { address: "0xc", mapped: true, hidden: true, class: "y", title: "hidden", workspace: { name: "1" }, focusHistoryID: 3 }
   ];
-  const r = plain(S.windows(JSON.stringify(clients) + "\n@@\n" + JSON.stringify({ id: 4 })));
+  const r = plain(S.windowsFrom(clients, { id: 4 }));
   assert.deepEqual(r, { list: [{ address: "0xa", cls: "firefox", title: "Docs", workspace: "2", focus: 1, pid: 0 }], activeWorkspace: 4 });
-  assert.deepEqual(plain(S.windows("garbage")), { list: [], activeWorkspace: null });
-  assert.equal(S.windows('[]\n@@\n{"id":-1337,"name":"code"}').activeWorkspace, "name:code", "a named workspace, never its negative id");
-  assert.equal(S.windows('[]\n@@\n{"id":-98,"name":"special:scratch"}').activeWorkspace, "special:scratch");
+  assert.deepEqual(plain(S.windowsFrom("garbage", "x")), { list: [], activeWorkspace: null });
+  assert.equal(S.windowsFrom([], { id: -1337, name: "code" }).activeWorkspace, "name:code", "a named workspace, never its negative id");
+  assert.equal(S.windowsFrom([], { id: -98, name: "special:scratch" }).activeWorkspace, "special:scratch");
 });
 
-test("windows: the real hyprctl output parses", { skip: !process.env.HYPRLAND_INSTANCE_SIGNATURE }, () => {
-  const out = execFileSync("bash", ["-c", "hyprctl clients -j; echo @@; hyprctl activeworkspace -j"]).toString();
-  const r = S.windows(out);
+test("windows: Hyprland's real records read", { skip: !process.env.HYPRLAND_INSTANCE_SIGNATURE }, () => {
+  const clients = JSON.parse(execFileSync("hyprctl", ["clients", "-j"]).toString());
+  const r = S.windowsFrom(clients, JSON.parse(execFileSync("hyprctl", ["activeworkspace", "-j"]).toString()));
   assert.equal(typeof r.activeWorkspace, "number");
   assert.ok(r.list.every(w => /^0x[0-9a-f]+$/.test(w.address)));
 });
@@ -140,4 +140,13 @@ test("readers: the cap and the deadline hold outside Quickshell", () => {
   assert.equal(go(["sleep", "30"], 1000, 100).status, S.TIMEOUT);
   assert.ok(Date.now() - started < 5000, "the deadline kills the program");
   assert.equal(go(["false"], 1000, 100).status, 1, "the program's own failure comes through");
+});
+
+test("windows from Quickshell's records, null and junk skipped (ROADMAP 32)", () => {
+  const recs = [{ address: "0xa", class: "foot", title: "~", workspace: { id: 2, name: "2" }, focusHistoryID: 1, pid: 42, mapped: true, hidden: false },
+                { address: "0xb", class: "x", title: "hid", workspace: { id: 1, name: "1" }, focusHistoryID: 0, mapped: true, hidden: true }, null, "junk"];
+  const r = plain(S.windowsFrom(recs, { id: 2, name: "2" }));
+  assert.deepEqual(r, { list: [{ address: "0xa", cls: "foot", title: "~", workspace: "2", focus: 1, pid: 42 }], activeWorkspace: 2 });
+  assert.equal(S.windowsFrom([], { id: -98, name: "special:scratch" }).activeWorkspace, "special:scratch");
+  assert.deepEqual(plain(S.windowsFrom(null, null)), { list: [], activeWorkspace: null });
 });

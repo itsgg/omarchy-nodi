@@ -182,6 +182,8 @@ Item {
     root.armedKey = ""
     root.paletteOpen = false
     root.lastPointer = Qt.point(-1, -1)
+    // The windows as last kept, for the first ranking.
+    root.readWindows()
     // The reads (windows, toggles, themes...) start 60 ms after, once the
     // card is on screen: each start forks the shell, and started here they
     // held the first frame back about 70 ms (161 ms from the key to the
@@ -1323,21 +1325,45 @@ Item {
 
   // ---------------------------------------------------------------- windows
 
-  function refreshWindows() {
-    windowsReader.run(["/usr/bin/bash", "-c", "hyprctl clients -j; echo @@; hyprctl activeworkspace -j"])
+  // The windows, kept current from Quickshell's own model of Hyprland
+  // (ROADMAP 32): it asks over Hyprland's socket, no program started, and
+  // each toplevel keeps its last `hyprctl clients` record. Asked again when
+  // Hyprland says a window opened, closed, moved, was retitled or took the
+  // focus, so the list is ready when the bar opens; before, each open
+  // started `hyprctl` 60 ms on, and `w` had no windows at its first key.
+  function refreshWindows() { Hyprland.refreshToplevels() }
+
+  function readWindows() {
+    var tops = Hyprland.toplevels.values
+    var clients = []
+    for (var i = 0; i < tops.length; i++) if (tops[i] && tops[i].lastIpcObject) clients.push(tops[i].lastIpcObject)
+    var fw = Hyprland.focusedWorkspace
+    var w = Sources.windowsFrom(clients, fw ? { id: fw.id, name: String(fw.name || "") } : null)
+    root.windows = w.list
+    root.activeWorkspace = w.activeWorkspace
+    if (root.cameFromTop) root.cameFrom = Sources.windowContext(root.cameFromTop, w.list)
   }
 
-  Reader {
-    id: windowsReader
-    timeoutMs: 3000
-    maxBytes: 4194304
-    onFinished: function(text, ok) {
-      var w = Sources.windows(text)
-      root.windows = w.list
-      root.activeWorkspace = w.activeWorkspace
-      if (root.cameFromTop) root.cameFrom = Sources.windowContext(root.cameFromTop, w.list)
-      if (root.opened) root.recompute()
+  // A burst of records (one per window on a refresh) read once.
+  Timer { id: windowsSettle; interval: 30; onTriggered: { root.readWindows(); if (root.opened) root.recompute() } }
+  Timer { id: windowsAsk; interval: 120; onTriggered: root.refreshWindows() }
+
+  Instantiator {
+    model: Hyprland.toplevels
+    // A window gone changes no record: its removal is read too (Fable).
+    onObjectRemoved: windowsSettle.restart()
+    delegate: Connections {
+      required property var modelData
+      target: modelData
+      function onLastIpcObjectChanged() { windowsSettle.restart() }
     }
+  }
+
+  readonly property var windowEvents: ({ openwindow: true, closewindow: true, movewindowv2: true, windowtitlev2: true,
+                                          activewindowv2: true, changefloatingmode: true, workspacev2: true })
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) { if (event && root.windowEvents[String(event.name)] === true) windowsAsk.restart() }
   }
 
   // ---------------------------------------------------------------- Omarchy's menu
@@ -1461,6 +1487,7 @@ Item {
   }
 
   Component.onCompleted: {
+    root.refreshWindows()
     cacheMaker.run(["/usr/bin/mkdir", "-p", root.cacheDir, root.stateDir, root.cacheDir + "/ask"])
     appsDebounce.restart()
     requests.request("omarchy-commands")
