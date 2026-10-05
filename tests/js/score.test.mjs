@@ -40,14 +40,35 @@ test("one letter names only the start of a name's word", () => {
 });
 
 test("typos: one edit from five letters, two from eight, the first letter kept", () => {
-  assert.equal(Score.tier("screnshot", { name: "Screenshot" }), "fuzzy");
-  assert.equal(Score.tier("bluetoth", { name: "Bluetooth" }), "fuzzy");
-  assert.equal(Score.tier("chrme", { name: "Chrome" }), "fuzzy");
+  assert.equal(Score.tier("screnshot", { name: "Screenshot" }), "typoName");
+  assert.equal(Score.tier("bluetoth", { name: "Bluetooth" }), "typoName");
+  assert.equal(Score.tier("chrme", { name: "Chrome" }), "typoName");
   assert.equal(Score.tier("night", { name: "Light" }), "", "not the first letter");
   assert.equal(Score.tier("nght", { name: "Night" }), "", "too short for a typo");
   assert.equal(Score.tier("screnshot region", { name: "Screenshot", keywords: ["region"] }), "fuzzy");
   assert.equal(Score.tier("remove steam", { name: "Moonlight", keywords: ["remote", "steam"] }), "", "a typo only in the name's own words");
   assert.equal(Score.tier("pass", { name: "1Password" }), "prefix", "leading numerals skipped");
+});
+
+test("a typo in the generic name or a keyword names a row too, under one in the name; plurals try their singular (ROADMAP 36)", () => {
+  const foot = { name: "Foot", generic: "Terminal", keywords: ["shell", "console"] };
+  assert.equal(Score.tier("termnal", foot), "typoWord", "the generic name");
+  assert.equal(Score.tier("consle", foot), "typoWord", "a keyword");
+  assert.equal(Score.tier("termnal", { name: "Terminal", whole: true }), "typoName");
+  assert.equal(Score.tier("termnal", Object.assign({ whole: true }, foot)), "", "a catalogue row by whole words takes no typo in its other words");
+  assert.ok(Score.score("typoWord", "app") < Score.score("typoName", "action"), "a typo in a name beats one in an app's generic name, whatever the kind");
+  assert.ok(Score.score("fuzzy", "app") + Score.HABIT_MAX < Score.score("context", "app") && Score.score("typoName", "app") < Score.score("context", "app"),
+    "every typo under every clean tier");
+  assert.equal(Score.tier("notes", { name: "Xournal++", generic: "Note-taking application" }), "keyword", "notes tries note, as a keyword at best");
+  assert.equal(Score.tier("touchs", { name: "Touchpad" }), "typoName", "a word being typed is no plural (\"touch\" is no word of Touchpad), a typo at most: under Touchscreen's prefix");
+  assert.equal(Score.tier("apps", { name: "Xournal++", generic: "Note-taking application" }), "", "\"app\" starts application but is no word of it (Fable 2026-10-05)");
+  assert.equal(Score.tier("touchs", { name: "Touchscreen" }), "prefix");
+  assert.equal(Score.queryParts("glass").singular, null, "a double s is not a plural");
+  assert.equal(Score.queryParts("bus").singular, null, "under four letters, no singular");
+  assert.equal(Score.queryParts("open notes").singular.q, "open note");
+  assert.equal(Score.tier("files", { name: "Power profile" }), "", "the stem inside a word is no match (Fable 2026-10-05)");
+  assert.equal(Score.tier("apps", { name: "Switch theme", description: "the app's look" }), "", "nor in a description");
+  assert.equal(Score.loose("typoWord") && Score.loose("fuzzy") && !Score.loose("context"), true);
 });
 
 test("letters in order only where asked", () => {
@@ -194,7 +215,7 @@ test("a word split by its case is matched whole too", () => {
   assert.equal(Score.tier("youtube", { name: "Search YouTube" }), "words");
   assert.equal(Score.tier("hub", { name: "GitHub Desktop" }), "words", "the parts still name it");
   assert.equal(Score.tier("ghd", { name: "GitHub Desktop" }), "acronym", "the old initials still start the new ones");
-  assert.equal(Score.tier("gihtub", { name: "Open GitHub" }), "fuzzy", "a typo of the whole word");
+  assert.equal(Score.tier("gihtub", { name: "Open GitHub" }), "typoName", "a typo of the whole word");
 });
 
 

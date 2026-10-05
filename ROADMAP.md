@@ -232,8 +232,15 @@ baseline query loses rank.
     Done 2026-10-05: the description queries from 2 of 8 first to 8 of 8,
     82 of 100 in all; noise from 25 rows to 17, as a word under three
     letters no longer names a row by its description alone.
-36. **Typos on generic names and keywords**, a typo costing one step
-    instead of the floor; a plural folded. Q 7.
+36. **Typos on generic names and keywords**, kept under every clean match
+    as Algolia ("typo count is the first criterion") and Meilisearch rank
+    them, and ordered among themselves: a typo in the name, then one in
+    the generic name or a keyword, then letters in order. Q 7 asked for a
+    typo one step under its clean tier; its own source (Q T1) says
+    otherwise, so this follows the source. A plural also tries its
+    singular, as a keyword at best.
+    Done 2026-10-05: "termnal" finds Foot, "browsr" Chromium (fourth,
+    under three apps named Browser); no query lost rank.
 37. **An fzf-style score inside each tier**: initials, camel case and
     letters in order for every row. Q 8. Check: "lo c", "wfi", "blth"; a
     keystroke's ranking still under a frame at p95 in Qt's engine (9.8 ms
