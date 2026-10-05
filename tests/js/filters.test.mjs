@@ -25,6 +25,16 @@ function read(p, param) {
 }
 const run = (q, extra) => Engine.run(q, cfg, services(Object.assign({ filter: read }, extra || {})));
 
+test("the program is told of the window you came from, and a run is keyed by it", () => {
+  const window = { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2" };
+  assert.deepEqual(plain(run("n window", { window }).map(r => r.title)), ["[0x5b8f]", "[foot]", "[vim notes.md]", "[5438]", "[2]"]);
+  assert.deepEqual(plain(run("n window").map(r => r.title)), ["[]", "[]", "[]", "[]", "[]"], "none: each is empty");
+  const asked = [];
+  run("n meet", { window, asked });
+  run("n meet", { window: Object.assign({}, window, { address: "0x77" }), asked });
+  assert.equal(new Set(asked.filter(a => a.startsWith("filter:"))).size, 2, "another window is another run");
+});
+
 test("a keyword and a space hand the rest to the program, which answers in rows", () => {
   const rows = run("n meet");
   assert.deepEqual(plain(rows.map(r => r.title)), ["Meeting notes"]);
@@ -89,7 +99,8 @@ test("while a run is on its way the rows before stay; the first time, it says it
 
 test("the program gets the query as its last argument and NODI_QUERY, under its own deadline", () => {
   const argv = F.provider.sources.filter.argv(JSON.stringify({ keyword: "n", command: ["prog", "--flag"], query: "a b; $(x)", timeoutMs: 3000 }));
-  assert.deepEqual(plain(argv), ["/usr/bin/timeout", "-k", "0.5", "3", "/usr/bin/env", "NODI_QUERY=a b; $(x)", "prog", "--flag", "a b; $(x)"]);
+  assert.deepEqual(plain(argv), ["/usr/bin/timeout", "-k", "0.5", "3", "/usr/bin/env", "NODI_QUERY=a b; $(x)",
+    "NODI_WINDOW_ADDRESS=", "NODI_WINDOW_CLASS=", "NODI_WINDOW_TITLE=", "NODI_WINDOW_PID=", "NODI_WINDOW_WORKSPACE=", "prog", "--flag", "a b; $(x)"]);
   assert.equal(F.provider.sources.filter.supersede, true, "a new keystroke ends the run before it");
   assert.equal(F.provider.sources.filter.sessionPath, true, "the session's PATH, for programs in ~/.local/bin");
 });

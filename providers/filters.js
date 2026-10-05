@@ -9,9 +9,11 @@
 //     { "keyword": "n", "title": "Notes", "icon": "󰎞", "command": ["my-notes", "--nodi"] }
 //   ]
 //
-// Typing "n meet" runs `my-notes --nodi meet`: the words after the keyword
-// are the last argument, and NODI_QUERY too. It runs again as you type, a
-// new keystroke ending the run before it (its process group is sent TERM),
+// Typing "n meet" runs `my-notes --nodi meet`: the words after the keyword,
+// trimmed, are the last argument, and NODI_QUERY too; the window you came
+// from is NODI_WINDOW_ADDRESS, _CLASS, _TITLE, _PID and _WORKSPACE. It runs again as you
+// type, a new keystroke ending the run before it (components/Reader.qml
+// sends TERM to the program and what it started every 50 ms until it ends),
 // with the session's PATH, a 3 s deadline (`timeoutMs` up to 10 s) and 1 MB
 // of output. It prints one JSON object a line, each a row:
 //
@@ -43,6 +45,15 @@ function list(settings) {
       && f.command.every(function(a) { return typeof a === "string" }) && f.command[0] !== ""
       && f.command[0].indexOf("=") === -1 && f.command[0].charAt(0) !== "-"
   })
+}
+
+// The window you came from (ctx.window, lib/Sources.js windowContext) as
+// the program's environment, each "" where it is not known.
+function windowEnv(w) {
+  w = w || {}
+  return ["NODI_WINDOW_ADDRESS=" + String(w.address || ""), "NODI_WINDOW_CLASS=" + String(w["class"] || ""),
+          "NODI_WINDOW_TITLE=" + String(w.title || ""), "NODI_WINDOW_PID=" + String(w.pid || ""),
+          "NODI_WINDOW_WORKSPACE=" + String(w.workspace || "")]
 }
 
 function escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
@@ -137,7 +148,8 @@ var provider = {
         // Its KILL after half a second: the reader's own timeout kills this
         // one at a second, and one that ignored TERM then lived on (Fable
         // 2026-10-04).
-        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000), "/usr/bin/env", "NODI_QUERY=" + p.query].concat(p.command, [p.query])
+        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000), "/usr/bin/env", "NODI_QUERY=" + p.query]
+          .concat(windowEnv(p.window), p.command, [p.query])
       },
       parse: function(textOut, ok, param) {
         var p = JSON.parse(param)
@@ -175,7 +187,10 @@ var provider = {
     var f = hit.filter
     var title = f.title || f.keyword
     var timeoutMs = Math.min(10000, Math.max(500, Number(f.timeoutMs) || 3000))
-    var param = JSON.stringify({ keyword: f.keyword, title: title, icon: f.icon || "", command: f.command, query: hit.query, timeoutMs: timeoutMs })
+    // The window is in the key too: what a program says of one window is not
+    // its answer for another.
+    var param = JSON.stringify({ keyword: f.keyword, title: title, icon: f.icon || "", command: f.command, query: hit.query, timeoutMs: timeoutMs,
+                                 window: ctx.window || null })
     var got = ctx.request ? ctx.request("filter", param) : { state: "pending" }
     if (got.state === "ready") {
       shown[f.keyword] = got.value

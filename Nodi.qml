@@ -156,6 +156,7 @@ Item {
       input.cursorPosition = payload.query.length
     }
     launchFeedback.opened()
+    root.noteWindow()
     root.opens++
     root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
     root.aliasRow = null
@@ -179,6 +180,23 @@ Item {
   }
 
   property bool readsPending: false
+
+  // The window that had the focus when the bar opened (README, "The window
+  // you came from"), for the providers that act on it: Hyprland's active
+  // toplevel at the press, before the bar's layer takes the keyboard (a
+  // layer is never a window, so it is never this one). What its last IPC
+  // record lacks is filled in when the window list lands (lib/Sources.js).
+  // An open while the bar is up keeps it: the focus has not moved since.
+  property var cameFromTop: null
+  property var cameFrom: Sources.windowContext(null, [])
+
+  function noteWindow() {
+    if (root.opened) return
+    var t = Hyprland.activeToplevel
+    root.cameFromTop = t ? { address: String(t.address || ""), title: String(t.title || ""), ipc: t.lastIpcObject || {},
+                             workspace: t.workspace ? String(t.workspace.name || "") : "" } : null
+    root.cameFrom = Sources.windowContext(root.cameFromTop, root.windows)
+  }
 
   function startReads() {
     if (!root.readsPending) return
@@ -237,6 +255,7 @@ Item {
       request: requests.request,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model },
+      window: root.cameFrom,
       desktop: desktop
     }
   }
@@ -1143,6 +1162,7 @@ Item {
       var w = Sources.windows(text)
       root.windows = w.list
       root.activeWorkspace = w.activeWorkspace
+      if (root.cameFromTop) root.cameFrom = Sources.windowContext(root.cameFromTop, w.list)
       if (root.opened) root.recompute()
     }
   }
