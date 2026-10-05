@@ -17,9 +17,14 @@ BorderSurface {
   color: nodi.background
   borderSpec: nodi.borderSpec
   padding: nodi.contentMargin
-  Behavior on height { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
+  // Animated only once the card is up: at the open it takes its size at
+  // once, where the animations played from the size it had when it last
+  // closed, the jerk he saw as the bar opened (2026-10-05). Nodi.qml turns
+  // this on after the first frame and off at the close.
+  property bool animated: false
+  Behavior on height { enabled: card.animated; NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
   // The pane comes and goes with the selected row: Kadhir's 140 ms.
-  Behavior on width { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+  Behavior on width { enabled: card.animated; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
   MouseArea { anchors.fill: parent; onClicked: {} }
 
