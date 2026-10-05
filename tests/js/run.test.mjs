@@ -17,6 +17,7 @@ test("well-formed runs pass, malformed ones say why", () => {
     Run.summon("omarchy.menu", { menu: "root" }), Run.copy("x")]) assert.equal(Run.problem(ok), "", JSON.stringify(ok));
   const bad = [
     [null, "no run"], [{ kind: "exec", argv: [] }, "exec needs argv"], [{ kind: "exec", argv: ["ls", 3] }, "argv must be strings"],
+    [{ kind: "exec", argv: ["-rf", "x"] }, "program looks like an option"],
     [{ kind: "shell", script: "  " }, "shell needs a script"], [{ kind: "app", id: "../x" }, "bad desktop id"],
     [{ kind: "app", id: "a/b" }, "bad desktop id"], [{ kind: "app", id: "-x" }, "bad desktop id"], [{ kind: "app", id: "a\nb" }, "bad desktop id"], [{ kind: "app", id: "a\u0085b" }, "bad desktop id"],
     [{ kind: "app", id: "x", action: 1.5 }, "bad action index"], [{ kind: "window", address: "$(rm -rf ~)" }, "window address must be hex"],

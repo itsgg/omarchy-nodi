@@ -35,7 +35,9 @@ test("a word asks for that word; a word that is not one, or no run, asks nothing
   assert.equal(norm({ confirmWord: "x".repeat(41) }).confirm, false);
   assert.equal(Rows.normalize({ title: "No run", confirmWord: "send" }, P, 0, 0).confirmWord, "", "nothing to run, nothing to confirm");
   assert.equal(norm({ risk: "r".repeat(900) }).risk.length, 500);
-  assert.equal(norm({ showsCommand: true }).showsCommand, false, "the command pane is for a row that asks");
+  const plainRow = norm({ showsCommand: true });
+  assert.equal(Pane.choose({ row: plainRow }), null, "the command pane is for a row that asks");
+  assert.equal(Pane.hasPane(plainRow), false);
   assert.equal(norm({ showsCommand: true, confirm: true }).showsCommand, true);
   const a = Rows.normalize({ title: "x", run: Run.copy("x"), actions: [{ label: "Delete", run: Run.exec(["rm", "f"]), confirmWord: "delete", risk: "Gone" }] }, P, 0, 0).actions[0];
   assert.deepEqual([a.confirm, a.confirmWord, a.risk], [true, "delete", "Gone"], "an action asks as a row does");
@@ -63,7 +65,8 @@ test("a script filter's line asks with true or a word, names its risk, and shows
     JSON.stringify({ title: "Wide", action: { exec: ["mailer", "x"] }, confirm: "two words", actions: [{ title: "Purge", action: { exec: ["mailer", "purge"] }, confirm: "purge", risk: "All of it" }] })
   ].join("\n"), { keyword: "m", title: "Mail", icon: "" }).map(r => Rows.normalize(r, P, 0, 0));
   assert.deepEqual(plain(rows.map(r => [r.title, r.confirm, r.confirmWord, r.showsCommand])),
-    [["Send", true, "send", true], ["Archive", true, "", true], ["Read", false, "", false], ["Wide", true, "", true]]);
+    [["Send", true, "send", true], ["Archive", true, "", true], ["Read", false, "", true], ["Wide", true, "", true]], "a program's rows all want their commands seen; only those that ask show them");
+  assert.equal(Pane.choose({ row: rows[2] }), null, "Read asks nothing: no command pane");
   assert.equal(rows[0].risk, "Mails 40 people");
   assert.deepEqual(plain([rows[3].actions[0].confirmWord, rows[3].actions[0].risk]), ["purge", "All of it"]);
 });
@@ -80,6 +83,22 @@ test("the pane: a row's own preview until it is armed or its word asked, then th
   const reboot = norm({ confirm: true, title: "Reboot", run: Run.shell("systemctl reboot") });
   assert.equal(Pane.choose({ row: reboot, armed: true }), null, "a built-in row that asks keeps the look it had");
   assert.ok(Pane.hasPane(archive) && !Pane.hasPane(reboot));
+});
+
+test("a Ctrl+K action that asks shows its command and risk too, for a row that shows commands (Akshi 2026-10-05)", () => {
+  // The row itself need not ask: its provider shows commands, its action asks.
+  const row = norm({ showsCommand: true, title: "Weekly report" });
+  const action = { label: "Purge", run: Run.exec(["mailer", "purge", "all mail"]), confirm: true, risk: "Deletes everything" };
+  assert.deepEqual(plain(Pane.choose({ paletteOpen: true, palette: { row, action, armed: false } })),
+    { title: "Purge", subtitle: "Enter twice to run it", labels: [["Risk", "Deletes everything"]], text: "mailer purge 'all mail'", mono: true });
+  assert.equal(Pane.choose({ paletteOpen: true, palette: { row, action, armed: true } }).subtitle, "Enter again to run it");
+  assert.equal(Pane.choose({ paletteOpen: true, palette: { row, action: Object.assign({}, action, { confirm: false }), armed: false } }), null, "an action that does not ask: no pane");
+  const plainAct = { label: "Run", run: Run.exec(["my-notes", "open"]), confirm: false };
+  assert.deepEqual(plain(Pane.choose({ paletteOpen: true, palette: { row, action: plainAct, actions: [plainAct, action], armed: false } })), { title: "Run" },
+    "while another action asks, this one keeps the pane with its label: the card's width holds");
+  assert.equal(Pane.choose({ paletteOpen: true, palette: { row, action: plainAct, actions: [plainAct], armed: false } }), null, "none asks: no pane");
+  assert.equal(Pane.choose({ paletteOpen: true, palette: { row: norm({ confirm: true }), action, armed: false } }), null, "a built-in row's actions keep the look they had");
+  assert.equal(Pane.choose({ paletteOpen: true, row }), null);
 });
 
 test("the word prompt runs only on the word, as given", () => {

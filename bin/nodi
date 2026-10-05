@@ -9,8 +9,10 @@
 #                             rows from stdin, a line each; the one chosen is
 #                             printed as it was read
 #
-# Exit status: 0 done, 1 nothing was chosen (Escape, or the bar closed), 2
-# Nodi could not be reached or refused the request.
+# Exit status: 0 done, 1 nothing was chosen (Escape, or the bar closed),
+# 2 Nodi refused it (an unknown row, a row that asks first, rows it could
+# not read) or the command was misused, 3 Nodi could not be reached (the
+# shell not running, Nodi not loaded, omarchy-shell or jq missing).
 #
 # Everything goes through Omarchy's shell IPC (omarchy-shell): summon opens
 # the bar with a payload, call runs one of Nodi's functions. A pick's rows go
@@ -28,18 +30,32 @@ export PATH
 id=io.github.itsgg.nodi
 ipc=${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-shell
 
-usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
 
 fail() { echo "nodi: $*" >&2; exit 2; }
+# Kept apart from a refusal, so a caller can tell "no" from "not there"
+# (Akshi's check 2026-10-05).
+unreachable() { echo "nodi: $*" >&2; exit 3; }
 
-command -v jq >/dev/null || fail "jq is needed"
-[ -x "$ipc" ] || fail "omarchy-shell not found at $ipc"
+command -v jq >/dev/null || unreachable "jq is needed"
+[ -x "$ipc" ] || unreachable "omarchy-shell not found at $ipc"
+
+# One call to Nodi through the shell: its answer on stdout, or exit 3 when
+# omarchy-shell fails (the shell down, or a Nodi too old to have the
+# function: "Function not found.") or the shell answers "unknown" (Nodi
+# disabled or not loaded).
+ask() {
+  local out
+  out=$("$ipc" shell "$@") || unreachable "the Omarchy shell cannot be reached, or this Nodi is too old for it"
+  [ "$out" = unknown ] && unreachable "Nodi is not loaded"
+  printf '%s' "$out"
+}
 
 open_with() {
   local payload
   payload=$(jq -cn --arg q "$1" '{query: $q}') || fail "could not encode the query"
-  out=$("$ipc" shell summon "$id" "$payload") || exit 2
-  [ "$out" = ok ] || fail "Nodi is not loaded ($out)"
+  out=$(ask summon "$id" "$payload") || exit 3
+  [ "$out" = ok ] || fail "Nodi did not open ($out)"
 }
 
 pick() {
@@ -63,7 +79,7 @@ pick() {
   rid=${dir##*.}
   req=$(jq -cn --arg dir "$dir" --arg id "$rid" --arg p "$placeholder" --argjson json "$json" \
     '{dir: $dir, id: $id, placeholder: $p, json: $json}') || fail "could not encode the request"
-  out=$("$ipc" shell call "$id" pick "$req") || exit 2
+  out=$(ask call "$id" pick "$req") || exit 3
   [ "$out" = ok ] || fail "Nodi refused the pick ($out)"
   reply=""
   while ! IFS= read -r -t 2 reply <&3; do
@@ -80,17 +96,18 @@ pick() {
       [[ $n =~ ^[0-9]+$ ]] || fail "a bad answer from Nodi"
       sed -n "$((n + 1))p" "$dir/rows"
       exit 0 ;;
+    error) fail "Nodi could not read the rows (more than 8 MB, or gone)" ;;
     *) exit 1 ;;
   esac
 }
 
 case ${1-} in
-  "") out=$("$ipc" shell summon "$id" '{}') || exit 2; [ "$out" = ok ] || fail "Nodi is not loaded ($out)" ;;
+  "") out=$(ask summon "$id" '{}') || exit 3; [ "$out" = ok ] || fail "Nodi did not open ($out)" ;;
   -h|--help) usage ;;
   --) shift; open_with "$*" ;;
   run)
     [ $# -eq 2 ] || fail "usage: nodi run <key>"
-    out=$("$ipc" shell call "$id" runRow "$2") || exit 2
+    out=$(ask call "$id" runRow "$2") || exit 3
     [ "$out" = ok ] || fail "$2: $out"
     ;;
   pick) shift; pick "$@" ;;

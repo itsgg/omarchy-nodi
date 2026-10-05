@@ -138,9 +138,9 @@ you came from, the one that had the focus when the bar opened:
 empty when not known. It runs for 3 s at most
 (`timeoutMs`, up to 10000), and each keystroke ends the run before it, the
 program and what it started. Where two take the same word, the one earlier
-in `providers` wins: by default your `keywords`, then filters, then
-answers (below), then Nodi's own prefixes (`w`, `kill`, `cb`), so pick a
-word of its own. It prints one
+in `providers` wins: by default your `keywords`, snippets and script
+commands, then filters, then answers (below), then Nodi's own prefixes
+(`w`, `kill`, `cb`), so pick a word of its own. It prints one
 JSON object a line, each a row; only `title` is required:
 
 ```json
@@ -164,9 +164,16 @@ the start when it has no `preview`. It gets no hotkey or link, and
 "subtitle", "markdown"}`; pictures and HTML in it are shown as text, never
 loaded. A row with an `id` is remembered and ranked like any other.
 `actions` are what Ctrl+K offers, each with `exec`, `open`, `copy` or
-`paste`, and `confirm`, `risk` and `undoable` as a row has them. At most
-50 rows; a line that is not such an object is skipped. While a run is on
-its way, the last rows stay.
+`paste`, and `confirm`, `risk` and `undoable` as a row has them; one that
+asks shows its command and risk while Ctrl+K is up. At most 50 rows; a
+line that is not such an object is skipped. While a run is on its way, the
+last rows stay. Fields are cut to a length: title 200 characters, subtitle
+300, badge 24, icon 8, id 200, risk 500, preview 64 KB, and 12 actions.
+Output past 1 MB is not cut: the run fails ("could not answer"). Left out
+without a word: a filter whose keyword has a space or whose program holds
+`=` or starts with `-`, an `exec` whose program starts with `-`, a copy or
+paste of nothing, an image that is not an absolute path, and an `open`
+that is neither a URL nor an absolute path.
 
 A row or action with `"undoable": true` and an `exec` action is run by
 Nodi itself, which reads what it prints. If its last line is
@@ -176,8 +183,9 @@ and found by its title or by `undo`; Enter twice runs it. Such an action
 is a command that does its work and ends: it runs in the filter's
 environment, not your session's whole one (no `DISPLAY`, `EDITOR` or
 `GDK_SCALE`, for one), and is ended after two minutes, so it is no way to
-open a window. If it fails, a notification says why. The offer lasts
-while the shell runs, not across a restart.
+open a window. If it fails, a notification says why, and no undo is
+offered, whatever it printed. The undo itself runs as any action does, in
+your session. The offer lasts while the shell runs, not across a restart.
 
 An answer is a program that answers a question you type after a keyword,
 on Enter rather than as you type, and what it prints shows as Markdown in
@@ -191,7 +199,7 @@ the pane as it arrives:
 
 `a why is it slow`, then Enter, runs `my-ask --markdown "why is it slow"`
 with the same environment, argument and `NODI_QUERY` as a script filter.
-It runs for two minutes at most (`timeoutMs`, up to 600000) and may print
+It runs for two minutes at most (`timeoutMs`, from 1000 to 600000) and may print
 120 KB. What it prints shows a word at a time, at its spaces, so text
 with no spaces (Chinese, a long URL) shows once it ends. Write each piece as you have it: a program whose output is
 buffered when it goes into a pipe (Python's, for one) shows nothing until
@@ -218,7 +226,9 @@ ln -s ~/.config/omarchy/plugins/io.github.itsgg.nodi/bin/nodi ~/.local/bin/nodi
 `nodi` opens the bar, `nodi cb` opens it with `cb` typed (`nodi -- run`
 types a word the command itself would take), and `nodi run <key>` runs a
 row by its key as its hotkey would; Ctrl+K's Copy deeplink shows a row's
-key. A row that asks before it runs is refused there. `nodi pick` shows
+key. Nodi knows a row by its key once it has been run or saved, which a
+script filter's row can be only with an `id`. A row that asks before it
+runs is refused there. `nodi pick` shows
 the lines it reads from stdin as rows and prints the one you choose, as it
 was read:
 
@@ -228,8 +238,11 @@ choice=$(printf '%s\n' Lock Suspend Reboot | nodi pick --placeholder Power)
 
 With `--json`, each line is an object as a script filter prints one
 (`title`, `subtitle`, `icon`, `image`, `badge`, `preview`); Enter only
-chooses, so an `action` is not read. It exits 0 with a choice, 1 when the
-bar closes without one, and 2 when Nodi cannot be reached.
+chooses, so an `action` is not read. A pick takes 5000 rows and 8 MB at
+most. Every form exits 0 when done, 1 when a pick ends without a choice,
+2 when Nodi refuses (an unknown row, a row that asks first, rows it could
+not read) or the command is misused, and 3 when Nodi cannot be reached
+(a pick whose bar goes away while it waits ends as 1).
 
 ## What it touches
 

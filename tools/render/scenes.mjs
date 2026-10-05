@@ -147,6 +147,37 @@ const scenes = [
     const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }));
     return { paletteOpen: true, paletteActions: actions, paletteIndex: 8, paletteRow: row };
   }),
+  // Ctrl+K on a filter row: an action that asks, armed, its command and
+  // risk in the pane beside the actions.
+  (() => {
+    const line = JSON.stringify({ title: "Weekly report", subtitle: "Friday", id: "weekly", action: { exec: ["my-notes", "open", "weekly"] },
+      actions: [{ title: "Send to the team", action: { exec: ["mailer", "send", "--list", "team", "weekly.md"] }, confirm: true,
+                  risk: "Mails the report to 40 people; it cannot be called back." }] });
+    const row = plain(Rows.normalize(Filters.parse(line, { keyword: "n", title: "Notes", icon: "󰎞" })[0], { id: "filters", name: "Notes" }, 0, 0));
+    const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => false, prefs: Prefs.empty() }));
+    const at = actions.findIndex(a => a.label === "Send to the team");
+    return { name: "40-palette-confirm", query: "n weekly", rows: [row], mode: null, selectedIndex: 0, paletteOpen: true,
+             paletteActions: actions, paletteIndex: at, paletteArmed: actions[at].label, paletteRow: row, armedKey: "" };
+  })(),
+  // The same palette on its plain Run: the pane holds with the action's
+  // label, so the card keeps its width from action to action.
+  (() => {
+    const line = JSON.stringify({ title: "Weekly report", subtitle: "Friday", id: "weekly", action: { exec: ["my-notes", "open", "weekly"] },
+      actions: [{ title: "Send to the team", action: { exec: ["mailer", "send", "--list", "team", "weekly.md"] }, confirm: true,
+                  risk: "Mails the report to 40 people; it cannot be called back." }] });
+    const row = plain(Rows.normalize(Filters.parse(line, { keyword: "n", title: "Notes", icon: "󰎞" })[0], { id: "filters", name: "Notes" }, 0, 0));
+    const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => false, prefs: Prefs.empty() }));
+    return { name: "41-palette-steady", query: "n weekly", rows: [row], mode: null, selectedIndex: 0, paletteOpen: true,
+             paletteActions: actions, paletteIndex: 0, paletteArmed: "", paletteRow: row, armedKey: "" };
+  })(),
+  // Eight rows with no section, the last selected, scrolled to it; a
+  // ten-action Ctrl+K opened and closed over it leaves it in view.
+  scene("42-palette-closed-keeps-scroll", "omarchy ", {}, rows => {
+    const actions = plain(Rows.actionsFor(plain(Engine.run("firefox", config, services(base)))[0], { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }));
+    const eight = rows.slice(0, 8).map(r => Object.assign({}, r, { section: "", hero: false }));
+    return { rows: eight, selectedIndex: 7,
+             after: [{ paletteOpen: true, paletteActions: actions, paletteRow: eight[7], paletteIndex: 0 }, { paletteOpen: false }] };
+  }),
   scene("13-nothing", "zzqx"),
   scene("14-omarchy-catalog", "omarchy "),
   scene("38-long-list-selected", "omarchy ", {}, () => ({ selectedIndex: 8 })),

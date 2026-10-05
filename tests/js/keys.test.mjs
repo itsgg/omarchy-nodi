@@ -133,5 +133,11 @@ test("the pane scrolls with Shift, the list pages with PageUp and PageDown", () 
   assert.deepEqual(ctrl("U"), { do: "panePage", by: -0.5 });
   assert.equal(Keys.decide({ name: "U", ctrl: true }, v({ pane: false })), null, "no pane: Ctrl+U clears the field, as it does");
   assert.equal(Keys.decide({ name: "D", ctrl: true }, v({ pane: false })), null);
+  const pal = { palette: { count: 3, index: 1 } };
+  assert.deepEqual(k("Down", true, pal), { do: "paneScroll", lines: 3 }, "under Ctrl+K the pane scrolls too");
+  assert.deepEqual(k("PageUp", true, pal), { do: "panePage", by: -1 });
+  assert.deepEqual(ctrl("D", pal), { do: "panePage", by: 0.5 });
+  assert.deepEqual(k("Down", true, Object.assign({ pane: false }, pal)), { do: "paletteMove", to: 2 }, "no pane: Shift+Down moves the actions");
+  assert.deepEqual(k("Down", false, pal), { do: "paletteMove", to: 2 });
 });
 

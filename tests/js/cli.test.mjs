@@ -113,7 +113,7 @@ test("pick with --json says so; Escape is exit 1 with nothing printed", () => {
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
-test("a bar that closes without answering ends the wait; a shell that is down is exit 2", () => {
+test("a bar that closes without answering ends the wait; a shell that is down is exit 3, a refusal 2", () => {
   const t = setup();
   try {
     const started = Date.now();
@@ -122,9 +122,15 @@ test("a bar that closes without answering ends the wait; a shell that is down is
     assert.ok(Date.now() - started < 6000, "within a check or two");
     assert.match(r.log, /pickAlive/);
     r = nodi(t, ["pick"], { input: "a\n", down: true });
-    assert.equal(r.status, 2);
+    assert.equal(r.status, 3, "unreachable, not refused (Akshi 2026-10-05)");
     r = nodi(t, ["hello"], { down: true });
-    assert.equal(r.status, 2);
+    assert.equal(r.status, 3);
+    r = nodi(t, ["run", "x"], { runRow: "unknown" });
+    assert.equal(r.status, 3, "the shell's \"unknown\": Nodi is not loaded");
+    assert.match(r.err, /not loaded/);
+    r = nodi(t, ["pick"], { input: "a\n", pick: "error" });
+    assert.equal(r.status, 2, "rows Nodi could not read are a refusal, never an Escape");
+    assert.match(r.err, /could not read the rows/);
     r = nodi(t, ["pick", "--bogus"], { input: "a\n" });
     assert.equal(r.status, 2);
     assert.match(r.err, /unknown option/);

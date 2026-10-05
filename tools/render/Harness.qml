@@ -56,7 +56,10 @@ Window {
     readonly property var preview: readPreview(Pane.choose({
       paletteOpen: paletteOpen,
       ask: answerShown !== "" ? { question: typed.replace(/^\s*ask\s+/i, ""), model: "haiku", text: answerShown } : null,
-      answer: streamed, word: wordAsk, row: selectedRow, armed: !!selectedRow && armedKey === selectedRow.key, anyPreview: anyPreview
+      answer: streamed, word: wordAsk,
+      palette: paletteOpen ? { row: paletteRow, action: paletteActions[paletteIndex] || null, actions: paletteActions,
+                               armed: !!paletteArmed && !!paletteActions[paletteIndex] && paletteArmed === paletteActions[paletteIndex].label } : null,
+      row: selectedRow, armed: !!selectedRow && armedKey === selectedRow.key, anyPreview: anyPreview
     }))
     // A scene's `reads` stand in for the reader: path -> what file-head gives.
     property var reads: ({})
@@ -155,11 +158,40 @@ Window {
     settle.restart()
   }
 
+  // A scene may carry `after`: states applied one a settle before the
+  // grab, as keys would apply them, to see what a sequence leaves behind
+  // (Fable's review harness 2026-10-05).
+  property int step: 0
+
+  // The selected row whole in the list's view, with the list up: a list
+  // that lost its scroll hides it (Fable 2026-10-05). The log line fails
+  // tools/render.sh.
+  function checkSelected(name) {
+    if (fake.paletteOpen || !fake.rows.length) return
+    var l = card.list
+    var it = l.itemAtIndex(fake.selectedIndex)
+    if (!it || it.y < l.contentY - 0.5 || it.y + it.height > l.contentY + l.height + 0.5)
+      console.log("Error: " + name + ": the selected row is out of view (contentY " + l.contentY + ", height " + l.height + ")")
+  }
+
   Timer {
     id: settle
     interval: 250
     onTriggered: {
-      var name = Scenes.scenes[win.current].name
+      var s = Scenes.scenes[win.current]
+      var name = s.name
+      if (s.after && win.step < s.after.length) {
+        // In Nodi's order (openPalette): the actions before the palette
+        // opens, the index after, as show() sets them (Fable 2026-10-05).
+        var o = s.after[win.step++]
+        var first = ["paletteActions", "paletteRow", "paletteOpen"]
+        first.forEach(function(k) { if (k in o) fake[k] = o[k] })
+        for (var k in o) if (first.indexOf(k) === -1) fake[k] = o[k]
+        settle.restart()
+        return
+      }
+      win.step = 0
+      win.checkSelected(name)
       frame.grabToImage(function(result) {
         result.saveToFile(win.outDir + "/" + name + ".png")
         console.log("SHOT " + name)
