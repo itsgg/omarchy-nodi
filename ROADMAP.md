@@ -362,6 +362,10 @@ baseline query loses rank.
     folders.
 56. **Labels that remove a doubt**: the paste target's name, calculator
     history, Tab puts an answer into the field. L 6.
+    Done 2026-10-05: a paste says where it lands ("Paste into Chromium",
+    the app of the window the bar opened over); `=` alone lists the last
+    20 answers copied, from what History keeps; Tab on a sum puts its
+    answer in the field. Not "calc", which opens LibreOffice Calc.
 57. **Script filters, further**: a cached list mode ranked at root;
     autocomplete, match text, hidden data and rerun; multi-step filters
     and a rofi adapter. E 2, 4, 5; L 19.

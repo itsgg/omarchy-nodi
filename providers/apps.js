@@ -3,6 +3,7 @@
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 .import "../lib/Describe.js" as Describe
+.import "../lib/WindowClass.js" as WindowClass
 
 // Launch installed applications. Nodi.qml keeps a snapshot of the visible
 // desktop entries in ctx.apps:
@@ -158,10 +159,16 @@ function rank(app, q, qw) {
 // the windows provider, ranked just above) switches instead.
 function runningOf(windows) {
   var running = {}
-  for (var w = 0; w < windows.length; w++) running[String(windows[w].cls).toLowerCase()] = true
+  var classes = []
+  for (var w = 0; w < windows.length; w++) {
+    var c = String(windows[w].cls).toLowerCase()
+    if (!running[c]) classes.push(c)
+    running[c] = true
+  }
   return function(app) {
     return running[app.id.toLowerCase()] || (app.wmclass && running[app.wmclass.toLowerCase()])
       || running[app.id.toLowerCase().split(".").pop()]
+      || classes.some(function(c) { return WindowClass.webAppOwns(app, c) })
   }
 }
 
