@@ -2,10 +2,10 @@
  "summary": {
   "intended": {
    "queries": 100,
-   "first": 76,
-   "topThree": 82,
-   "notShown": 16,
-   "mrr": 0.792
+   "first": 82,
+   "topThree": 88,
+   "notShown": 10,
+   "mrr": 0.853
   },
   "classes": {
    "name": {
@@ -34,7 +34,7 @@
    },
    "description": {
     "queries": 8,
-    "first": 2
+    "first": 8
    },
    "synonym": {
     "queries": 10,
@@ -71,7 +71,7 @@
     "mean": 3.51
    }
   },
-  "noise": 25
+  "noise": 17
  },
  "intended": {
   "spotify": 1,
@@ -112,12 +112,12 @@
   "emoji": 1,
   "omarchy update": 1,
   "lo c": 0,
-  "lo w": 3,
+  "lo w": 2,
   "gcal": 1,
   "tg": 1,
   "slk": 1,
   "sptfy": 1,
-  "wa": 11,
+  "wa": 10,
   "wfi": 0,
   "blth": 0,
   "scrnsht": 0,
@@ -142,14 +142,14 @@
   "system monitor": 1,
   "sound editor": 1,
   "music": 1,
-  "organize files": 0,
-  "airdrop": 0,
-  "handwritten notes": 0,
-  "password manager": 0,
+  "organize files": 1,
+  "airdrop": 1,
+  "handwritten notes": 1,
+  "password manager": 1,
   "3d modeling": 1,
-  "record audio": 0,
+  "record audio": 1,
   "vector graphics": 1,
-  "manage drives": 0,
+  "manage drives": 1,
   "sleep": 1,
   "restart": 2,
   "light mode": 1,
@@ -332,9 +332,9 @@
   "zzqx": 0,
   "qwxz": 0,
   "résumé": 3,
-  "wi fi": 7,
+  "wi fi": 2,
   "tm": 6,
-  "ab": 8,
+  "ab": 5,
   "ir": 1
  }
 }
