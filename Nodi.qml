@@ -1050,6 +1050,8 @@ Item {
     ask: root.askShown !== "" ? { question: askSession.question, model: askSession.model, text: root.askShown } : null,
     answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
     word: root.wordAsk,
+    palette: root.paletteOpen ? { row: root.paletteRow, action: root.paletteActions[root.paletteIndex] || null, actions: root.paletteActions,
+                                  armed: !!root.paletteArmed && !!root.paletteActions[root.paletteIndex] && root.paletteArmed === root.paletteActions[root.paletteIndex].label } : null,
     row: root.selectedRow, armed: !!root.selectedRow && root.armedKey === root.selectedRow.key, anyPreview: root.anyPreview
   }))
 

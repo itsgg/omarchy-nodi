@@ -21,6 +21,7 @@ Item {
   readonly property string root: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
   readonly property string first: root + "/nodi-pick.T1" + Date.now()
   readonly property string second: root + "/nodi-pick.T2" + Date.now()
+  readonly property string third: root + "/nodi-pick.T3" + Date.now()
   function idOf(dir) { return dir.slice(dir.lastIndexOf(".") + 1) }
   function ask(dir) { return JSON.stringify({ dir: dir, id: test.idOf(dir), placeholder: "Which?", json: false }) }
 
@@ -37,8 +38,9 @@ Item {
     id: setup
     command: ["/usr/bin/bash", "-c",
       'for d in "$1" "$2"; do mkdir -m 700 "$d" && printf "alpha\\n\\nbeta\\ngamma" > "$d/rows" && mkfifo -m 600 "$d/answer"; done; '
-      + 'for d in "$1" "$2"; do ( exec 3<>"$d/answer"; IFS= read -r -t 8 a <&3; printf "%s" "$a" > "$d/heard" ) & done; wait',
-      "pick-test", test.first, test.second]
+      + 'mkdir -m 700 "$3" && mkfifo -m 600 "$3/answer"; '
+      + 'for d in "$1" "$2" "$3"; do ( exec 3<>"$d/answer"; IFS= read -r -t 8 a <&3; printf "%s" "$a" > "$d/heard" ) & done; wait',
+      "pick-test", test.first, test.second, test.third]
     onStarted: startPicks.start()
   }
 
@@ -76,6 +78,9 @@ Item {
       picks.end("pick 9")
       check(test.endedWith.length === 2, "an end with nothing open says nothing")
       check(test.endedWith[1] === "my query", "the second gives back what the field held before the first: " + JSON.stringify(test.endedWith))
+      // A pick whose rows cannot be read answers "error" (its rows file is
+      // gone: the reader fails).
+      check(picks.request(test.ask(test.third), "") === "ok", "the third is taken")
       heard.start()
     }
   }
@@ -88,10 +93,10 @@ Item {
 
   Process {
     id: readHeard
-    command: ["/usr/bin/bash", "-c", 'printf "%s|%s" "$(cat "$1/heard" 2>/dev/null)" "$(cat "$2/heard" 2>/dev/null)"; rm -rf -- "$1" "$2"', "pick-test", test.first, test.second]
+    command: ["/usr/bin/bash", "-c", 'printf "%s|%s|%s" "$(cat "$1/heard" 2>/dev/null)" "$(cat "$2/heard" 2>/dev/null)" "$(cat "$3/heard" 2>/dev/null)"; rm -rf -- "$1" "$2" "$3"', "pick-test", test.first, test.second, test.third]
     stdout: StdioCollector { id: heardOut }
     onExited: {
-      check(heardOut.text === "cancel|pick 3", "each FIFO heard its answer: " + JSON.stringify(heardOut.text))
+      check(heardOut.text === "cancel|pick 3|error", "each FIFO heard its answer, unreadable rows an error: " + JSON.stringify(heardOut.text))
       test.done(test.failures.length === 0, test.failures.join("; "))
     }
   }

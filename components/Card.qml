@@ -210,25 +210,36 @@ BorderSurface {
       }
     }
 
-    // ---------- Ctrl+K: the selected row's actions ----------
-    ActionPalette {
-      nodi: card.nodi
-      width: parent.width
-      visible: nodi.paletteOpen
-    }
-
-    // ---------- results, and beside them the selected row's preview ----------
+    // ---------- results or Ctrl+K's actions, and beside them the pane ----------
+    // One area for both, so the pane shows beside the actions as it does
+    // beside the rows: an action that asks shows its command there (it was
+    // drawn inside the results, hidden with them; Fable 2026-10-05).
     Item {
       width: parent.width
       // With a pane, tall enough for it even when one row shows.
-      height: nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight
-      visible: !nodi.paletteOpen && nodi.rows.length > 0
+      height: nodi.paletteOpen ? Math.max(palette.implicitHeight, nodi.preview ? nodi.paneMin : 0)
+        : (nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight)
+      visible: nodi.paletteOpen || nodi.rows.length > 0
 
-      Item {
-        id: listBox
+      // ---------- Ctrl+K: the selected row's actions ----------
+      ActionPalette {
+        id: palette
+        nodi: card.nodi
         anchors.left: parent.left
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
+        width: nodi.preview ? nodi.listColumn : parent.width
+        visible: nodi.paletteOpen
+      }
+
+      // Its own height, not the area's: under Ctrl+K the area takes the
+      // palette's, and a list resized while hidden lost its scroll (Fable
+      // 2026-10-05).
+      Item {
+        id: listBox
+        visible: !nodi.paletteOpen
+        anchors.left: parent.left
+        anchors.top: parent.top
+        height: nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight
         width: nodi.preview ? nodi.listColumn : parent.width
 
         ListView {
@@ -276,7 +287,7 @@ BorderSurface {
         visible: !!nodi.preview
         nodi: card.nodi
         preview: nodi.preview
-        anchors.left: listBox.right
+        anchors.left: nodi.paletteOpen ? palette.right : listBox.right
         anchors.leftMargin: Style.spacing.md
         anchors.right: parent.right
         anchors.top: parent.top

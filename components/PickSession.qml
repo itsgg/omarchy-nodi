@@ -51,7 +51,9 @@ Item {
     onFinished: function(text, ok, tag) {
       var s = session.current
       if (!s || s.id !== tag) return
-      if (!ok) { session.end("cancel"); return }
+      // Rows that could not be read (past 8 MB, or gone) are an error to
+      // the command, never a pick closed without a choice.
+      if (!ok) { session.end("error"); return }
       session.current = { id: s.id, dir: s.dir, rows: Pick.parse(text, s.json), placeholder: s.placeholder, json: s.json, before: s.before }
       session.ready()
     }

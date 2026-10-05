@@ -52,9 +52,9 @@ Item {
     Item { visible: parent.back; width: Style.spacing.lg; height: 1 }
 
     // Only while there is more to see: the keys are fzf's, not a launcher's.
-    Text { visible: footer.scrollable && !nodi.paletteOpen; anchors.verticalCenter: parent.verticalCenter; text: "Scroll"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
-    Keycap { visible: footer.scrollable && !nodi.paletteOpen; label: "Shift 󰁝󰁅"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
-    Item { visible: footer.scrollable && !nodi.paletteOpen; width: Style.spacing.lg; height: 1 }
+    Text { visible: footer.scrollable; anchors.verticalCenter: parent.verticalCenter; text: "Scroll"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
+    Keycap { visible: footer.scrollable; label: "Shift 󰁝󰁅"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
+    Item { visible: footer.scrollable; width: Style.spacing.lg; height: 1 }
 
     Text { visible: parent.more; anchors.verticalCenter: parent.verticalCenter; text: "Actions"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
     Keycap { visible: parent.more; label: "Ctrl K"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
