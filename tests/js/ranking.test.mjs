@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { load, root } from "./load.mjs";
+import { load, root, plain } from "./load.mjs";
 import { Engine, config, services } from "./fixtures.mjs";
 
 const Menu = load("lib/Menu.js");
@@ -103,4 +103,21 @@ test("a group named like an Object method still groups, and a hidden favourite d
   for (let i = 0; i < 12; i++) history["app:a" + i] = { n: 12 - i, t: Date.now(), s: snapOf("a" + i) };
   const rows = Engine.home(config, services({ history, prefs, reminders: [] }));
   assert.equal(rows.filter(r => r.group === "Recent").length, 8, "eight recent rows, the hidden favourite not counted");
+});
+
+test("a group leads by three rows at most before a stronger row of another group (ROADMAP 39)", () => {
+  const r = (key, group, score) => ({ key, group, score, provider: "x", providerName: group });
+  // Sorted best first, as the search path sorts them before grouping.
+  const rows = [r("m1", "Menu", 90), r("m2", "Menu", 80), r("m3", "Menu", 70), r("a1", "Apps", 65), r("m4", "Menu", 60), r("m5", "Menu", 50), r("a2", "Apps", 40)];
+  const led = plain(Engine.group(rows.map(x => Object.assign({}, x)), 3));
+  assert.deepEqual(led.map(x => x.key), ["m1", "m2", "m3", "a1", "a2", "m4", "m5"], "the fourth menu row waits for the stronger app");
+  assert.deepEqual(led.map(x => x.section), ["Menu", "", "", "Apps", "", "Menu", ""], "each run under its header, the menu's twice");
+  const whole = plain(Engine.group(rows.map(x => Object.assign({}, x))));
+  assert.deepEqual(whole.map(x => x.key), ["m1", "m2", "m3", "m4", "m5", "a1", "a2"], "without a lead, each group whole as before (help, the home view)");
+  const tail = plain(Engine.group([r("m1", "Menu", 90), r("m2", "Menu", 80), r("m3", "Menu", 70), r("a1", "Apps", 65), r("a2", "Apps", 55), r("m4", "Menu", 50)], 3));
+  assert.deepEqual(tail.map(x => x.key + ":" + x.section), ["m1:Menu", "m2:", "m3:", "a1:Apps", "a2:", "m4:Menu"], "a tail of one row under its own header, not the apps' (Fable 2026-10-05)");
+  const lone = plain(Engine.group([r("m1", "Menu", 90), r("m2", "Menu", 80), r("x1", "Other", 70)], 3));
+  assert.equal(lone[2].section, "", "a group of one row still has no header");
+  const weak = [r("m1", "Menu", 90), r("m2", "Menu", 80), r("m3", "Menu", 70), r("m4", "Menu", 60), r("a1", "Apps", 55)];
+  assert.deepEqual(plain(Engine.group(weak.map(x => Object.assign({}, x)), 3)).map(x => x.key), ["m1", "m2", "m3", "m4", "a1"], "no stronger row: the group goes on");
 });
