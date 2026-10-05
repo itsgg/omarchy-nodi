@@ -3,6 +3,7 @@
 .import "snippets.js" as Snippets
 .import "scripts.js" as Scripts
 .import "filters.js" as Filters
+.import "answers.js" as Answers
 .import "ask.js" as Ask
 .import "shell.js" as Shell
 .import "math.js" as Calculator
@@ -33,6 +34,7 @@ var all = [
   Snippets.provider,
   Scripts.provider,
   Filters.provider,
+  Answers.provider,
   Ask.provider,
   Shell.provider,
   Calculator.provider,

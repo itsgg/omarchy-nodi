@@ -21,7 +21,9 @@ import "lib/Match.js" as Match
 import "lib/tzcities.js" as Tz
 import "lib/Describe.js" as Describe
 import "lib/Pick.js" as Pick
+import "lib/Pane.js" as Pane
 import "providers/apps.js" as Apps
+import "providers/answers.js" as Answers
 
 // Nodi: a command bar for Omarchy. This file draws, takes keys and fetches
 // data; what a query means is decided by providers/, run through
@@ -222,6 +224,9 @@ Item {
     root.aliasRow = null
     root.endCapture()
     askSession.recycle()
+    // Nobody sees an answer once the bar is closed: it stops, and the next
+    // open asks afresh.
+    answerSession.reset()
     root.saveLastQuery()
   }
 
@@ -255,6 +260,8 @@ Item {
       request: requests.request,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model },
+      answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
+                error: answerSession.error },
       window: root.cameFrom,
       desktop: desktop
     }
@@ -501,6 +508,9 @@ Item {
     } else if (row.nodi === "ask") {
       var q = input.text.replace(/^\s*ask\s+/i, "").trim()
       if (q) askSession.send(q)
+    } else if (row.nodi === "answer") {
+      var spec = Answers.spec(input.text, root.config.answers, root.cameFrom)
+      if (spec) answerSession.start(spec)
     } else if (row.nodi === "pick" && root.pickSession) {
       var line = Pick.lineOf(row.key)
       if (line < 0) return
@@ -628,6 +638,7 @@ Item {
       text: input.text,
       aliasing: !!root.aliasRow,
       pick: !!root.pickSession,
+      answering: root.answerShown && answerSession.running,
       rows: root.rows.length,
       selected: root.selectedIndex,
       page: Math.max(1, Math.floor(list.height / Math.max(1, root.rowHeight))),
@@ -660,6 +671,7 @@ Item {
     case "helpBack": root.helpBack(); break
     case "clear": input.text = ""; break
     case "dismiss": root.dismiss(); break
+    case "stopAnswer": answerSession.stop(); break
     case "cancelAlias": root.aliasRow = null; input.text = ""; root.recompute(); break
     }
   }
@@ -939,6 +951,13 @@ Item {
   // What Omarchy's launcher shows while a slow app starts.
   LaunchFeedback { id: launchFeedback }
 
+  // An answer a program of yours streams (providers/answers.js).
+  Answer {
+    id: answerSession
+    env: ({ PATH: Quickshell.env("PATH") || "" })
+    onPhaseChanged: if (root.opened) root.recompute()
+  }
+
   // A quick answer from Claude, held open (components/Ask.qml).
   Ask {
     id: askSession
@@ -949,18 +968,19 @@ Item {
 
   // The answer the card shows, while the query is the question it answers.
   readonly property bool asking: /^\s*ask\s/i.test(input.text)
-  readonly property string answerShown: root.asking && askSession.phase !== "idle"
+  readonly property string askShown: root.asking && askSession.phase !== "idle"
     && askSession.question === input.text.replace(/^\s*ask\s+/i, "").trim() ? askSession.answer : ""
-  // The pane beside the list (item 26): Ask's answer while it shows, else
-  // the selected row's preview; none while Ctrl+K's actions are up.
-  // While any row in the list has one, the card stays wide and a row
-  // without one shows its title in the pane, so arrowing through a mixed
-  // list does not jump between 680 and 960 (his ruling 2026-10-04).
+  // A streamed answer (providers/answers.js), while the query is its question.
+  readonly property bool answerShown: Answers.shown(input.text, root.config.answers,
+    { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question })
+  // The pane beside the list (item 26), as lib/Pane.js chooses it.
   readonly property bool anyPreview: root.rows.some(function(r) { return !!r.preview })
-  readonly property var preview: root.paletteOpen ? null
-    : (root.answerShown !== "" ? { title: askSession.question, subtitle: "Claude, " + askSession.model, text: root.answerShown, follow: true }
-       : root.readPreview((root.selectedRow && root.selectedRow.preview)
-          || (root.anyPreview && root.selectedRow ? { title: root.selectedRow.title, subtitle: root.selectedRow.subtitle } : null)))
+  readonly property var preview: root.readPreview(Pane.choose({
+    paletteOpen: root.paletteOpen,
+    ask: root.askShown !== "" ? { question: askSession.question, model: askSession.model, text: root.askShown } : null,
+    answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text } : null,
+    row: root.selectedRow, anyPreview: root.anyPreview
+  }))
 
   // A preview that names a read gets it now, for the selected row only; the
   // read's arrival recomputes the rows, and this binding with them.

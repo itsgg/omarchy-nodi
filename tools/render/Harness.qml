@@ -3,6 +3,7 @@ import QtQuick.Window
 import "components"
 import "scenes.js" as Scenes
 import "lib/Rows.js" as Rows
+import "lib/Pane.js" as Pane
 
 // Draws Nodi's real card (components/Card.qml) for each scene in
 // scenes.js and saves it as a PNG, on Qt's offscreen platform. The card
@@ -50,9 +51,11 @@ Window {
     readonly property int listColumn: look.listColumn
     readonly property int paneMin: look.paneMin
     readonly property bool anyPreview: rows.some(function(r) { return !!r.preview })
-    readonly property var preview: paletteOpen ? null
-      : (answerShown !== "" ? { title: typed.replace(/^\s*ask\s+/i, ""), subtitle: "Claude, haiku", text: answerShown, follow: true }
-         : readPreview((selectedRow && selectedRow.preview) || (anyPreview && selectedRow ? { title: selectedRow.title, subtitle: selectedRow.subtitle } : null)))
+    readonly property var preview: readPreview(Pane.choose({
+      paletteOpen: paletteOpen,
+      ask: answerShown !== "" ? { question: typed.replace(/^\s*ask\s+/i, ""), model: "haiku", text: answerShown } : null,
+      answer: streamed, row: selectedRow, anyPreview: anyPreview
+    }))
     // A scene's `reads` stand in for the reader: path -> what file-head gives.
     property var reads: ({})
     function readPreview(p) {
@@ -62,6 +65,8 @@ Window {
     }
     readonly property int answerMax: look.answerMax
     property string answerShown: ""
+    // A streamed answer's { question, title, text }, as Nodi.qml hands Pane.js one.
+    property var streamed: null
 
     property var rows: []
     property int selectedIndex: 0
@@ -128,6 +133,7 @@ Window {
     fake.reads = s.reads || ({})
     fake.aliasRow = s.aliasRow || null
     fake.answerShown = s.answer || ""
+    fake.streamed = s.streamed || null
     card.input.text = s.query
     card.list.positionViewAtIndex(s.selectedIndex, ListView.Contain)
   }
