@@ -280,6 +280,9 @@ baseline query loses rank.
     after each pick of a row. Q 1 (H 1, H 5). The frontier's constants
     fitted to his picks (Q 14) need it.
 
+    The log landed 2026-10-05, kept as he uses the bar (`make picks`:
+    first picks, the picked row's median place, letters typed); the replay
+    through the harness waits for picks to replay.
 ## Phase I: AI and agents
 
 43. **Ask continues**: follow-ups on the held session; "Ask again" and

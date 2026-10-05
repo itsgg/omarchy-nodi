@@ -104,6 +104,8 @@ lib/
                         every 30 days (~/.cache/nodi)
   Opens.js              how long each open took, phase by phase
                         (~/.cache/nodi/opens.json, make opens)
+  PickLog.js            each row run from a query: the queries typed, its
+                        place (~/.cache/nodi/picks-log.json, make picks)
   Prefs.js              aliases, favourites, hidden rows, row hotkeys
                         (~/.local/state/nodi)
   Requests.js           when a provider's read is due, and what it keeps
