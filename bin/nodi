@@ -1,0 +1,96 @@
+#!/usr/bin/bash
+# nodi: Nodi from a terminal or a script (README, "The nodi command").
+#
+#   nodi                      open the bar
+#   nodi <words...>           open it with the words typed ("nodi -- run x"
+#                             types "run x")
+#   nodi run <key>            run a row by its key, as its hotkey would
+#   nodi pick [--json] [--placeholder <text>]
+#                             rows from stdin, a line each; the one chosen is
+#                             printed as it was read
+#
+# Exit status: 0 done, 1 nothing was chosen (Escape, or the bar closed), 2
+# Nodi could not be reached or refused the request.
+#
+# Everything goes through Omarchy's shell IPC (omarchy-shell): summon opens
+# the bar with a payload, call runs one of Nodi's functions. A pick's rows go
+# by file, as an IPC argument is capped by the kernel's argument limit, in a
+# directory of its own under XDG_RUNTIME_DIR that only this user can read;
+# the answer comes back through a FIFO there, read while it is asked every
+# two seconds whether the pick is still open, so a bar reloaded mid-pick
+# ends the wait instead of holding it for ever.
+set -u
+# Programs from the system's own directories, whatever PATH the caller has;
+# omarchy-shell is named by its full path below.
+PATH=/usr/bin:/bin
+export PATH
+
+id=io.github.itsgg.nodi
+ipc=${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-shell
+
+usage() { sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; }
+
+fail() { echo "nodi: $*" >&2; exit 2; }
+
+command -v jq >/dev/null || fail "jq is needed"
+[ -x "$ipc" ] || fail "omarchy-shell not found at $ipc"
+
+open_with() {
+  local payload
+  payload=$(jq -cn --arg q "$1" '{query: $q}') || fail "could not encode the query"
+  out=$("$ipc" shell summon "$id" "$payload") || exit 2
+  [ "$out" = ok ] || fail "Nodi is not loaded ($out)"
+}
+
+pick() {
+  local json=false placeholder="" dir rid req out reply n
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --json) json=true ;;
+      -p|--placeholder) [ $# -ge 2 ] || fail "--placeholder needs a text"; placeholder=$2; shift ;;
+      *) fail "pick: unknown option $1" ;;
+    esac
+    shift
+  done
+  dir=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/nodi-pick.XXXXXXXX") || fail "no directory for the rows"
+  trap 'rm -rf -- "$dir"' EXIT
+  cat > "$dir/rows" || fail "could not read stdin"
+  mkfifo -m 600 "$dir/answer" || fail "no FIFO for the answer"
+  # Read and write: opening it so never waits for a writer, and Nodi's
+  # write never waits for this reader.
+  exec 3<>"$dir/answer"
+  rid=${dir##*.}
+  req=$(jq -cn --arg dir "$dir" --arg id "$rid" --arg p "$placeholder" --argjson json "$json" \
+    '{dir: $dir, id: $id, placeholder: $p, json: $json}') || fail "could not encode the request"
+  out=$("$ipc" shell call "$id" pick "$req") || exit 2
+  [ "$out" = ok ] || fail "Nodi refused the pick ($out)"
+  reply=""
+  while ! IFS= read -r -t 2 reply <&3; do
+    out=$("$ipc" shell call "$id" pickAlive "$rid" 2>/dev/null)
+    [ "$out" = yes ] && continue
+    # Closed between the read and the question: its answer may be waiting.
+    IFS= read -r -t 0.3 reply <&3 || exit 1
+    break
+  done
+  case $reply in
+    "pick "*)
+      n=${reply#pick }
+      [[ $n =~ ^[0-9]+$ ]] || fail "a bad answer from Nodi"
+      sed -n "$((n + 1))p" "$dir/rows"
+      exit 0 ;;
+    *) exit 1 ;;
+  esac
+}
+
+case ${1-} in
+  "") out=$("$ipc" shell summon "$id" '{}') || exit 2; [ "$out" = ok ] || fail "Nodi is not loaded ($out)" ;;
+  -h|--help) usage ;;
+  --) shift; open_with "$*" ;;
+  run)
+    [ $# -eq 2 ] || fail "usage: nodi run <key>"
+    out=$("$ipc" shell call "$id" runRow "$2") || exit 2
+    [ "$out" = ok ] || fail "$2: $out"
+    ;;
+  pick) shift; pick "$@" ;;
+  *) open_with "$*" ;;
+esac

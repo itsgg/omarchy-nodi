@@ -175,6 +175,19 @@ const scenes = [
   scene("32-keys-help", "?shortcuts"),
   scene("30-filter-markdown", "n meet", { filter: () => Filters.parse(filterOutput, { keyword: "n", title: "Notes", icon: "󰎞" }) }, null, withFilter),
   (() => {
+    // `nodi pick --json`: a program's rows, one with a preview, filtered by
+    // what is typed.
+    const Pick = load("lib/Pick.js");
+    const given = Pick.parse([
+      { title: "Ship the filter contract", subtitle: "Today, Nodi", icon: "󰄲", preview: "## Ship the filter contract\n\nThe README section, then the **Akshi** side." },
+      { title: "Review the nodi command", subtitle: "Tomorrow", icon: "󰄱" },
+      { title: "Shop for the week", subtitle: "Saturday", icon: "󰄱" },
+      { title: "Write the release notes", subtitle: "Friday", icon: "󰄱" }
+    ].map(o => JSON.stringify(o)).join("\n"), true);
+    return { name: "33-pick", query: "s", rows: plain(Pick.rows("s", given)), mode: { label: "Pick", icon: Pick.PROVIDER.icon },
+             selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0, paletteArmed: "", paletteRow: null, armedKey: "" };
+  })(),
+  (() => {
     const firefox = plain(Engine.run("firefox", config, services(base)))[0];
     return { name: "18-alias-prompt", query: "ff", rows: plain(Engine.aliasPrompt("ff", firefox)), mode: { label: "Alias", icon: "󰌌" }, aliasRow: firefox,
              selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0, paletteArmed: "", paletteRow: null, armedKey: "" };

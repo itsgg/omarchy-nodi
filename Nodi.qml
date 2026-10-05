@@ -20,6 +20,7 @@ import "lib/History.js" as History
 import "lib/Match.js" as Match
 import "lib/tzcities.js" as Tz
 import "lib/Describe.js" as Describe
+import "lib/Pick.js" as Pick
 import "providers/apps.js" as Apps
 
 // Nodi: a command bar for Omarchy. This file draws, takes keys and fetches
@@ -147,13 +148,16 @@ Item {
   function open(payloadJson) {
     var payload = {}
     try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
+    // A pick stays open only for its own opening: anything else that opens
+    // the bar ends it, nothing chosen.
+    if (root.pickSession && payload.pick !== root.pickSession.id) root.endPick("cancel")
     if (typeof payload.query === "string") {
       input.text = payload.query
       input.cursorPosition = payload.query.length
     }
     launchFeedback.opened()
     root.opens++
-    root.placeholder = Engine.placeholder(root.config, root.opens)
+    root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
     root.aliasRow = null
     root.endCapture()
     root.opened = true
@@ -192,6 +196,8 @@ Item {
   Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
 
   function close() {
+    // A pick closed without a choice: its command hears that nothing was.
+    root.endPick("cancel")
     root.opened = false
     root.ctrlHeld = false     // a Ctrl+digit closes the bar before Ctrl is let go
     root.paletteOpen = false
@@ -243,6 +249,9 @@ Item {
     } else if (root.aliasRow) {
       root.results = Engine.aliasPrompt(input.text, root.aliasRow)
       root.mode = { label: "Alias", icon: "󰌌" }
+    } else if (root.pickSession) {
+      root.results = Pick.rows(input.text, root.pickSession.rows || [])
+      root.mode = { label: "Pick", icon: Pick.PROVIDER.icon }
     } else {
       root.results = Engine.run(input.text, root.config, root.services())
       root.mode = Engine.mode(input.text, root.config)
@@ -448,6 +457,9 @@ Item {
     var s = live ? History.snapshot(live) : saved
     var argv = s ? Run.command(s.run, root.appAction) : null
     if (!argv) return "unknown row"
+    // A row that asks before it runs is run from the bar only: `nodi run`
+    // names any remembered row, where a hotkey or a link is never given one.
+    if (s.confirm) return "it asks before it runs; open it in the bar"
     // The bar is not open: what is focused now is what a launch replaces,
     // not what was focused when the bar last opened (codex 2026-10-04).
     if (s.run.kind === "app") launchFeedback.opened()
@@ -470,8 +482,59 @@ Item {
     } else if (row.nodi === "ask") {
       var q = input.text.replace(/^\s*ask\s+/i, "").trim()
       if (q) askSession.send(q)
+    } else if (row.nodi === "pick" && root.pickSession) {
+      var line = Pick.lineOf(row.key)
+      if (line < 0) return
+      root.endPick("pick " + line)
+      root.dismiss()
+      return
     }
     root.recompute()
+  }
+
+  // ---------------------------------------------------------------- nodi pick
+
+  // `nodi pick` (bin/nodi): the rows a program gave on stdin, in the bar
+  // until one is chosen or the bar closes; the answer goes back through the
+  // FIFO the command waits on, "pick <line>" or "cancel". The field had
+  // what it had before the pick once it ends, so a pick never becomes the
+  // query the bar remembers. Null when no pick is open.
+  property var pickSession: null     // { id, dir, rows, placeholder, json, before }
+
+  // From bin/nodi: { dir, id, placeholder, json }. The directory is the one
+  // it made under the runtime directory, named for the id, holding `rows`
+  // and the FIFO `answer`; nothing else is written to.
+  function pick(argJson) {
+    var a = Pick.request(argJson)
+    if (!a) return "bad request"
+    root.endPick("cancel")
+    root.pickSession = { id: a.id, dir: a.dir, rows: null, placeholder: String(a.placeholder || "").slice(0, 200), json: a.json === true, before: input.text }
+    pickReader.run(["/usr/bin/cat", "--", a.dir + "/rows"], a.id)
+    return "ok"
+  }
+
+  // Asked by bin/nodi while it waits, so a bar reloaded mid-pick ends it.
+  function pickAlive(id) { return root.pickSession && root.pickSession.id === String(id) ? "yes" : "no" }
+
+  function endPick(answer) {
+    var s = root.pickSession
+    if (!s) return
+    root.pickSession = null
+    Quickshell.execDetached(Pick.answerArgv(s.dir, answer))
+    input.text = s.before
+  }
+
+  Reader {
+    id: pickReader
+    timeoutMs: 5000
+    maxBytes: 8388608
+    onFinished: function(text, ok, tag) {
+      var s = root.pickSession
+      if (!s || s.id !== tag) return
+      if (!ok) { root.endPick("cancel"); return }
+      root.pickSession = { id: s.id, dir: s.dir, rows: Pick.parse(text, s.json), placeholder: s.placeholder, json: s.json, before: s.before }
+      root.open(JSON.stringify({ query: "", pick: s.id }))
+    }
   }
 
   FileView {
@@ -540,11 +603,12 @@ Item {
     return {
       palette: root.paletteOpen ? { count: root.paletteActions.length, index: root.paletteIndex } : null,
       armed: !!root.armedKey,
-      helpTopic: root.inHelpTopic,
-      backToTopics: root.inHelpTopic && !input.selectedText && /^\s*\?[a-z]+$/.test(input.text) && root.showingHelp
+      helpTopic: root.inHelpTopic && !root.pickSession,
+      backToTopics: root.inHelpTopic && !root.pickSession && !input.selectedText && /^\s*\?[a-z]+$/.test(input.text) && root.showingHelp
                     && !!root.rows[0].helpTopic && input.cursorPosition === input.text.length,
       text: input.text,
       aliasing: !!root.aliasRow,
+      pick: !!root.pickSession,
       rows: root.rows.length,
       selected: root.selectedIndex,
       page: Math.max(1, Math.floor(list.height / Math.max(1, root.rowHeight))),
