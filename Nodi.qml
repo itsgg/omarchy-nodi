@@ -11,6 +11,7 @@ import "lib/Jsonc.js" as Jsonc
 import "lib/Menu.js" as Menu
 import "lib/Toggles.js" as Toggles
 import "lib/Sources.js" as Sources
+import "lib/AskStream.js" as AskStream
 import "lib/Hotkey.js" as Hotkey
 // Not "Keys": that name is QtQuick's attached Keys (Keys.onPressed below).
 import "lib/Keys.js" as NodiKeys
@@ -1397,6 +1398,7 @@ Item {
     // The bar's rows as Claude's tools, unless nodi.json says
     // "ask": { "actions": false } (ROADMAP 44).
     acts: !(root.config.ask && root.config.ask.actions === false)
+    mcp: AskStream.servers(root.config.ask && root.config.ask.mcpServers)
     searcher: root.askSearch
     checker: root.askCheck
     runner: root.askRun
@@ -1485,6 +1487,10 @@ Item {
   function proposed() {
     var p = askSession.proposal
     if (!p) return null
+    // A named server's tool: what it is and what it is given (ROADMAP 49).
+    if (p.kind === "tool")
+      return { key: "tool:" + p.server + ":" + p.tool, title: p.server + ": " + p.tool, subtitle: AskStream.inputLine(p.input), run: null, risk: "",
+               confirmWord: "", tool: true, input: p.input }
     var row = root.askRows[p.key]
     return row ? { key: p.key, title: row.title, subtitle: row.subtitle, run: row.run, risk: row.risk, confirmWord: row.confirmWord }
                : { key: p.key, title: p.key, subtitle: "A row Claude did not find by searching", run: null, risk: "", confirmWord: "" }

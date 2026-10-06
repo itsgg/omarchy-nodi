@@ -29,6 +29,14 @@ Item {
   // happened. A run waits in `proposal` for allow() or deny(), and only the
   // key he allowed runs, once.
   property bool acts: false
+  // MCP servers he named (AskStream.servers), with `acts` only: a call to
+  // one of their tools waits in `proposal` for him too (ROADMAP 49).
+  property var mcp: ({})
+  // The command a session starts with: a change (another model, actions,
+  // servers) restarts an idle session, so the next question has it (Fable
+  // 2026-10-06: an added server waited for a fresh conversation).
+  readonly property string argvKey: JSON.stringify(AskStream.argv(ask.model, ask.acts, ask.mcp))
+  onArgvKeyChanged: if (proc.running && !ask.busy() && !ask.recycling) { ask.recycling = true; proc.signal(15) }
   property var searcher: null
   property var checker: null
   property var runner: null
@@ -65,8 +73,10 @@ Item {
     if (ask.stale()) ask.recycle()
     if (!proc.running && !ask.recycling) {
       ask.inited = false
-      proc.environment = { NODI_ASK_PROGRAM: ask.program || "claude" }
-      proc.command = AskStream.argv(ask.model, ask.acts)
+      // Neither his CLAUDE.md nor auto memory: --safe-mode keeps them out,
+      // and these do when servers he named drop it (AskStream.argv).
+      proc.environment = { NODI_ASK_PROGRAM: ask.program || "claude", CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1" }
+      proc.command = AskStream.argv(ask.model, ask.acts, ask.mcp)
       proc.running = true
       startGuard.restart()
     }
@@ -136,7 +146,9 @@ Item {
     var p = ask.proposal
     if (!p) return
     ask.proposal = null
-    ask.allowed = p.key
+    // A row runs through the bar's run tool, by the key he allowed; a named
+    // server's tool runs in Claude Code itself.
+    if (p.kind !== "tool") ask.allowed = p.key
     ask.phase = "streaming"
     proc.write(AskStream.reply(p.id, { behavior: "allow", updatedInput: p.input }))
   }
@@ -154,8 +166,21 @@ Item {
   function control(ev) {
     var r = ev.request
     if (r.subtype === "can_use_tool") {
-      var decided = AskStream.permission(r)
+      var names = Object.keys(ask.mcp || {})
+      var decided = AskStream.permission(r, names)
       if (decided) { proc.write(AskStream.reply(ev.id, decided)); return }
+      var tool = String(r.tool_name || "")
+      var server = AskStream.serverOf(tool, names)
+      if (server) {
+        // A named server's tool: shown with its input, run by Claude Code
+        // on his Enter; the same one-at-a-time and closed-bar rules.
+        var whyTool = !ask.shown ? "The bar is closed; he sees what you say when he asks again, and can allow it then."
+                    : ask.proposal ? "One call at a time: he has not answered the last one." : ""
+        if (whyTool) { proc.write(AskStream.reply(ev.id, { behavior: "deny", message: whyTool })); return }
+        ask.proposal = { id: ev.id, kind: "tool", server: server, tool: tool.slice(("mcp__" + server + "__").length), key: "", input: r.input || {} }
+        ask.phase = "proposing"
+        return
+      }
       var key = String((r.input && r.input.key) || "")
       // One run waits at a time, and only a row the bar can run is shown:
       // a second request would leave the first unanswered, a made-up key

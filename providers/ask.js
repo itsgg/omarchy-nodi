@@ -51,8 +51,11 @@ var provider = {
     if (a.phase === "proposing" && a.proposal) {
       var p = a.proposal
       var other = a.question !== q
-      var allowRow = { key: "ask:allow", title: "Run " + p.title, subtitle: other ? "Claude asks to run it for: " + a.question : (p.subtitle || "Claude asks to run it"),
-                       icon: "󰚩", score: other ? 98 : 99, copy: "", nodi: "askAllow", actionLabel: "Run", remember: false }
+      // A named server's tool is allowed, a row run (ROADMAP 49).
+      var verb = p.tool ? "to use it" : "to run it"
+      var allowRow = { key: "ask:allow", title: (p.tool ? "Allow " : "Run ") + p.title,
+                       subtitle: other ? "Claude asks " + verb + " for: " + a.question : (p.subtitle || "Claude asks " + verb),
+                       icon: "󰚩", score: other ? 98 : 99, copy: "", nodi: "askAllow", actionLabel: p.tool ? "Allow" : "Run", remember: false }
       var denyRow = { key: "ask:deny", title: "Refuse", subtitle: "Claude is told no", icon: "󰜺", score: other ? 99 : 98, copy: "",
                       nodi: "askDeny", actionLabel: "Refuse", remember: false }
       return other ? [denyRow, allowRow] : [allowRow, denyRow]

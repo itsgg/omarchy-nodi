@@ -405,6 +405,15 @@ baseline query loses rank.
     with `--strict-mcp-config`, every call confirmed as Ask's proposed rows
     are; off by default, since the README says Ask's session has no MCP
     servers. E 10.
+    Done 2026-10-06: `"ask": { "mcpServers": {...} }` in Claude Code's own
+    format, a plain name other than "nodi" with a command or a url; with
+    Ask's actions on, the session gets them by --mcp-config (only them,
+    --strict-mcp-config) and each call shows in the bar as "Allow
+    <server>: <tool>" with its input in the pane, Enter allowing it, as a
+    row is. --safe-mode turns every MCP server off, so with servers it
+    goes and CLAUDE_CODE_DISABLE_CLAUDE_MDS and _AUTO_MEMORY keep his
+    CLAUDE.md and memory out (probed with Claude Code 2.1.289: about
+    2,700 input tokens, as in safe mode, against 8,000 without them).
 
 ## Phase J: daily verbs
 

@@ -12,6 +12,8 @@
 #                              the bar), then asks for another, which must
 #                              be refused as the bar is closed
 #   say ok                     answers at once
+#   use the shouter            a named server's tool, which he allows, and
+#                              an unnamed one, refused
 #   What is in the picture?    the picture must come first, as a block
 #   while the bar is closed    asks for a run, which must be refused
 #   Fix the spelling and ...   a question about the selection: the text
@@ -103,6 +105,15 @@ if question.startswith("What is in the picture?"):
 if question == "while the bar is closed":
     r = ask("p1", "mcp__nodi__run", LOCK)
     want(behavior(r) == ("p1", "deny") and "closed" in r["response"]["response"]["message"], "refused while closed: %r" % (r,))
+    answer("ok" if not bad else "fail: " + "; ".join(bad))
+    sys.stdin.readline()
+    sys.exit(0)
+
+if question == "use the shouter":
+    r = ask("p1", "mcp__shouter__shout", {"text": "hi"})
+    want(behavior(r) == ("p1", "allow") and r["response"]["response"]["updatedInput"] == {"text": "hi"}, "a named server's call allowed by him: %r" % (r,))
+    r = ask("p2", "mcp__elsewhere__x", {})
+    want(behavior(r) == ("p2", "deny"), "a server he did not name refused: %r" % (r,))
     answer("ok" if not bad else "fail: " + "; ".join(bad))
     sys.stdin.readline()
     sys.exit(0)

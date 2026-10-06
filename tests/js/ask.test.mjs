@@ -109,3 +109,26 @@ test("a question with a picture: the image block first, as the held session take
                                        { type: "text", text: "what is this" }]);
   assert.equal(JSON.parse(A.message("plain")).message.content, "plain", "without one, as before");
 });
+
+test("MCP servers he names, for Ask: given to the session, each call his to allow (ROADMAP 49)", () => {
+  const s = A.servers({ github: { command: "gh-mcp" }, nodi: { command: "x" }, "bad name": { command: "y" }, web: { url: "https://x" }, junk: { foo: 1 },
+                        "a__b": { command: "z" } });
+  assert.deepEqual(Object.keys(s), ["github", "web"], "a plain name, not the bar's own, no __, with a command or a url");
+  const named = plain(A.argv("sonnet", true, s));
+  assert.ok(!named.includes("--safe-mode"), "safe mode would turn every server off");
+  assert.deepEqual(JSON.parse(named[named.indexOf("--mcp-config") + 1]), { mcpServers: plain(s) });
+  assert.ok(named.includes("--strict-mcp-config"), "no other server");
+  assert.ok(plain(A.argv("sonnet", true, {})).includes("--safe-mode"), "none named: as before");
+  assert.ok(plain(A.argv("sonnet", false, s)).includes("--safe-mode"), "without acts, no servers: no call could be asked");
+  assert.equal(A.permission({ tool_name: "mcp__github__search_issues", input: {} }, ["github"]), undefined, "his to allow");
+  assert.equal(A.permission({ tool_name: "mcp__other__x", input: {} }, ["github"]).behavior, "deny");
+  assert.equal(A.serverOf("mcp__github__search_issues", ["git", "github"]), "github");
+  assert.equal(A.serverOf("mcp__github__x", ["git"]), "", "a prefix of another's name is not it");
+  const prop = { ask: { phase: "proposing", question: "find my issues", answer: "", model: "sonnet",
+                        proposal: { key: "tool:github:search_issues", title: "github: search_issues", subtitle: '{"q":"is:open"}', tool: true, input: { q: "is:open" } } } };
+  const rows = plain(run("ask find my issues", prop));
+  assert.deepEqual([rows[0].title, rows[0].actionLabel, rows[0].nodi], ["Allow github: search_issues", "Allow", "askAllow"]);
+  const Pane = load("lib/Pane.js");
+  const pane = plain(Pane.choose({ proposal: prop.ask.proposal }));
+  assert.match(pane.markdown, /"q": "is:open"/, "the pane shows what it is given");
+});

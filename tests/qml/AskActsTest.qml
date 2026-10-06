@@ -21,7 +21,7 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 9
+  property int remaining: 10
   readonly property string fake: String(Qt.resolvedUrl("fake-claude.py")).replace(/^file:\/\//, "")
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
 
@@ -199,7 +199,27 @@ Item {
   }
   Timer { id: againLater; interval: 50; onTriggered: lateAgain.send("Fix the spelling and grammar of the selection") }
 
+  // A server he named (ROADMAP 49): its call waits for him, shown as a tool.
+  Ask {
+    id: named
+    acts: true
+    mcp: ({ shouter: { command: "shout" } })
+    program: test.fake
+    workDir: test.dir
+    property bool asked: false
+    onPhaseChanged: {
+      if (phase === "proposing") {
+        named.asked = named.proposal && named.proposal.kind === "tool" && named.proposal.server === "shouter" && named.proposal.tool === "shout"
+        Qt.callLater(named.allow); return
+      }
+      if (phase !== "error" && phase !== "done") return
+      if (!named.asked || phase !== "done" || named.answer !== "ok") test.failures.push("a named server: " + named.asked + " " + phase + " " + named.error + named.answer)
+      test.finished()
+    }
+  }
+
   function start() {
+    named.send("use the shouter")
     picture.send("What is in the picture?", "What is in the picture?", "window", { mediaType: "image/jpeg", data: "AAAA" })
     closedBar.send("while the bar is closed")
     forgetful.send("say ok")
