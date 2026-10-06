@@ -32,6 +32,9 @@ Window {
     readonly property color foreground: look.foreground
     readonly property var selectedBorderSpec: look.selectedBorderSpec
     readonly property real rowInsetLeft: look.rowInsetLeft
+    readonly property bool selectionBar: look.selectionBar
+    readonly property int barWidth: look.barWidth
+    readonly property int barInset: look.barInset
     readonly property real rowInsetRight: look.rowInsetRight
     readonly property color secondary: look.secondary
     readonly property color opaqueCard: look.opaqueCard

@@ -94,6 +94,18 @@ Column {
         radius: nodi.cornerRadius
       }
 
+      // The selected row's mark where the fill would be all (item 72).
+      Rectangle {
+        visible: actionItem.selected && nodi.selectionBar
+        anchors.left: parent.left
+        anchors.leftMargin: Style.spacing.xs + nodi.rowInsetLeft
+        anchors.verticalCenter: parent.verticalCenter
+        width: nodi.barWidth
+        height: Math.max(nodi.barWidth * 3, parent.height - nodi.barInset * 2)
+        radius: width / 2
+        color: nodi.foreground
+      }
+
       IconTile {
         id: actionTile
         anchors.left: parent.left

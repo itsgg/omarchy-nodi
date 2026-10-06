@@ -38,6 +38,38 @@ QtObject {
   readonly property color selectedInk: rgb(Contrast.guard(selectedText, selectedFill, foreground))
 
   function rgb(c) { return Qt.rgba(c.r, c.g, c.b, 1) }
+
+  // The selected row's own mark where the theme leaves it the fill alone
+  // (item 72). The fill is 1.1 to 1.2:1 on the card in every Omarchy
+  // theme (research 2026-10-05, 23 themes); where the selected title is
+  // the colour of every other title (the accent failing on the fill, as in
+  // 8 of them, or a theme's selected text that is its text) and the theme
+  // draws no selected border, the fill is all there is. Then, and always
+  // under higher contrast, a bar in the text colour on the row's left
+  // edge: the text colour reads at 4.5:1 or more on every card.
+  property bool highContrast: false
+  // A selected border is one the theme draws: a width on some side, and a
+  // colour or gradient that shows (Sonnet 2026-10-06: a width at alpha 0
+  // counted as a border).
+  readonly property bool selectedBorderDrawn: Border.left(selectedBorderSpec) + Border.right(selectedBorderSpec)
+      + Border.uniformWidth(selectedBorderSpec) + Border.bottom(selectedBorderSpec) > 0
+    && (alphaOf(Border.color(selectedBorderSpec)) > 0 || !!(selectedBorderSpec.gradient && selectedBorderSpec.gradient.enabled))
+  // A colour's alpha, 0 for one that does not parse (Sonnet 2026-10-06: a
+  // theme's "nosuchcolour" threw here).
+  function alphaOf(c) {
+    var q = Qt.lighter(c, 1.0)
+    return q ? q.a : 0
+  }
+  readonly property bool selectionBar: Contrast.needsMark(selectedText, selectedFill, foreground, selectedBorderDrawn, highContrast)
+  readonly property int barWidth: Math.max(2, Style.space(2))
+  // How far the bar keeps from the row's top and bottom: clear of the
+  // fill's rounded corners where they reach its left edge (a rounding of
+  // 20 put its ends outside the fill).
+  readonly property int barInset: {
+    // The radius a row's fill draws: a Rectangle holds it to half its height.
+    var r = Math.min(cornerRadius, rowHeight / 2), x = Style.spacing.xs + rowInsetLeft, m = Style.spacing.md
+    return r <= x ? m : Math.max(m, Math.ceil(r - Math.sqrt(r * r - (r - x) * (r - x))))
+  }
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
   property int contentMargin: Style.spacing.panelPadding
