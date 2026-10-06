@@ -569,6 +569,11 @@ baseline query loses rank.
 69. **Small fits**: Ask's "continue in a terminal" through
     `omarchy-agent-prompt`, so it follows Omarchy's default agent; a paste
     that focuses the window it came from first. X 20.
+    Done 2026-10-07: "Continue in your agent" already ran
+    omarchy-agent-prompt; a paste (Omarchy's paste commands, never their
+    copy-only form) now focuses the window the bar opened over first, then
+    types, so a pointer or an app that took the focus meanwhile does not
+    take the paste.
 
 ## Phase K: the experience
 
