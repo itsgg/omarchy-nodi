@@ -79,9 +79,25 @@ test("keys in Ctrl+K", () => {
   assert.deepEqual(d("Return", pal), { do: "paletteRun", index: 2 });
   assert.deepEqual(d("Escape", pal), { do: "paletteClose" });
   assert.deepEqual(d("K", pal, true), { do: "paletteClose" });
-  assert.equal(d("Tab", pal), null);
-  assert.equal(d("a", pal), null, "typing goes to the field");
+  assert.deepEqual(d("Tab", pal), { do: "nothing" }, "Ctrl+K's field keeps the focus");
+  assert.equal(d("a", pal), null, "typing goes to the field, which filters the actions");
+  assert.equal(d("Backspace", pal), null);
   assert.deepEqual(d("Down", { palette: { count: 0, index: 0 } }), { do: "nothing" }, "an empty palette never divides by zero");
+  assert.deepEqual(d("Return", { ...pal, chords: ["copy"] }, true), { do: "chord", key: "copy" }, "Ctrl+Enter copies, as from the list");
+  assert.deepEqual(d("Return", pal, true), { do: "nothing" }, "nothing to copy");
+});
+
+// Ctrl+Shift and a letter: an action's chord (ROADMAP 52).
+const cs = (name, extra, repeat) => plainDo(Keys.decide({ name, ctrl: true, shift: true, repeat: !!repeat }, view(extra)));
+test("an action's chord runs it from the list or from Ctrl+K, and only one the row has", () => {
+  assert.deepEqual(cs("F", { chords: ["F", "A"] }), { do: "chord", key: "F" });
+  assert.deepEqual(cs("F", { chords: ["F"], palette: { count: 3, index: 0 } }), { do: "chord", key: "F" }, "in Ctrl+K too");
+  assert.deepEqual(cs("P", { chords: ["P"] }), { do: "chord", key: "P" }, "before Ctrl+P's move up");
+  assert.deepEqual(cs("D", { chords: ["D"], pane: true }), { do: "chord", key: "D" }, "before Ctrl+D's half page");
+  assert.deepEqual(cs("P", { chords: [] }), { do: "move", by: -1 }, "a row without it: Ctrl+Shift+P moves as before");
+  assert.equal(cs("H", {}), null);
+  assert.deepEqual(cs("F", { chords: ["F"] }, true), { do: "nothing" }, "a held chord runs once");
+  assert.deepEqual(plainDo(Keys.decide({ name: "F", ctrl: true }, view({ chords: ["F"] }))), { do: "edit", how: "right" }, "Ctrl+F alone stays readline's");
 });
 
 test("a key press as Hyprland names a chord", () => {

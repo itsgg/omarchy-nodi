@@ -15,6 +15,8 @@ const History = load("lib/History.js");
 const Prefs = load("lib/Prefs.js");
 const Omarchy = load("providers/omarchy.js");
 const plain = v => JSON.parse(JSON.stringify(v));
+// Ctrl+K's actions as Nodi shows them: grouped, and filtered by what is typed.
+const palette = (row, ctx, filter) => plain(Rows.filterActions(Rows.actionsFor(row, ctx), filter || ""));
 
 const fixture = name => readFileSync(join(root, "tests/js/fixtures", name), "utf8");
 const merged = Menu.merge([Menu.parseItems(fixture("menu.jsonc")), Menu.parseItems(fixture("user-menu.jsonc"))]);
@@ -138,13 +140,13 @@ const scenes = [
   scene("11-confirm", "shutdown", {}, rows => ({ armedKey: rows[0] ? rows[0].key : "" })),
   scene("12-palette", "firefox", {}, rows => {
     const row = rows[0];
-    const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }));
+    const actions = palette(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() });
     return { paletteOpen: true, paletteActions: actions, paletteIndex: 1, paletteRow: row };
   }),
   // The chosen action past the fold: clear of the fade, the next one peeking.
   scene("39-palette-deep", "firefox", {}, rows => {
     const row = rows[0];
-    const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }));
+    const actions = palette(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() });
     return { paletteOpen: true, paletteActions: actions, paletteIndex: 8, paletteRow: row };
   }),
   // Ctrl+K on a filter row: an action that asks, armed, its command and
@@ -154,7 +156,7 @@ const scenes = [
       actions: [{ title: "Send to the team", action: { exec: ["mailer", "send", "--list", "team", "weekly.md"] }, confirm: true,
                   risk: "Mails the report to 40 people; it cannot be called back." }] });
     const row = plain(Rows.normalize(Filters.parse(line, { keyword: "n", title: "Notes", icon: "󰎞" })[0], { id: "filters", name: "Notes" }, 0, 0));
-    const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => false, prefs: Prefs.empty() }));
+    const actions = palette(row, { activeWorkspace: 1, knows: () => false, prefs: Prefs.empty() });
     const at = actions.findIndex(a => a.label === "Send to the team");
     return { name: "40-palette-confirm", query: "n weekly", rows: [row], mode: null, selectedIndex: 0, paletteOpen: true,
              paletteActions: actions, paletteIndex: at, paletteArmed: actions[at].label, paletteRow: row, armedKey: "" };
@@ -166,17 +168,28 @@ const scenes = [
       actions: [{ title: "Send to the team", action: { exec: ["mailer", "send", "--list", "team", "weekly.md"] }, confirm: true,
                   risk: "Mails the report to 40 people; it cannot be called back." }] });
     const row = plain(Rows.normalize(Filters.parse(line, { keyword: "n", title: "Notes", icon: "󰎞" })[0], { id: "filters", name: "Notes" }, 0, 0));
-    const actions = plain(Rows.actionsFor(row, { activeWorkspace: 1, knows: () => false, prefs: Prefs.empty() }));
+    const actions = palette(row, { activeWorkspace: 1, knows: () => false, prefs: Prefs.empty() });
     return { name: "41-palette-steady", query: "n weekly", rows: [row], mode: null, selectedIndex: 0, paletteOpen: true,
              paletteActions: actions, paletteIndex: 0, paletteArmed: "", paletteRow: row, armedKey: "" };
   })(),
   // Eight rows with no section, the last selected, scrolled to it; a
   // ten-action Ctrl+K opened and closed over it leaves it in view.
   scene("42-palette-closed-keeps-scroll", "omarchy ", {}, rows => {
-    const actions = plain(Rows.actionsFor(plain(Engine.run("firefox", config, services(base)))[0], { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }));
+    const actions = palette(plain(Engine.run("firefox", config, services(base)))[0], { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() });
     const eight = rows.slice(0, 8).map(r => Object.assign({}, r, { section: "", hero: false }));
     return { rows: eight, selectedIndex: 7,
              after: [{ paletteOpen: true, paletteActions: actions, paletteRow: eight[7], paletteIndex: 0 }, { paletteOpen: false }] };
+  }),
+  // Ctrl+K typed into: "copy" keeps the actions with a word starting so,
+  // each group under its name (ROADMAP 52).
+  scene("43-palette-typed", "firefox", {}, rows => {
+    const row = rows[0];
+    return { paletteOpen: true, paletteActions: palette(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() }, "copy"),
+             paletteIndex: 0, paletteRow: row, paletteFilter: "copy" };
+  }),
+  scene("44-palette-none", "firefox", {}, rows => {
+    const row = rows[0];
+    return { paletteOpen: true, paletteActions: [], paletteIndex: 0, paletteRow: row, paletteFilter: "zzq" };
   }),
   scene("13-nothing", "zzqx"),
   scene("14-omarchy-catalog", "omarchy "),

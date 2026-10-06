@@ -7,7 +7,9 @@ import "../lib/Scroll.js" as Scroll
 // as the list's rows are, and held as the list is: seven, then a part of
 // the next, scrolled to keep the chosen one clear (Fable 2026-10-05: its own
 // radius, colours, size and spacing, and no cap, so eleven actions made a
-// card that reached the bottom of the screen).
+// card that reached the bottom of the screen). Grouped as the list is, a
+// header over Copy and Manage, and each action's chord on its right
+// (ROADMAP 52).
 Column {
   id: actionList
   property var nodi
@@ -34,7 +36,7 @@ Column {
   ListView {
     id: actions
     width: actionList.width
-    height: nodi.paletteHeight(count)
+    height: nodi.paletteHeight(nodi.paletteActions)
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     model: nodi.paletteOpen ? nodi.paletteActions : []
@@ -43,13 +45,38 @@ Column {
     // Contain alone the chosen action sat under one (Fable 2026-10-05).
     onCurrentIndexChanged: Scroll.keep(actions, currentIndex, nodi.rowPeek, ListView.Contain)
 
-    delegate: Rectangle {
-      id: actionItem
+    delegate: Item {
+      id: actionCell
       required property int index
       required property var modelData
+      width: actions.width
+      height: nodi.rowHeight + (modelData.section ? nodi.sectionHeight : 0)
+
+      Text {
+        visible: !!actionCell.modelData.section
+        anchors.left: parent.left
+        anchors.leftMargin: Style.spacing.lg
+        anchors.top: parent.top
+        height: nodi.sectionHeight
+        verticalAlignment: Text.AlignBottom
+        bottomPadding: Style.spacing.xs
+        textFormat: Text.PlainText
+        text: actionCell.modelData.section || ""
+        color: nodi.secondary
+        font.family: nodi.fontFamily
+        font.pixelSize: Style.font.caption
+        font.bold: true
+      }
+
+    Rectangle {
+      id: actionItem
+      readonly property int index: actionCell.index
+      readonly property var modelData: actionCell.modelData
       readonly property bool selected: index === nodi.paletteIndex
       readonly property bool armed: modelData.confirm && nodi.paletteArmed === modelData.label
-      width: actions.width
+      anchors.left: parent.left
+      anchors.right: parent.right
+      anchors.bottom: parent.bottom
       height: nodi.rowHeight
       radius: nodi.cornerRadius
       color: selected ? nodi.selectedBackground : "transparent"
@@ -86,16 +113,17 @@ Column {
         font.weight: Font.Medium
         elide: Text.ElideRight
       }
+      // The chord that runs it, or the second Enter it waits for.
       Keycap {
         id: actionBadge
-        visible: actionItem.armed
+        visible: actionItem.armed || !!actionItem.modelData.chord
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
         anchors.verticalCenter: parent.verticalCenter
-        label: "Enter again"
-        strong: true
+        label: actionItem.armed ? "Enter again" : (actionItem.modelData.chord || "")
+        strong: actionItem.armed
         foreground: nodi.foreground
-        tone: Color.urgent
+        tone: actionItem.armed ? Color.urgent : nodi.foreground
         fontFamily: nodi.fontFamily
         rounded: nodi.cornerRadius > 0
       }
@@ -103,9 +131,20 @@ Column {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onEntered: nodi.paletteIndex = actionItem.index
+        // Only real pointer movement selects, as in the list: typing into
+        // Ctrl+K slides actions under a resting pointer, which reports
+        // them as entered, and Enter then ran the one under it (Sonnet
+        // 2026-10-06).
+        onPositionChanged: function(mouse) {
+          var p = mapToItem(null, mouse.x, mouse.y)
+          if (p.x === nodi.lastPointer.x && p.y === nodi.lastPointer.y) return
+          var first = nodi.lastPointer.x < 0
+          nodi.lastPointer = Qt.point(p.x, p.y)
+          if (!first && nodi.paletteIndex !== actionItem.index) { nodi.paletteIndex = actionItem.index; nodi.paletteArmed = "" }
+        }
         onClicked: { nodi.runPaletteAction(actionItem.index); nodi.focusInput() }
       }
+    }
     }
   }
 
@@ -135,5 +174,19 @@ Column {
       GradientStop { position: 1; color: nodi.opaqueCard }
     }
   }
+  }
+
+  // What was typed matches no action.
+  Text {
+    visible: nodi.paletteOpen && nodi.paletteActions.length === 0
+    width: actionList.width
+    leftPadding: Style.spacing.lg + nodi.rowInsetLeft
+    height: nodi.rowHeight
+    verticalAlignment: Text.AlignVCenter
+    textFormat: Text.PlainText
+    text: "No action matches"
+    color: nodi.secondary
+    font.family: nodi.fontFamily
+    font.pixelSize: Style.font.heading
   }
 }

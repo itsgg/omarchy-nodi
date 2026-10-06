@@ -110,3 +110,10 @@ test("the word prompt runs only on the word, as given", () => {
   assert.deepEqual([right.title, right.nodi, right.actionLabel], ["Run Send report", "runWord", "Run"]);
   assert.equal(plain(Engine.wordPrompt("", Object.assign({}, w, { risk: "Mails 40 people" })))[0].subtitle, "Mails 40 people");
 });
+
+test("Ctrl+K typed for: the pane holds its width with no action matching (ROADMAP 52)", () => {
+  const row = norm({ showsCommand: true, actions: [{ label: "Send", run: Run.exec(["mail"]), confirm: true }] });
+  const actions = Rows.actionsFor(row, null);
+  assert.deepEqual(plain(Pane.choose({ paletteOpen: true, palette: { row, action: null, actions } })), { title: "No action matches" });
+  assert.equal(Pane.choose({ paletteOpen: true, palette: { row: norm({}), action: null, actions: [] } }), null, "no pane to hold");
+});

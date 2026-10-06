@@ -43,7 +43,7 @@ Window {
     readonly property int inputHeight: look.inputHeight
     readonly property int rowHeight: look.rowHeight
     readonly property int rowPeek: look.rowPeek
-    function paletteHeight(count) { return look.paletteHeight(count) }
+    function paletteHeight(actions) { return look.paletteHeight(actions) }
     readonly property int heroHeight: look.heroHeight
     readonly property int sectionHeight: look.sectionHeight
     readonly property int footerHeight: look.footerHeight
@@ -104,6 +104,7 @@ Window {
     function focusInput() {}
     function activate() {}
     function runPaletteAction() {}
+    function paletteTyped() {}
   }
 
   // What is grabbed: the card on the bar's scrim over an opaque backdrop
@@ -145,6 +146,7 @@ Window {
     fake.streamed = s.streamed || null
     fake.wordAsk = s.wordAsk || null
     card.input.text = s.query
+    card.paletteInput.text = s.paletteFilter || ""
     card.keepVisible(s.selectedIndex)
   }
 

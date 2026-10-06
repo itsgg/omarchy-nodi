@@ -53,7 +53,8 @@ Item {
   property string armedKey: ""      // the row waiting for its second Enter
   property bool paletteOpen: false
   property int paletteIndex: 0
-  property var paletteActions: []
+  property var paletteActions: []   // what Ctrl+K shows: paletteAll, filtered by its field
+  property var paletteAll: []
   property string paletteArmed: ""
 
   readonly property string home: Quickshell.env("HOME")
@@ -131,7 +132,7 @@ Item {
   readonly property alias tileRadius: look.tileRadius
   readonly property alias maxRows: look.maxRows
   readonly property alias rowPeek: look.rowPeek
-  function paletteHeight(count) { return look.paletteHeight(count) }
+  function paletteHeight(actions) { return look.paletteHeight(actions) }
   readonly property alias cardWidth: look.cardWidth
   readonly property alias listColumn: look.listColumn
   readonly property alias paneMin: look.paneMin
@@ -192,7 +193,7 @@ Item {
     root.selectedIndex = 0
     root.shownQuery = null
     root.armedKey = ""
-    root.paletteOpen = false
+    root.closePalette()
     root.lastPointer = Qt.point(-1, -1)
     // The windows as last kept, for the first ranking.
     root.readWindows()
@@ -348,7 +349,7 @@ Item {
     root.endPick("cancel")
     root.opened = false
     root.ctrlHeld = false     // a Ctrl+digit closes the bar before Ctrl is let go
-    root.paletteOpen = false
+    root.closePalette()
     root.aliasRow = null
     root.endWord()
     root.endCapture()
@@ -580,14 +581,37 @@ Item {
   // row (codex 2026-10-02).
   property var paletteRow: null
 
+  // Ctrl+K takes what is typed in a field of its own (Card.qml
+  // paletteInput), so the query, and all that reads it, stays as it was
+  // (ROADMAP 52).
   function openPalette() {
     var acts = Rows.actionsFor(root.selectedRow, root.paletteContext())
     if (acts.length === 0) return
     root.paletteRow = root.selectedRow
-    root.paletteActions = acts
+    root.paletteAll = acts
+    root.paletteActions = Rows.filterActions(acts, "")
     root.paletteIndex = 0
     root.paletteArmed = ""
     root.paletteOpen = true
+    card.paletteInput.text = ""
+    card.paletteInput.forceActiveFocus()
+  }
+
+  function closePalette() {
+    if (!root.paletteOpen) return
+    root.paletteOpen = false
+    card.paletteInput.text = ""
+    root.paletteAll = []
+    root.paletteActions = []
+    input.forceActiveFocus()
+  }
+
+  // What is typed into Ctrl+K: the actions it matches, the first selected.
+  function paletteTyped(text) {
+    if (!root.paletteOpen) return
+    root.paletteActions = Rows.filterActions(root.paletteAll, text)
+    root.paletteIndex = 0
+    root.paletteArmed = ""
   }
 
   function runPaletteAction(index) {
@@ -600,13 +624,52 @@ Item {
       root.paletteArmed = a.label
       return
     }
-    root.paletteOpen = false
     var row = root.paletteRow
+    root.closePalette()
+    if (row) root.runAction(row, a)
+  }
+
+  // An action's chord (lib/Rows.js CHORDS): on the row Ctrl+K opened for,
+  // or the selected one. None of them asks first.
+  function chordActions() {
+    if (root.paletteOpen) return root.paletteAll
+    if (root.aliasRow || root.wordAsk || root.pickSession || root.captureRow || !root.selectedRow) return []
+    return Rows.actionsFor(root.selectedRow, root.paletteContext())
+  }
+
+  // The chord keys at hand. "copy" whenever the row holds a copy, as
+  // Ctrl+Enter copies it from the list: a row whose own action is the copy
+  // has no Copy action to carry it (Sonnet 2026-10-06).
+  function chordKeys() {
+    var keys = root.chordActions().map(function(a) { return a.chordKey }).filter(function(k) { return k !== "" })
+    var row = root.paletteOpen ? root.paletteRow : root.selectedRow
+    if (row && row.copy && keys.indexOf("copy") === -1) keys.push("copy")
+    return keys
+  }
+
+  function runChord(key) {
+    var acts = root.chordActions()
+    var row = root.paletteOpen ? root.paletteRow : root.selectedRow
     if (!row) return
+    for (var i = 0; i < acts.length; i++) {
+      if (acts[i].chordKey !== key || acts[i].confirm) continue
+      root.closePalette()
+      root.runAction(row, acts[i])
+      return
+    }
+    if (key === "copy" && row.copy) {
+      root.closePalette()
+      root.execute(Run.copy(row.copy), "", "", null, row.title)
+    }
+  }
+
+  // Ctrl+K's action, chosen there or by its chord. `own` is the row's own,
+  // which a filtered list may not have first.
+  function runAction(row, a) {
     if (a.confirmWord) {
-      var mine = index === 0 && row.remember
-      root.askWord({ title: index === 0 ? row.title : a.label, word: a.confirmWord, run: a.run, risk: a.risk,
-                     toggle: index === 0 ? row.toggle : "", key: mine ? row.key : "", snap: mine ? History.snapshot(row) : null, undoable: a.undoable })
+      var mine = a.own && row.remember
+      root.askWord({ title: a.own ? row.title : a.label, word: a.confirmWord, run: a.run, risk: a.risk,
+                     toggle: a.own ? row.toggle : "", key: mine ? row.key : "", snap: mine ? History.snapshot(row) : null, undoable: a.undoable })
       return
     }
     if (a.nodi === "forget") {
@@ -614,7 +677,7 @@ Item {
       return
     }
     if (a.nodi) { root.setPref(a, row); return }
-    var own = index === 0
+    var own = !!a.own
     var remembered = own && row.remember
     root.execute(a.run, own ? row.toggle : "", remembered ? row.key : "", remembered ? History.snapshot(row) : null, own ? row.title : a.label, a.undoable)
   }
@@ -984,7 +1047,7 @@ Item {
   readonly property alias input: card.input
   readonly property alias list: card.list
 
-  function focusInput() { input.forceActiveFocus() }
+  function focusInput() { (root.paletteOpen ? card.paletteInput : input).forceActiveFocus() }
 
   // A new query: nothing armed, the palette closed, the top row selected;
   // in `ask `, the session starts warming while the question is typed.
@@ -994,7 +1057,7 @@ Item {
     root.trail = PickLog.typed(root.trail, Match.normalise(input.text))
     if (/^\s*ask\s/i.test(input.text)) askSession.warm()
     root.armedKey = ""
-    root.paletteOpen = false
+    root.closePalette()
     root.selectedIndex = 0
     root.recompute()
   }
@@ -1004,8 +1067,9 @@ Item {
     if (root.captureRow) return repeat ? true : root.captureKey(key, modifiers)
     var name = root.keyName(key)
     if (!name) return false
-    var act = NodiKeys.decide({ name: name, ctrl: (modifiers & Qt.ControlModifier) !== 0, shift: (modifiers & Qt.ShiftModifier) !== 0,
-                               repeat: !!repeat }, root.keyView())
+    var ctrl = (modifiers & Qt.ControlModifier) !== 0
+    var act = NodiKeys.decide({ name: name, ctrl: ctrl, shift: (modifiers & Qt.ShiftModifier) !== 0,
+                               repeat: !!repeat }, root.keyView(ctrl))
     if (!act) return false
     root.perform(act)
     return true
@@ -1023,6 +1087,8 @@ Item {
     case Qt.Key_Down: return "Down"
     case Qt.Key_Backspace: return "Backspace"
     case Qt.Key_K: return "K"
+    case Qt.Key_A: return "A"
+    case Qt.Key_H: return "H"
     case Qt.Key_N: return "N"
     case Qt.Key_P: return "P"
     case Qt.Key_D: return "D"
@@ -1038,8 +1104,9 @@ Item {
     return key >= Qt.Key_1 && key <= Qt.Key_9 ? String(key - Qt.Key_1 + 1) : ""
   }
 
-  // What the keys need to know of the screen.
-  function keyView() {
+  // What the keys need to know of the screen; the chords only with Ctrl
+  // down, as each asks for the row's actions (Sonnet 2026-10-06).
+  function keyView(ctrl) {
     return {
       palette: root.paletteOpen ? { count: root.paletteActions.length, index: root.paletteIndex } : null,
       armed: !!root.armedKey,
@@ -1055,7 +1122,8 @@ Item {
       rows: root.rows.length,
       selected: root.selectedIndex,
       page: Math.max(1, Math.floor(list.height / Math.max(1, root.rowHeight))),
-      pane: card.paneScrolls
+      pane: card.paneScrolls,
+      chords: ctrl ? root.chordKeys() : []
     }
   }
 
@@ -1080,10 +1148,11 @@ Item {
 
   // A readline edit of the field, worked out by lib/Keys.js edited().
   function edit(how) {
-    var r = NodiKeys.edited(how, input.text, input.cursorPosition, input.selectionStart, input.selectionEnd)
-    input.deselect()
-    if (r.text !== input.text) input.text = r.text
-    input.cursorPosition = r.at
+    var f = root.paletteOpen ? card.paletteInput : input
+    var r = NodiKeys.edited(how, f.text, f.cursorPosition, f.selectionStart, f.selectionEnd)
+    f.deselect()
+    if (r.text !== f.text) f.text = r.text
+    f.cursorPosition = r.at
   }
 
   function perform(act) {
@@ -1104,7 +1173,8 @@ Item {
       if (r && r.copy) root.execute(Run.copy(r.copy), "", "", null, r.title)
       break
     case "palette": root.openPalette(); break
-    case "paletteClose": root.paletteOpen = false; break
+    case "paletteClose": root.closePalette(); break
+    case "chord": root.runChord(act.key); break
     case "paletteMove": root.paletteIndex = act.to; root.paletteArmed = ""; break
     case "paletteRun": root.runPaletteAction(act.index); break
     case "disarm": root.armedKey = ""; break
@@ -1512,7 +1582,9 @@ Item {
     proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
     answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
     word: root.wordAsk,
-    palette: root.paletteOpen ? { row: root.paletteRow, action: root.paletteActions[root.paletteIndex] || null, actions: root.paletteActions,
+    // All the actions, not the ones typed for: the pane holds its width
+    // while Ctrl+K is filtered (Sonnet 2026-10-06).
+    palette: root.paletteOpen ? { row: root.paletteRow, action: root.paletteActions[root.paletteIndex] || null, actions: root.paletteAll,
                                   armed: !!root.paletteArmed && !!root.paletteActions[root.paletteIndex] && root.paletteArmed === root.paletteActions[root.paletteIndex].label } : null,
     row: root.selectedRow, armed: !!root.selectedRow && root.armedKey === root.selectedRow.key, anyPreview: root.anyPreview
   }))
