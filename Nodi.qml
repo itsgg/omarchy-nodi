@@ -153,8 +153,16 @@ Item {
   readonly property var selectedRow: root.rows[root.selectedIndex] || null
   // The words the selected row, or else the mode, takes: under the field.
   readonly property string argsHint: root.paletteOpen ? "" : ((root.selectedRow && root.selectedRow.hint) || (root.mode && root.mode.hint) || "")
-  readonly property bool noResults: root.rows.length === 0 && input.text.trim() !== ""
-  readonly property bool inHelpTopic: /^\s*\?\s*\S/.test(input.text)
+  // What is typed, an input method's composition in it while it is being
+  // composed (Card.composed, ROADMAP 76): what every answer and mode reads,
+  // where the field's own text is for editing it.
+  readonly property string composedQuery: card.composed
+  // The same, read now: a handler of the field's own change runs before
+  // the binding above has caught up, and every keystroke read the one
+  // before (Sonnet 2026-10-07). Functions read this; bindings the above.
+  function queryNow() { return card.composedNow() }
+  readonly property bool noResults: root.rows.length === 0 && root.composedQuery.trim() !== ""
+  readonly property bool inHelpTopic: /^\s*\?\s*\S/.test(root.composedQuery)
   property point lastPointer: Qt.point(-1, -1)
 
   function rowSize(row) { return look.rowSize(row) }
@@ -498,21 +506,21 @@ Item {
       root.results = Engine.hotkeyPrompt(root.captureRow, root.captureNote)
       root.mode = { label: "Hotkey", icon: "󰌌" }
     } else if (root.aliasRow) {
-      root.results = Engine.aliasPrompt(input.text, root.aliasRow)
+      root.results = Engine.aliasPrompt(root.queryNow(), root.aliasRow)
       root.mode = { label: "Alias", icon: "󰌌" }
     } else if (root.wordAsk) {
-      root.results = Engine.wordPrompt(input.text, root.wordAsk)
+      root.results = Engine.wordPrompt(root.queryNow(), root.wordAsk)
       root.mode = { label: "Confirm", icon: "󰀦" }
     } else if (root.pickSession) {
-      root.results = Pick.rows(input.text, root.pickSession.rows || [])
+      root.results = Pick.rows(root.queryNow(), root.pickSession.rows || [])
       root.mode = { label: "Pick", icon: Pick.PROVIDER.icon }
     } else {
       var svc = root.services()
-      root.results = Engine.run(input.text, root.config, svc)
+      root.results = Engine.run(root.queryNow(), root.config, svc)
       // The desktop the rows show, so the timer redraws them when it moves;
       // a search for Claude does not count (Fable 2026-10-06).
       desktopTimer.seen = JSON.stringify(svc.desktop)
-      root.mode = Engine.mode(input.text, root.config)
+      root.mode = Engine.mode(root.queryNow(), root.config)
       // A step names where it is: "Wi-Fi > Home".
       if (root.filterStep && root.mode && root.filterStep.trail.length)
         root.mode = { label: root.mode.label + " > " + root.filterStep.trail[root.filterStep.trail.length - 1].label, icon: root.mode.icon, hint: root.mode.hint }
@@ -521,8 +529,8 @@ Item {
       if (root.opened && root.results.length === 1 && root.results[0].nodi === "filterDone")
         Qt.callLater(function() { if (root.opened) root.finish() })
     }
-    root.selectedIndex = NodiKeys.reselect(before, root.rows, input.text)
-    root.shownQuery = input.text
+    root.selectedIndex = NodiKeys.reselect(before, root.rows, root.queryNow())
+    root.shownQuery = root.queryNow()
     if (root.rows.length > 0) card.keepVisible(root.selectedIndex)
   }
 
@@ -588,7 +596,7 @@ Item {
                            root.cameFrom ? root.cameFrom.address : "")
     if (!argv) return
     if (run.kind === "copy") root.markOwnCopy(run.text)
-    var query = Match.normalise(input.text)
+    var query = Match.normalise(root.queryNow())
     // What was typed and shown, before the bar empties (lib/PickLog.js);
     // a pick's choice ranks nothing.
     if (key && query && !root.pickSession) root.logPick(PickLog.entry(Date.now(), root.trail, query, key, root.rows))
@@ -969,7 +977,7 @@ Item {
   // Enter on a row whose action is Nodi's own.
   function doNodi(row) {
     if (row.nodi === "saveAlias" && root.aliasRow) {
-      var next = Prefs.withAlias(root.prefs, input.text, root.aliasRow.key, History.snapshot(root.aliasRow))
+      var next = Prefs.withAlias(root.prefs, root.queryNow(), root.aliasRow.key, History.snapshot(root.aliasRow))
       if (next) root.savePrefs(next)
       root.aliasRow = null
       input.text = ""
@@ -1016,11 +1024,11 @@ Item {
       input.text = "ask " + row.ask.question
       input.cursorPosition = input.text.length
     } else if (row.nodi === "ask") {
-      var q = input.text.replace(/^\s*ask\s+/i, "").trim()
+      var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
       // Not while a window's picture is taken for this question (askWindow).
       if (q && !askSession.busy() && !windowShot.active) { root.askRows = ({}); askSession.send(q) }
     } else if (row.nodi === "runWord" && root.wordAsk) {
-      if (input.text.trim() !== root.wordAsk.word) return
+      if (root.queryNow().trim() !== root.wordAsk.word) return
       var w = root.wordAsk
       root.wordAsk = null
       // The query is what the row was picked for, not the word (Fable
@@ -1037,7 +1045,7 @@ Item {
       if (u) root.execute(u.run, "", "", null, u.title, false)
       return
     } else if (row.nodi === "answer") {
-      var spec = Answers.spec(input.text, root.config.answers, root.cameFrom)
+      var spec = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom)
       if (spec) answerSession.start(spec)
     } else if (row.nodi === "filterNext" && row.next) {
       root.stepInto(row.next)
@@ -1142,12 +1150,12 @@ Item {
   function queryChanged() {
     root.typedSinceOpen = true
     if (!root.recalling) root.recallAt = -1
-    root.trail = PickLog.typed(root.trail, Match.normalise(input.text))
-    if (/^\s*ask\s/i.test(input.text)) askSession.warm()
+    root.trail = PickLog.typed(root.trail, Match.normalise(root.queryNow()))
+    if (/^\s*ask\s/i.test(root.queryNow())) askSession.warm()
     root.armedKey = ""
     root.closePalette()
     // Steps belong to their keyword: a query without it ends them.
-    if (root.filterStep && !Engine.startsWithKeyword(input.text, root.filterStep.keyword)) root.endSteps()
+    if (root.filterStep && !Engine.startsWithKeyword(root.queryNow(), root.filterStep.keyword)) root.endSteps()
     root.selectedIndex = 0
     root.recompute()
   }
@@ -1679,11 +1687,11 @@ Item {
   }
 
   // The answer the card shows, while the query is the question it answers.
-  readonly property bool asking: /^\s*ask\s/i.test(input.text)
+  readonly property bool asking: /^\s*ask\s/i.test(root.composedQuery)
   readonly property string askShown: root.asking && askSession.phase !== "idle"
-    && askSession.question === input.text.replace(/^\s*ask\s+/i, "").trim() ? askSession.answer : ""
+    && askSession.question === root.composedQuery.replace(/^\s*ask\s+/i, "").trim() ? askSession.answer : ""
   // A streamed answer (providers/answers.js), while the query is its question.
-  readonly property bool answerShown: Answers.shown(input.text, root.config.answers,
+  readonly property bool answerShown: Answers.shown(root.composedQuery, root.config.answers,
     { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question })
   // The pane beside the list (item 26), as lib/Pane.js chooses it.
   readonly property bool anyPreview: root.rows.some(Pane.hasPane)
@@ -1755,7 +1763,7 @@ Item {
   // lands, and one that does not is not shown anew (Requests.same).
   function askLive() {
     if (root.aliasRow || root.wordAsk || root.pickSession || root.captureRow) return
-    Engine.run(input.text, root.config, root.services())
+    Engine.run(root.queryNow(), root.config, root.services())
   }
 
   // ---------------------------------------------------------------- reads
@@ -2056,7 +2064,7 @@ Item {
     timeoutMs: 3000
     onFinished: function(text, ok) {
       root.reminders = Sources.reminders(text)
-      if (root.opened && !input.text.trim()) root.recompute()
+      if (root.opened && !root.queryNow().trim()) root.recompute()
     }
   }
 

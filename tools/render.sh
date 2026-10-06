@@ -57,6 +57,42 @@ fi
 # Every scene drawn this run, or a failure: the pictures of an earlier run
 # go first, so `make docs` cannot copy one a crash left behind (Fable
 # 2026-10-04).
+# An input method instead (ROADMAP 76): fcitx5 composing into the real
+# card (tests/ime/Ime.qml) on a private X server and D-Bus, its config,
+# data and runtime directories its own, while tools/xkeys.py types
+# Ctrl+Shift+U, a code point and Space; what the card saw goes to
+# <out-dir>/ime.txt.
+if [[ -n ${NODI_IME:-} ]]; then
+  run="$work/run"
+  mkdir -m 700 "$run" "$work/config" "$work/data" "$work/cache"
+  mkdir -p "$work/ime" && cp "$root/tests/ime/Ime.qml" "$work/ime/Ime.qml"
+  exec 4>"$work/display"
+  Xvfb -displayfd 4 -nolisten tcp -screen 0 1200x500x24 >"$work/xvfb.log" 2>&1 &
+  xvfb=$!
+  trap 'kill "$xvfb" 2>/dev/null || true; rm -rf -- "$work"' EXIT
+  for _ in $(seq 1 50); do [[ -s $work/display ]] && break; sleep 0.1; done
+  env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 XDG_RUNTIME_DIR="$run" XDG_CONFIG_HOME="$work/config" XDG_DATA_HOME="$work/data" \
+    XDG_CACHE_HOME="$work/cache" DISPLAY=":$(head -n1 "$work/display")" QT_QPA_PLATFORM=xcb QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx \
+    QT_FORCE_STDERR_LOGGING=1 dbus-run-session -- /usr/bin/bash -c '
+      fcitx5 --disable=wayland,waylandim,notificationitem,kimpanel,clipboard >"$1/fcitx.log" 2>&1 &
+      sleep 2
+      timeout 30 qml6 -I "$1" "$1/ime/Ime.qml" >"$1/log" 2>&1 &
+      q=$!
+      sleep 2
+      timeout 20 /usr/bin/python3 -I "$2" "$DISPLAY" nodi-ime ctrl+shift+u text:0b85 space sleep:0.3 text:x sleep:0.5 >"$1/keys.log" 2>&1
+      sleep 0.5
+      kill "$q" 2>/dev/null; wait "$q" 2>/dev/null; true' nodi-ime "$work" "$root/tools/xkeys.py" >/dev/null 2>&1 || true
+  sed -n 's/.*STATE //p' "$work/log" >"$out/ime.txt"
+  cp "$work/log" "$out/ime-harness.log"
+  # Qt looking for an accessibility registry this session has none of is
+  # the session's, not the card's.
+  problems=$(grep -E "Error|TypeError|ReferenceError|is not a type|Binding loop|xkeys:" "$work/log" "$work/keys.log" | grep -v "qt.accessibility.atspi" | sed "s#file://$work/##g" | sort -u || true)
+  if [[ -n $problems ]]; then echo "$problems"; fi
+  echo "ime: $(wc -l < "$out/ime.txt") changes seen, in $out/ime.txt"
+  [[ -z $problems ]]
+  exit
+fi
+
 # A screen reader's view instead (item 71): the scenes NODI_A11Y names,
 # on a private X server, D-Bus and accessibility bus, under a runtime
 # directory of their own (the at-spi launcher names its sockets by it: one

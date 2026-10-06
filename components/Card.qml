@@ -12,6 +12,14 @@ BorderSurface {
   readonly property alias input: input
   readonly property alias paletteInput: paletteInput
   readonly property alias list: list
+  // What is typed, with an input method's composition in it while it is
+  // composed (ROADMAP 76): results follow the preedit, as Vicinae's
+  // consider_preedit does, not only what is committed.
+  readonly property string composed: composedNow()
+  // Read at the moment, for a handler of the field's change (Nodi.queryNow).
+  function composedNow() {
+    return input.preeditText !== "" ? input.text.slice(0, input.cursorPosition) + input.preeditText + input.text.slice(input.cursorPosition) : input.text
+  }
   width: nodi.cardWidth
   height: contentTopInset + contentBottomInset + layout.implicitHeight
   radius: nodi.cornerRadius
@@ -63,7 +71,7 @@ BorderSurface {
   property string rowsSaid: ""
   property bool paletteFresh: false
   function rowsKey(rows) {
-    var parts = [String(input.text)]
+    var parts = [String(card.composedNow())]
     for (var i = 0; i < rows.length; i++) parts.push(String(rows[i].key) + "\u0001" + card.spoken(rows[i]))
     return parts.join("\u0002")
   }
@@ -101,7 +109,7 @@ BorderSurface {
     }
     var r = rows[nodi.selectedIndex]
     if (r && nodi.armedKey !== "" && nodi.armedKey === r.key) return "Enter again to " + r.title
-    if (n === 0) return input.text.trim() !== "" ? "No match" : ""
+    if (n === 0) return card.composed.trim() !== "" ? "No match" : ""
     var place = card.spoken(r) + ", " + (nodi.selectedIndex + 1) + " of " + n
     // Only fallbacks: No match, and the first of them; a key moving among
     // them says each, as among rows (Sonnet 2026-10-06: they were silent).
@@ -198,6 +206,7 @@ BorderSurface {
         clip: true
         focus: true
         onTextChanged: nodi.queryChanged()
+        onPreeditTextChanged: nodi.queryChanged()
         Accessible.name: "Nodi"
         Accessible.searchEdit: true
         Accessible.description: card.selectedSpoken
@@ -207,7 +216,9 @@ BorderSurface {
         Text {
           anchors.fill: parent
           verticalAlignment: Text.AlignVCenter
-          visible: !input.text
+          // Not over a composition either (Sonnet 2026-10-07: it drew on it).
+          objectName: "placeholder"
+          visible: !card.composed
           text: nodi.placeholder || "Search"
           color: nodi.secondary
           font: input.font
@@ -302,7 +313,8 @@ BorderSurface {
 
       Row {
         id: helpHint
-        visible: !nodi.mode && !input.text
+        objectName: "helpHint"
+        visible: !nodi.mode && !card.composed
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
         anchors.verticalCenter: parent.verticalCenter
@@ -329,6 +341,7 @@ BorderSurface {
       bottomPadding: Style.spacing.md
       textFormat: Text.PlainText
       text: nodi.argsHint
+      horizontalAlignment: Text.AlignLeft
       color: nodi.secondary
       font.family: nodi.fontFamily
       font.pixelSize: Style.font.caption
@@ -356,7 +369,7 @@ BorderSurface {
         width: parent.width
         horizontalAlignment: Text.AlignHCenter
         textFormat: Text.PlainText
-        text: "No match for \"" + input.text.trim() + "\""
+        text: "No match for \"" + card.composed.trim() + "\""
         color: nodi.foreground
         font.family: nodi.fontFamily
         font.pixelSize: Style.font.subtitle

@@ -642,6 +642,14 @@ baseline query loses rank.
     each. Second in `?`, after the keys; `?mi` finds it.
 76. **Right-to-left titles aligned left; an input method tested** in a
     scratch session, results following the composition. X 15, 16.
+    Done 2026-10-07: titles, subtitles, actions and the pane's heading are
+    aligned left whatever their script (Arabic and Hebrew drew right
+    before); the query is what is typed with the composition in it
+    (Card.composed), so results follow an input method's preedit, not
+    only its commit. `make ime` (in check) runs fcitx5 composing into the
+    real card on a private X server and D-Bus, typed through XTest
+    (tools/xkeys.py, by ctypes): U+0b85 composed, then committed as its
+    character.
 77. **Starter rows on a first open.** X 11.
 78. **The window itself in the pane** for `w` rows. X 17.
 79. **Window rules from Ctrl+K**, applied at runtime. X 19.

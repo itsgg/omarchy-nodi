@@ -116,7 +116,10 @@ Item {
       Text {
         width: parent.width
         textFormat: Text.PlainText
+        objectName: "title"
         text: rowItem.modelData.title
+        // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
+        horizontalAlignment: Text.AlignLeft
         color: rowItem.selected ? nodi.selectedInk : nodi.foreground
         font.family: nodi.fontFamily
         // Omarchy's menu draws its rows' names so: heading size, Medium
@@ -131,6 +134,8 @@ Item {
         visible: text !== ""
         textFormat: Text.PlainText
         text: rowItem.modelData.subtitle || ""
+        // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
+        horizontalAlignment: Text.AlignLeft
         color: rowItem.selected ? nodi.secondaryOnSelected : nodi.secondary
         font.family: nodi.fontFamily
         font.pixelSize: Style.font.bodySmall
