@@ -20,7 +20,7 @@ test("which runs paste: Omarchy's pastes, never their copy-only form", () => {
   const marked = Run.pasting(Run.shell('exec wtype -- "$1"', ["x"]));
   assert.equal(Run.pastes(marked), true);
   assert.equal(Run.valid(marked), true);
-  assert.equal(Run.command(marked, null, "", "0x5b8f")[2], Run.FOCUS_FIRST, "a marked shell run focuses first (Sonnet 2026-10-07)");
+  assert.equal(Run.command(marked, null, "", "0x5b8f")[2], Run.FOCUS_FIRST, "a marked shell run focuses first (Sonnet 2026-10-06)");
 });
 
 test("a paste's command focuses the window first; anything else, or no window, as it is", () => {

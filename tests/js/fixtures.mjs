@@ -92,6 +92,7 @@ export function requester(data, asked) {
       : name === "suggest" ? data.suggest
       : name === "plugins" ? data.plugins
       : name === "agent-usage" ? data.agentUsage
+      : name === "calendar" ? data.calendar
       : name === "agent-sessions" ? data.agentSessions
       : name === "window-cwd" ? data.windowCwd
       : name === "ocr" ? data.ocr

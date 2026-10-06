@@ -27,6 +27,7 @@ import "lib/Opens.js" as Opens
 import "lib/PickLog.js" as PickLog
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
+import "providers/calendar.js" as Calendars
 
 // Nodi: a command bar for Omarchy. This file draws, takes keys and fetches
 // data; what a query means is decided by providers/, run through
@@ -258,6 +259,9 @@ Item {
     root.readSelection()
     requests.request("omarchy-commands")
     requests.request("agent-usage")
+    // The calendar, once a feed is set: the next meeting leads (ROADMAP 67).
+    var feeds = Calendars.param(root.config.calendar)
+    if (feeds && (root.config.providers || []).indexOf("calendar") !== -1) requests.request("calendar", feeds)
     trayMenus.active = true
     if (Date.now() - root.guardsAt > 60 * 1000) root.evaluateGuards()
   }
@@ -1733,7 +1737,7 @@ Item {
   Requests {
     id: requests
     providers: Engine.providers()
-    env: ({ user: root.user, home: root.home, cacheDir: root.cacheDir, path: Quickshell.env("PATH") || "" })
+    env: ({ user: root.user, home: root.home, cacheDir: root.cacheDir, pluginDir: root.pluginDir, path: Quickshell.env("PATH") || "" })
     onArrived: if (root.opened) root.recompute()
   }
 

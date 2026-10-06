@@ -63,7 +63,7 @@ Item {
 
   // What a reader needs to reach Hyprland, PipeWire, the shell's IPC and
   // Omarchy's own commands, and nothing else from the shell's environment.
-  function environment() {
+  function environment(extra) {
     var env = { HOME: Quickshell.env("HOME"), PATH: omarchyPath + "/bin:/usr/local/bin:/usr/bin:/bin", OMARCHY_PATH: omarchyPath, LANG: "C.UTF-8" }
     var pass = ["USER", "XDG_RUNTIME_DIR", "WAYLAND_DISPLAY", "HYPRLAND_INSTANCE_SIGNATURE", "DBUS_SESSION_BUS_ADDRESS"]
     for (var i = 0; i < pass.length; i++) {
@@ -71,6 +71,7 @@ Item {
       if (v) env[pass[i]] = v
     }
     for (var k in reader.extraEnvironment) env[k] = reader.extraEnvironment[k]
+    for (var x in extra || {}) env[x] = String(extra[x])
     return env
   }
 
@@ -83,7 +84,7 @@ Item {
     reader.errorTail = ""
     reader.overflowed = false
     reader.timedOut = false
-    proc.environment = reader.environment()
+    proc.environment = reader.environment(tag && tag.env)
     proc.command = Sources.limited(argv, reader.timeoutMs, reader.maxBytes, reader.streaming)
     proc.running = true
     deadline.restart()

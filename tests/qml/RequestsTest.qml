@@ -39,6 +39,10 @@ Item {
       typed: { argv: function(p) { return ["/usr/bin/bash", "-c", 'sleep 1.2; : > "$1/$0.done"; printf "%s %s" "$0" "$PATH"', p, test.marks] },
                parse: function(text) { return text.trim() }, maxAgeMs: 60000, supersede: true, sessionPath: true },
       marks: { argv: function() { return ["/usr/bin/ls", "-1", test.marks] }, parse: function(text) { return text.trim().split("\n").filter(Boolean) }, maxAgeMs: 0 },
+      // What a source puts in its program's environment, for the read it
+      // is for, and never in its arguments; its queued read keeps its own.
+      secret: { argv: function(p) { return ["/usr/bin/bash", "-c", 'sleep 0.2; printf "%s|%s|%s" "$NODI_SECRET" "$#" "$HOME"'] },
+                environment: function(p) { return { NODI_SECRET: "s-" + p } }, parse: function(text) { return text.trim() }, maxAgeMs: 60000, concurrent: false },
       // Read twice to the same text: the second lands without an arrival.
       same: { argv: function() { return ["/usr/bin/printf", "x"] }, parse: function(text) { return [text] }, maxAgeMs: 0 }
     }
@@ -81,6 +85,8 @@ Item {
     requests.request("typed", "a")
     requests.request("typed", "b")
     requests.request("same")
+    requests.request("secret", "a")
+    requests.request("secret", "b")
     sameAgain.start()
     typedLater.start()
     peek.start()
@@ -127,6 +133,9 @@ Item {
       var sm = requests.request("same", "", { fetch: false })
       check(test.sameArrivals === 1 && sm.state === "ready" && sm.value[0].trim() === "x" && sm.at > test.sameFirstAt,
             "a second read of the same text lands without an arrival (Requests.same): " + test.sameArrivals + " " + JSON.stringify(sm))
+      var sa = requests.request("secret", "a", { fetch: false }), sb = requests.request("secret", "b", { fetch: false })
+      check(sa.state === "ready" && sa.value.indexOf("s-a|0|") === 0 && sb.state === "ready" && sb.value.indexOf("s-b|0|") === 0 && sa.value.split("|")[2] !== "",
+            "a source's environment reaches its program, each read its own, the rest kept (HOME): " + JSON.stringify([sa, sb]))
       test.done(test.failures.length === 0, test.failures.join("; "))
     }
   }
