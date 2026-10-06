@@ -93,7 +93,10 @@ that does not parse changes nothing, and a notification says why.
   // A few words from Claude for apps with no description of their own.
   "apps": { "describe": true },
   // What `tr` and Translate on selected text go to (English unless set).
-  "translate": { "language": "Tamil" }
+  "translate": { "language": "Tamil" },
+  // Ask's model, and MCP servers its answers may use, each call on your Enter
+  // (with Ask's actions on, as they are unless "actions": false).
+  "ask": { "model": "sonnet", "mcpServers": { "github": { "command": "github-mcp-server", "args": ["stdio"] } } }
 }
 ```
 
@@ -294,7 +297,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   ten minutes while that fails), for `prs` (through `gh`), and for Claude,
   through Claude Code's `claude` command, under `ask` and, if turned on, to describe
   apps. That Claude session has none of Claude Code's own tools, no MCP
-  servers and none of your Claude settings, and saves nothing; it keeps
+  servers but the ones you name under `"ask": { "mcpServers": ... }` (in
+  Claude Code's own format, each call shown in the bar for your Enter),
+  and none of your Claude settings, and saves nothing; it keeps
   the conversation in memory for ten minutes after an answer. Its only
   tools are the bar's: a search of the rows, and a run of one, which
   shows in the bar with its command and runs only on your Enter. "Ask
