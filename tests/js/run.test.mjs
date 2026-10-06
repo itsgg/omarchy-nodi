@@ -94,8 +94,9 @@ test("Ctrl+K: the row's own action first, every entry runnable", () => {
 test("Ctrl+K offers Reset ranking only for a row with history", () => {
   const row = Rows.normalize({ key: "app:foot", title: "Foot", run: Run.app("foot") }, { id: "apps", name: "Apps" }, 0, 0);
   const known = Rows.actionsFor(row, { knows: k => k === "app:foot" });
-  assert.equal(known[known.length - 1].label, "Reset ranking");
-  assert.equal(known[known.length - 1].nodi, "forget");
+  const reset = known.find(a => a.nodi === "forget");
+  assert.deepEqual([reset.label, reset.group], ["Reset ranking", "Manage"]);
+  assert.equal(known[known.length - 1].label, "Uninstall", "in Manage, Uninstall last (ROADMAP 52)");
   assert.ok(!Rows.actionsFor(row, { knows: () => false }).some(a => a.nodi));
   assert.ok(!Rows.actionsFor(row, {}).some(a => a.nodi));
 });
@@ -153,3 +154,39 @@ test("a watched command says it failed, with its last line, and only then (ROADM
   assert.equal(Run.command(Run.app("firefox"), null, "Firefox")[2], 'exec "$@"', "an app is not watched: LaunchFeedback says");
 });
 
+
+// Ctrl+K grouped and typed into (ROADMAP 52).
+test("Ctrl+K: the row's own, then Copy, then Manage, each with its chord", () => {
+  const Prefs = load("lib/Prefs.js");
+  const row = Rows.normalize({ key: "app:firefox", title: "Firefox", run: Run.app("firefox"), copy: "",
+                                actions: [{ label: "New Window", run: Run.app("firefox", 0) }] }, { id: "apps", name: "Apps" }, 0, 0);
+  const acts = Rows.actionsFor(row, { prefs: Prefs.empty(), knows: () => true });
+  assert.deepEqual(plain(acts.map(a => [a.label, a.group, a.chord])), [
+    ["Open", "", "Enter"], ["New Window", "", ""], ["Copy desktop id", "Copy", ""],
+    ["Add to favourites", "Manage", "Ctrl Shift F"], ["Add alias", "Manage", "Ctrl Shift A"], ["Set hotkey", "Manage", ""],
+    ["Copy deeplink", "Manage", "Ctrl Shift D"], ["Reset ranking", "Manage", ""], ["Hide", "Manage", "Ctrl Shift H"], ["Uninstall", "Manage", ""]]);
+  assert.deepEqual(plain(acts.filter(a => a.own).map(a => a.label)), ["Open"], "one own action");
+  const sum = Rows.normalize({ key: "calc:1", title: "= 4", copy: "4", run: Run.exec(["true"]) }, { id: "calc", name: "Calculator" }, 0, 0);
+  const copy = Rows.actionsFor(sum, {}).find(a => a.label === "Copy 4");
+  assert.deepEqual([copy.chord, copy.chordKey, copy.group], ["Ctrl Enter", "copy", "Copy"], "what Ctrl+Enter copies from the list");
+});
+
+test("Ctrl+K typed into: words that start the label or group's, each group under its name once", () => {
+  const Prefs = load("lib/Prefs.js");
+  const row = Rows.normalize({ key: "app:firefox", title: "Firefox", run: Run.app("firefox"), copy: "" }, { id: "apps", name: "Apps" }, 0, 0);
+  const acts = Rows.actionsFor(row, { prefs: Prefs.empty(), knows: () => true });
+  const f = text => plain(Rows.filterActions(acts, text).map(a => [a.label, a.section]));
+  assert.deepEqual(f("fav"), [["Add to favourites", "Manage"]]);
+  assert.deepEqual(f("copy"), [["Copy desktop id", "Copy"], ["Copy deeplink", "Manage"]]);
+  assert.deepEqual(f("COPY  Desk"), [["Copy desktop id", "Copy"]], "every word, any case");
+  assert.equal(f("manage").length, 7, "a group by its name");
+  assert.deepEqual(f("pen"), [], "the start of a word, not its inside");
+  const aliased = Rows.actionsFor(row, { prefs: Prefs.withAlias(Prefs.empty(), 'x"y', row.key, { title: "Firefox", run: row.run }), knows: () => true });
+  for (const q of ['remove "x', 'remove x"y', "alias x"])
+    assert.deepEqual(plain(Rows.filterActions(aliased, q).map(a => a.label)), ['Remove alias "x"y"'], q + ": typed as the label is split (Sonnet 2026-10-06)");
+  assert.deepEqual(f("zz"), []);
+  const all = f("");
+  assert.equal(all.length, acts.length);
+  assert.deepEqual(all.filter(a => a[1]).map(a => a[1]), ["Copy", "Manage"], "the row's own under the row's name, the others under theirs");
+  assert.ok(!("section" in acts[3]), "the list actionsFor gave is left as it was");
+});

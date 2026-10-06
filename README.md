@@ -59,8 +59,12 @@ text already typed:
 | `?` | Help, with every example answered live |
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
-favourite, a hotkey, hide), Ctrl+1 to Ctrl+9 run a row directly, Tab fills
-in, Esc closes, or first steps back from Ctrl+K, a prompt or a help topic.
+favourite, a hotkey, hide), grouped, each with its key on the right, and
+what is typed there finds one (Ctrl+Enter copies there too);
+Ctrl+Shift+F, A, D and H favourite, alias, copy the deeplink of and hide
+a row without it, and Ctrl+Shift+P pins a clipboard entry. Ctrl+1 to
+Ctrl+9 run a row directly, Tab fills in, Esc closes, or first steps back
+from Ctrl+K, a prompt or a help topic.
 Closed within two minutes, the bar reopens on what was typed, selected;
 later, on its home view. Ctrl+R brings back an earlier query, older on each
 press, and Ctrl+W, Ctrl+E, Ctrl+F and Ctrl+B edit as a shell does. A row you pick for a query comes first for

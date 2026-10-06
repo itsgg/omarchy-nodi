@@ -428,6 +428,12 @@ baseline query loses rank.
     Ctrl+F and Ctrl+B a letter. Ctrl+A stays select-all.
 52. **A Ctrl+K that is typed into**, grouped, its Manage group last, each
     action's chord on the right. X 7.
+    Done 2026-10-06: what is typed while Ctrl+K is up goes to a field of
+    its own (the query waits as it was) and keeps the actions with a word
+    starting so, by label or group; the row's own actions, then Copy,
+    then Manage, Uninstall last, each group under its name; Enter, Ctrl
+    Enter and new Ctrl+Shift chords (F favourite, A alias, D deeplink, H
+    hide, P pin) on the right, and the chords work from the list too.
 53. **A failed command says so**: its last stderr line in a notification,
     as scripts already have. X 4.
     Done 2026-10-05: a command or script a row runs is watched by a

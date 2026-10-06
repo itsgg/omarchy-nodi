@@ -10,6 +10,7 @@ BorderSurface {
   id: card
   property var nodi
   readonly property alias input: input
+  readonly property alias paletteInput: paletteInput
   readonly property alias list: list
   width: nodi.cardWidth
   height: contentTopInset + contentBottomInset + layout.implicitHeight
@@ -69,6 +70,9 @@ BorderSurface {
 
       TextInput {
         id: input
+        // Under Ctrl+K its own field takes this one's place, so the query
+        // waits here as it was (ROADMAP 52).
+        visible: !nodi.paletteOpen
         anchors.left: promptGlyph.right
         anchors.leftMargin: Style.spacing.xxl
         anchors.right: modeChip.visible ? modeChip.left : (helpHint.visible ? helpHint.left : parent.right)
@@ -102,6 +106,39 @@ BorderSurface {
         // While Ctrl is held the first nine rows show the digit that runs them.
         Keys.onReleased: function(event) { if (event.key === Qt.Key_Control) nodi.ctrlHeld = false }
         onActiveFocusChanged: if (!activeFocus) nodi.ctrlHeld = false
+      }
+
+      // What is typed while Ctrl+K is up: it filters the actions, by the
+      // words that start theirs.
+      TextInput {
+        id: paletteInput
+        visible: nodi.paletteOpen
+        anchors.left: promptGlyph.right
+        anchors.leftMargin: Style.spacing.xxl
+        anchors.right: input.right
+        anchors.verticalCenter: parent.verticalCenter
+        color: nodi.foreground
+        selectionColor: nodi.selectedBackground
+        selectedTextColor: nodi.selectedText
+        font.family: nodi.fontFamily
+        font.pixelSize: nodi.inputFont
+        clip: true
+        onTextChanged: nodi.paletteTyped(text)
+
+        Text {
+          anchors.fill: parent
+          verticalAlignment: Text.AlignVCenter
+          visible: !paletteInput.text
+          text: "Search actions"
+          color: nodi.secondary
+          font: paletteInput.font
+          elide: Text.ElideRight
+        }
+
+        Keys.priority: Keys.BeforeItem
+        Keys.onPressed: function(event) {
+          if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
+        }
       }
 
       // The mode a prefix puts the bar in: Emoji, Windows, Search Google.

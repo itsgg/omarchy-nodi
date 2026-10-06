@@ -79,8 +79,13 @@ QtObject {
     return Math.min(total, screenHeight * 0.6)
   }
 
-  // Ctrl+K's actions, held as the list is: seven, then a part of the next.
-  function paletteHeight(count) {
-    return Math.min(count, maxRows) * rowHeight + (count > maxRows ? rowPeek : 0)
+  // Ctrl+K's actions, held as the list is: seven, then a part of the next,
+  // with their groups' headers. None that match: ActionPalette says so in
+  // a line of its own.
+  function paletteHeight(actions) {
+    var n = actions ? actions.length : 0
+    var total = 0
+    for (var i = 0; i < n && i < maxRows; i++) total += rowHeight + (actions[i].section ? sectionHeight : 0)
+    return total + (n > maxRows ? rowPeek : 0)
   }
 }
