@@ -88,6 +88,7 @@ export function requester(data, asked) {
       : name === "pkg-repo" ? data.pkgRepo
       : name === "pkg-aur" ? data.pkgAur
       : name === "define" ? data.define
+      : name === "notes-file" ? data.notes
       : name === "suggest" ? data.suggest
       : name === "plugins" ? data.plugins
       : name === "agent-usage" ? data.agentUsage

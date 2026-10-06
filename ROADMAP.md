@@ -561,6 +561,11 @@ baseline query loses rank.
     nodi.json, off until one is set (his call). L 9.
 68. **Notes in one line**: `note <text>` appends a dated line to a Markdown
     file set in nodi.json; `notes <words>` finds the line. L 17.
+    Done 2026-10-07: `note <text>` adds "- 2026-10-07 00:42 <text>" to
+    `"notes": { "file": ... }`, ~/Documents/notes.md unless set, made if
+    missing; `notes <words>` its lines holding every word, newest first,
+    the lines around in the pane, Enter opening the file at the line in
+    Omarchy's default editor (a terminal one at the line).
 69. **Small fits**: Ask's "continue in a terminal" through
     `omarchy-agent-prompt`, so it follows Omarchy's default agent; a paste
     that focuses the window it came from first. X 20.
