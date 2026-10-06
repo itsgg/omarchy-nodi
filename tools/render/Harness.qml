@@ -23,8 +23,10 @@ Window {
   // The screen it is drawn for: 1920x1200 unless tools/render.sh names one
   // (NODI_SCREEN, the argument before the folder).
   readonly property var screenArg: String(Qt.application.arguments[Qt.application.arguments.length - 2] || "").match(/^(\d+)x(\d+)$/)
+  // Drawn as under higher contrast with "contrast=high" (NODI_CONTRAST).
+  readonly property bool highContrast: Qt.application.arguments.indexOf("contrast=high") !== -1
   Look { id: look; screenWidth: win.screenArg ? Number(win.screenArg[1]) : 1920; screenHeight: win.screenArg ? Number(win.screenArg[2]) : 1200
-         chrome: card.chrome; wide: fake.preview !== null || (fake.paletteOpen && fake.anyPreview) }
+         chrome: card.chrome; highContrast: win.highContrast; wide: fake.preview !== null || (fake.paletteOpen && fake.anyPreview) }
 
   QtObject {
     id: fake
@@ -33,6 +35,7 @@ Window {
     readonly property var selectedBorderSpec: look.selectedBorderSpec
     readonly property real rowInsetLeft: look.rowInsetLeft
     readonly property bool selectionBar: look.selectionBar
+    readonly property bool reducedMotion: false
     readonly property int barWidth: look.barWidth
     readonly property int barInset: look.barInset
     readonly property real rowInsetRight: look.rowInsetRight

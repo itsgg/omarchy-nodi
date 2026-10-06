@@ -621,6 +621,12 @@ baseline query loses rank.
     edge (Contrast.needsMark); Dark Knight, Tokyo Night and the like draw
     as before. Higher contrast turns it on everywhere once 73 reads it.
 73. **Motion and contrast preferences** from the portal and Hyprland. X 12.
+    Done 2026-10-06: at each open, the portal's org.freedesktop.appearance
+    `contrast` and `reduced-motion` and Hyprland's animations:enabled
+    (lib/Appearance.js, through a Reader); higher contrast marks the
+    selected row in every theme (72's bar) and raises secondary text to
+    7:1, reduced motion or animations off leaves the card's resizing
+    unanimated. This portal serves contrast (0) and no reduced-motion.
 74. **Mouse**: right click opens Ctrl+K; the footer's keys click. X 14.
 75. **`?mine`**: every alias, hotkey, favourite and hidden row. X 13.
 76. **Right-to-left titles aligned left; an input method tested** in a

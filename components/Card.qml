@@ -23,9 +23,10 @@ BorderSurface {
   // closed, the jerk he saw as the bar opened (2026-10-05). Nodi.qml turns
   // this on after the first frame and off at the close.
   property bool animated: false
-  Behavior on height { enabled: card.animated; NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
+  // None under reduced motion (ROADMAP 73).
+  Behavior on height { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
   // The pane comes and goes with the selected row: Kadhir's 140 ms.
-  Behavior on width { enabled: card.animated; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+  Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
   MouseArea { anchors.fill: parent; onClicked: {} }
 

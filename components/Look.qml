@@ -31,8 +31,12 @@ QtObject {
   readonly property color opaqueCard: Qt.rgba(background.r, background.g, background.b, 1)
   readonly property color selectedFill: rgb(Contrast.over(selectedBackground, selectedBackground.a, opaqueCard))
   // Subtitles, headers, footer labels, the placeholder: 4.5:1 or better.
-  readonly property color secondary: rgb(Contrast.secondary(foreground, Color.muted, opaqueCard))
-  readonly property color secondaryOnSelected: rgb(Contrast.readable(foreground, selectedFill, 4.5))
+  // 7:1 under higher contrast (ROADMAP 73), WCAG's enhanced level: the
+  // text colour mixed to it, or black or white where the text colour
+  // itself falls short.
+  readonly property real secondaryTarget: highContrast ? 7 : 4.5
+  readonly property color secondary: rgb(Contrast.secondary(foreground, Color.muted, opaqueCard, secondaryTarget))
+  readonly property color secondaryOnSelected: rgb(highContrast ? Contrast.atLeast(foreground, selectedFill, 7) : Contrast.readable(foreground, selectedFill, 4.5))
   // The selected title, its glyph and the mode chip: the theme's selected
   // text where it reads on the fill, else the text colour.
   readonly property color selectedInk: rgb(Contrast.guard(selectedText, selectedFill, foreground))
