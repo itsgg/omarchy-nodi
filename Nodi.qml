@@ -571,7 +571,9 @@ Item {
   function execute(run, toggleId, key, snap, name, undoable) {
     // Watched for failing, by the row's name (lib/Run.js watched), unless
     // the Undoer runs it and says so itself.
-    var argv = Run.command(run, root.appAction, undoable && run.kind === "exec" ? "" : (name || (snap && snap.title) || ""))
+    // A paste goes to the window the bar opened over, focused first.
+    var argv = Run.command(run, root.appAction, undoable && run.kind === "exec" ? "" : (name || (snap && snap.title) || ""),
+                           root.cameFrom ? root.cameFrom.address : "")
     if (!argv) return
     if (run.kind === "copy") root.markOwnCopy(run.text)
     var query = Match.normalise(input.text)

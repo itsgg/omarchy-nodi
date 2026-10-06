@@ -187,7 +187,7 @@ var provider = {
   commands: [
     { title: "Clipboard history", keywords: "clipboard clip cb history paste copied", text: "Paste something you copied earlier", complete: "cb " },
     { title: "Paste the clipboard in sequence", keywords: "paste next sequence sequential clipboard entries one by one",
-      text: "The newest text, then each older one on a press within 30 s; give it a hotkey", run: Run.shell(SEQUENCE) }
+      text: "The newest text, then each older one on a press within 30 s; give it a hotkey", run: Run.pasting(Run.shell(SEQUENCE)) }
   ],
   help: [
     { id: "clipboard", title: "Clipboard", about: "What you copied, newest first. Enter pastes it",

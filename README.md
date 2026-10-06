@@ -334,7 +334,8 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
 ## What it touches
 
 - It starts programs the way Omarchy's menu does: through a login shell,
-  with arguments that are never read as shell.
+  with arguments that are never read as shell. A paste focuses the window
+  the bar opened over first, then types into it.
 - A command or script a row runs that fails and says why is reported in a
   notification, "<row> failed", with its last line of errors; a failure
   that says nothing, or a program closed, is not.
