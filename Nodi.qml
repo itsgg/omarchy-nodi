@@ -455,6 +455,7 @@ Item {
       activeWorkspace: root.activeWorkspace, clipboard: root.clipboard, files: root.recentFiles, menu: root.menu,
       toggleStates: root.toggleStates, themes: root.themes, home: root.home, descriptions: root.appDescriptions,
       request: requests.request,
+      pluginId: root.pluginId,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active },
