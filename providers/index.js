@@ -29,6 +29,7 @@
 .import "windows.js" as Windows
 .import "apps.js" as Apps
 .import "plugins.js" as Plugins
+.import "desktops.js" as Desktops
 .import "tray.js" as Tray
 .import "here.js" as Here
 
@@ -62,6 +63,7 @@ var all = [
   Dev.provider,
   Menu.provider,
   Plugins.provider,
+  Desktops.provider,
   Tray.provider,
   Here.provider,
   Omarchy.provider,

@@ -46,6 +46,8 @@ text already typed:
 | A plugin's name, `plugin` | Another plugin's panel, overlay or menu, opened as Omarchy's menu opens its own |
 | `window text`, `screenshot window`, `files`, `move 3` | The window you came from: its text, read and brought back here to act on; a screenshot of it alone; its folder in Files, when a shell runs in it; workspace 3 |
 | `region text`, `pick a colour` | A capture whose result comes back to the bar: the text of a region, a colour's hex |
+| `move 100 200`, `size 1280 720`, `next window` | A floating window's place and size, typed; the next window of the active app, round to the first (give it a hotkey) |
+| `save desktop work`, `work`, `forget desktop work` | Which app is on which numbered workspace, saved by a name; opened again, each app with no window started on its workspace |
 | `pause dropbox`, `tray` | An entry of a tray app's menu, chosen as a click in that menu |
 | `full screen`, `keys ` | Keybindings, by what they do |
 | `> htop` | A command, in a terminal |
@@ -348,7 +350,8 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   manager's), keeps them until it closes, and sends one to Claude only
   when you pick one of Claude's rows on it.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`,
-  which holds the text of each clipboard entry you pin. A search under
+  which holds the text of each clipboard entry you pin, and the desktops
+  you save (each app's desktop id, window class and workspace). A search under
   `cb` with words reads the text in each image of the history once, with
   Omarchy's `tesseract` (about 2 s an image, a few seconds at a time
   while that search is open), into `~/.cache/nodi/ocr/`; pasting in sequence

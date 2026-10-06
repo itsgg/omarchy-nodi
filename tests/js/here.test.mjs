@@ -127,3 +127,36 @@ test("under Omarchy's own rows for their words, first for the window's", { skip:
   assert.equal(titles("region text")[0], "Text from a region");
   assert.equal(titles("pick colour")[0], "Pick a colour");
 });
+
+// A floating window's place and size, typed (ROADMAP 60).
+test("move 100 200 and size 1280 720 for a floating window; a tiled one says to float it", () => {
+  const floating = extra({ window: Object.assign({}, window, { floating: true }) });
+  const p = mine(run("move 100 200", floating)).find(r => r.key === "here:place");
+  assert.match(p.title, /^Move .* to 100, 200$/);
+  assert.deepEqual(plain(p.run.args), ['hl.dsp.window.move({ window = "address:0xabc", x = 100, y = 200, relative = false })']);
+  const s = mine(run("resize 1280x720", floating)).find(r => r.key === "here:size");
+  assert.deepEqual(plain(s.run.args), ['hl.dsp.window.resize({ window = "address:0xabc", x = 1280, y = 720, relative = false })']);
+  assert.ok(mine(run("size 800, 600", floating)).some(r => r.key === "here:size"));
+  const tiled = mine(run("size 800 600", extra()))[0];
+  assert.deepEqual([tiled.key, tiled.run], ["here:tiled", null]);
+  assert.ok(mine(run("move 3", floating)).some(r => r.key === "here:move:3"), "one number is still a workspace");
+});
+
+test("the next window of the active window's app, in the order they sit, round to the first", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-next-"));
+  mkdirSync(join(dir, "bin"));
+  const clients = JSON.stringify([
+    { address: "0xc", class: "foot", mapped: true, hidden: false, workspace: { id: 2 }, at: [0, 0] },
+    { address: "0xa", class: "foot", mapped: true, hidden: false, workspace: { id: 1 }, at: [500, 0] },
+    { address: "0xb", class: "foot", mapped: true, hidden: false, workspace: { id: 1 }, at: [0, 400] },
+    { address: "0xd", class: "chromium", mapped: true, hidden: false, workspace: { id: 1 }, at: [0, 0] }]);
+  writeFileSync(join(dir, "clients.json"), clients);
+  writeFileSync(join(dir, "bin/hyprctl"), '#!/bin/bash\ncase "$1" in activewindow) printf \'{"class":"foot","address":"%s"}\' "$ME" ;; clients) cat "$HOME/clients.json" ;; dispatch) printf "%s" "$2" > "$HOME/focused"; echo ok ;; esac\n');
+  chmodSync(join(dir, "bin/hyprctl"), 0o755);
+  const next = me => { execFileSync("/usr/bin/bash", ["-c", H.NEXT], { env: { HOME: dir, ME: me, PATH: join(dir, "bin") + ":/usr/bin" } });
+                       return readFileSync(join(dir, "focused"), "utf8").match(/address:(0x[0-9a-f]+)/)[1]; };
+  try {
+    assert.deepEqual([next("0xa"), next("0xb"), next("0xc")], ["0xb", "0xc", "0xa"], "workspace 1 top to bottom, then 2, round");
+    assert.ok(run("next window", {}).some(r => r.title === "Next window of this app"));
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
