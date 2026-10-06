@@ -1,5 +1,5 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test rank rank-update opens picks lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test rank rank-update opens picks replay lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
@@ -32,6 +32,13 @@ opens:
 # came first, the picked row's median place and the letters typed.
 picks:
 	@node tools/picks.mjs
+
+# His picks replayed in order through today's ranking and learning, over
+# this machine's lists, from no history (tools/rank/replay.mjs): each
+# row's place now, and the letters to first before and after its pick.
+# Not in `check`: the log is his.
+replay:
+	@node tools/rank/replay.mjs
 
 # In `check` because a component the shell refuses to load passes every
 # JavaScript test.

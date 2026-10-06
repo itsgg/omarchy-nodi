@@ -301,8 +301,12 @@ baseline query loses rank.
     fitted to his picks (Q 14) need it.
 
     The log landed 2026-10-05, kept as he uses the bar (`make picks`:
-    first picks, the picked row's median place, letters typed); the replay
-    through the harness waits for picks to replay.
+    first picks, the picked row's median place, letters typed). The
+    replay landed 2026-10-06 (`make replay`, tools/rank/replay.mjs): his
+    picks in order through today's ranking and History's learning, over
+    this machine's lists, from no history; each row's place now and the
+    letters to first before and after its pick. On his first 28: 24 of 26
+    first (25 as logged), a median of 1 letter before and after.
 ## Phase I: AI and agents
 
 43. **Ask continues**: follow-ups on the held session; "Ask again" and
