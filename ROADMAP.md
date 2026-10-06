@@ -376,6 +376,11 @@ baseline query loses rank.
 60. **Windows**: the next window of this app, typed move and size for a
     floating window, saved desktops. L 10.
 61. **Agents' usage and sessions.** L 11.
+    Done 2026-10-05: `{cursor}` (Left keys after the paste, from its place
+    to the end), `{clipboard offset="N"}`, `{snippet name="..."}` (one
+    level, as written), `{random from=...}` or `min`/`max`, in Nodi's
+    attribute syntax. A sum is left out: it would bring the calculator
+    into the placeholder code.
 62. **Placeholders**: `{cursor}` (arrow keys after the paste, which
     answers item 19's "a paste cannot place the cursor"), `{clipboard:N}`,
     `{snippet:name}`, random, a sum. L 13.

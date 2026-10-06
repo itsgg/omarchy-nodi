@@ -98,7 +98,13 @@ signature and `mt Ravi 4pm` a filled-in sentence (Enter pastes it where
 you were, Ctrl+Enter copies it). Placeholders, in `open` and in snippets:
 `{q}` or `{argument name="..." default="..."}` for the words typed after
 the keyword (the last one takes the rest), `{clipboard}`, `{date}`,
-`{time}` (with `format="d MMM yyyy"` and `offset="+1d"`) and `{uuid}`. In
+`{time}` (with `format="d MMM yyyy"` and `offset="+1d"`), `{uuid}`, an
+older clipboard entry `{clipboard offset="1"}` and `{random from="a,b,c"}`
+or `{random min="1" max="6"}`; in snippets also another snippet's text,
+`{snippet name="sig"}`, and `{cursor}`, where the cursor is left after the
+paste, by Left keys over the text after it. Those count places as
+Chromium, Electron and GTK do; a Qt app joins no Indic conjunct, so after
+"क्ष" there the cursor stops a place short. In
 `run`, what you type is the command's `$1`, never written into its text, so
 use it as a script would: `"$1"`, quoted, and kept out of arithmetic such
 as `$((...))`, where bash evaluates what it holds. A `run` written with
