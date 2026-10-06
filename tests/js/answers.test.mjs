@@ -544,7 +544,10 @@ test("labels that remove a doubt: a paste names where it lands; Tab puts a sum's
                { id: "Basecamp", name: "Basecamp", exec: "omarchy-launch-webapp https://launchpad.37signals.com" },
                { id: "Discord", name: "Discord", exec: "chromium --app=https://discord.com/app" }];
   assert.equal(Rows.pasteTarget({ class: "chrome-app.slack.com__client_TAGQSSBA9_activity-inbox-Default" }, web), "Slack");
-  assert.equal(Rows.pasteTarget({ class: "brave-launchpad.37signals.com-Default" }, web), "Basecamp", "no path; another browser");
+  assert.equal(Rows.pasteTarget({ class: "brave-launchpad.37signals.com__-Default" }, web), "Basecamp", "no path; another browser");
+  assert.equal(Rows.pasteTarget({ class: "chrome-www.youtube.com__-Default" },
+                                [{ id: "YouTube", name: "YouTube", exec: 'omarchy-launch-webapp "https://www.youtube.com/"' }]), "YouTube",
+               "a site's root keeps its underscores (his YouTube window, 2026-10-06)");
   assert.equal(Rows.pasteTarget({ class: "chrome-discord.com__app-Default" }, web), "Discord", "--app=");
   assert.equal(Rows.pasteTarget({ class: "chrome-discord.com__app-Default" }, []), "discord.com", "no entry: its site");
   assert.equal(Rows.pasteTarget({ class: "chrome-discord.com__channels_@me-Default" }, web), "discord.com", "another path is another app");
