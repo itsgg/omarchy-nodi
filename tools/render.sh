@@ -5,6 +5,8 @@
 # Color and Style are stand-ins (tools/render/stubs) fed by the live theme
 # (tools/render/theme.mjs), and Border and BorderSurface are the shell's
 # own files. Usage: tools/render.sh [out-dir]   (default: shots/)
+# NODI_SCREEN=1536x960 and NODI_BASE_SIZE=20 draw for that screen at that
+# text size; any card that would run off the screen fails the run.
 set -euo pipefail
 node=$(command -v node || true)   # mise's, not on the path below
 [[ -n $node ]] || { echo "render: node not found"; exit 1; }
@@ -41,10 +43,13 @@ cp "$root/tools/render/Harness.qml" "$work/Harness.qml"
 # 2026-10-04).
 want=$("$node" -e 'const t = require("fs").readFileSync(process.argv[1], "utf8"); console.log(JSON.parse(t.slice(t.indexOf("=") + 1)).length)' "$work/scenes.js")
 rm -f -- "$out"/*.png
-QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 120 qml6 -I "$work" "$work/Harness.qml" -- "$out" >"$work/log" 2>&1 || true
+QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 120 qml6 -I "$work" "$work/Harness.qml" -- "${NODI_SCREEN:-1920x1200}" "$out" >"$work/log" 2>&1 || true
 shots=$(grep -c "SHOT " "$work/log" || true)
+# A card that would run off the screen it is drawn for (item 70).
+off=$(sed -n 's/.*SHOT \([^ ]*\) \([1-9][0-9]*\)$/\1 runs \2 px off the screen/p' "$work/log")
+if [[ -n $off ]]; then echo "$off" | sed "s/^/render (${NODI_SCREEN:-1920x1200}, text ${NODI_BASE_SIZE:-as set}): /"; fi
 problems=$(grep -E "Error|error|TypeError|ReferenceError|is not a type|Cannot|Unable|not found|undefined|Binding loop|anchor loop" "$work/log" | sed "s#file://$work/##g" | sort -u || true)
 if [[ -n $problems ]]; then echo "$problems"; fi
 if [[ $shots -ne $want ]]; then tail -20 "$work/log" | sed "s#file://$work/##g"; fi
 echo "render: $shots of $want shots in $out"
-[[ -z $problems && $shots -eq $want ]]
+[[ -z $problems && -z $off && $shots -eq $want ]]

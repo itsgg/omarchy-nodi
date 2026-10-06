@@ -61,6 +61,8 @@ const option = name => { try { return JSON.parse(run("hyprctl", ["getoption", na
 const colors = loadColors(read(join(themeDir, "colors.toml")));
 // User keys win, as in the shell.
 const shellValues = Object.assign(parseShell(read(join(themeDir, "shell.toml"))), parseShell(read(join(home, ".config/omarchy/shell.toml"))));
+// A text size to draw at, as Omarchy's Display panel sets it (item 70).
+if (process.env.NODI_BASE_SIZE) shellValues["font.base-size"] = String(process.env.NODI_BASE_SIZE);
 const fontFamily = run("fc-match", ["-f", "%{family[0]}", "monospace"]) || "monospace";
 const menuFontFamily = process.env.OMARCHY_MENU_FONT || fontFamily;
 const rounding = process.env.NODI_ROUNDING !== undefined ? Number(process.env.NODI_ROUNDING) : Number(option("decoration:rounding").int);

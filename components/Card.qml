@@ -38,6 +38,19 @@ BorderSurface {
   // not, and Shift+Down there moves the list as it did.
   readonly property bool paneScrolls: pane.visible && pane.hasText
 
+  // What the card takes besides its results and pane: the insets, the
+  // field, the argument line, the rule, a no-match note, the footer and the
+  // gaps between what shows (a Column's spacing falls between visible
+  // children only). Look.bodyMax gives the results the rest (item 70).
+  readonly property real chrome: {
+    var parts = [field.height, argLine.visible ? argLine.implicitHeight : -1, rule.visible ? rule.height : -1,
+                 none.visible ? none.implicitHeight : -1, footer.visible ? footer.height : -1, body.visible ? 0 : -1]
+    var h = 0
+    var shown = 0
+    for (var i = 0; i < parts.length; i++) if (parts[i] >= 0) { h += parts[i]; shown++ }
+    return card.contentTopInset + card.contentBottomInset + h + layout.spacing * Math.max(0, shown - 1)
+  }
+
   Column {
     id: layout
     anchors.left: parent.left
@@ -50,6 +63,7 @@ BorderSurface {
 
     // ---------- search field ----------
     Item {
+      id: field
       width: parent.width
       height: nodi.inputHeight
 
@@ -200,6 +214,7 @@ BorderSurface {
     // The words the selected row or the mode takes, as a pattern: a label
     // under the field instead of a sentence in a row (item 25).
     Text {
+      id: argLine
       width: parent.width
       visible: nodi.argsHint !== ""
       // Under what is typed, which it describes.
@@ -214,6 +229,7 @@ BorderSurface {
     }
 
     Rectangle {
+      id: rule
       width: parent.width
       height: 1
       color: nodi.foreground
@@ -223,6 +239,7 @@ BorderSurface {
 
     // ---------- nothing matched ----------
     Column {
+      id: none
       width: parent.width
       visible: nodi.noResults
       spacing: Style.spacing.sm
@@ -252,6 +269,7 @@ BorderSurface {
     // beside the rows: an action that asks shows its command there (it was
     // drawn inside the results, hidden with them; Fable 2026-10-05).
     Item {
+      id: body
       width: parent.width
       // With a pane, tall enough for it even when one row shows.
       height: nodi.paletteOpen ? Math.max(palette.implicitHeight, nodi.preview ? nodi.paneMin : 0)
@@ -334,6 +352,7 @@ BorderSurface {
 
     // ---------- footer: what the selected row is, and what the keys do ----------
     Footer {
+      id: footer
       nodi: card.nodi
       scrollable: pane.overflows
       width: parent.width

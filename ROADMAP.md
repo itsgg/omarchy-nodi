@@ -594,6 +594,11 @@ baseline query loses rank.
 
 70. **On screen at every text size.** X 2. Check: renders at text size 20
     on 1536x960.
+    Done 2026-10-06: the results and Ctrl+K's actions take at most the
+    screen under the card's top, less what the card takes besides them
+    (Card.chrome); `make check` draws every scene at text size 20 on
+    1536x960 and fails on any card that would run off it (before: eleven
+    scenes, Ctrl+K by 255 px).
 71. **A combobox to a screen reader**, the selection announced. X 3. Its
     tests run under their own runtime directory, never on his session's
     accessibility bus.

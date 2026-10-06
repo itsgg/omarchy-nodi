@@ -4,6 +4,7 @@ import "components"
 import "scenes.js" as Scenes
 import "lib/Rows.js" as Rows
 import "lib/Pane.js" as Pane
+import qs.Commons
 
 // Draws Nodi's real card (components/Card.qml) for each scene in
 // scenes.js and saves it as a PNG, on Qt's offscreen platform. The card
@@ -19,7 +20,11 @@ Window {
   readonly property string outDir: Qt.application.arguments[Qt.application.arguments.length - 1]
   property int current: -1
 
-  Look { id: look; screenWidth: 1920; screenHeight: 1200; wide: fake.preview !== null || (fake.paletteOpen && fake.anyPreview) }
+  // The screen it is drawn for: 1920x1200 unless tools/render.sh names one
+  // (NODI_SCREEN, the argument before the folder).
+  readonly property var screenArg: String(Qt.application.arguments[Qt.application.arguments.length - 2] || "").match(/^(\d+)x(\d+)$/)
+  Look { id: look; screenWidth: win.screenArg ? Number(win.screenArg[1]) : 1920; screenHeight: win.screenArg ? Number(win.screenArg[2]) : 1200
+         chrome: card.chrome; wide: fake.preview !== null || (fake.paletteOpen && fake.anyPreview) }
 
   QtObject {
     id: fake
@@ -196,7 +201,9 @@ Window {
       win.checkSelected(name)
       frame.grabToImage(function(result) {
         result.saveToFile(win.outDir + "/" + name + ".png")
-        console.log("SHOT " + name)
+        // How far the card would run past the screen's bottom gap, placed
+        // as Nodi.qml places it: none (item 70).
+        console.log("SHOT " + name + " " + Math.max(0, Math.round(look.cardTop + card.height - (look.screenHeight - Style.gapsOut))))
         win.next()
       })
     }
