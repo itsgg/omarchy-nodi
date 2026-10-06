@@ -159,11 +159,28 @@ Window {
   // only when the grab is saved go on, since a grab is taken on a later
   // frame than the one that asked for it.
   function next() {
-    win.current++
-    if (win.current >= Scenes.scenes.length) { quitTimer.start(); return }
+    if (win.held) {
+      if (++win.heldAt >= win.held.length) { quitTimer.start(); return }
+      win.current = Scenes.scenes.findIndex(function(s) { return s.name === win.held[win.heldAt] })
+      if (win.current < 0) { console.log("Error: no scene named " + win.held[win.heldAt]); quitTimer.start(); return }
+    } else {
+      win.current++
+      if (win.current >= Scenes.scenes.length) { quitTimer.start(); return }
+    }
     win.show(win.current)
     settle.restart()
   }
+
+  // For a screen reader's walker (tools/render.sh with NODI_A11Y, item 71):
+  // the scenes named in an "a11y=" argument, each held a while and said in
+  // the log, none grabbed.
+  readonly property var held: {
+    var args = Qt.application.arguments
+    for (var i = 0; i < args.length; i++) if (String(args[i]).indexOf("a11y=") === 0) return String(args[i]).slice(5).split(",")
+    return null
+  }
+  property int heldAt: -1
+  Timer { id: hold; interval: 1200; onTriggered: win.next() }
 
   // A scene may carry `after`: states applied one a settle before the
   // grab, as keys would apply them, to see what a sequence leaves behind
@@ -183,7 +200,8 @@ Window {
 
   Timer {
     id: settle
-    interval: 250
+    // Held for a walker: time for the announcer's 150 ms and the bus.
+    interval: win.held ? 500 : 250
     onTriggered: {
       var s = Scenes.scenes[win.current]
       var name = s.name
@@ -198,6 +216,7 @@ Window {
         return
       }
       win.step = 0
+      if (win.held) { console.log("SCENE " + name); hold.restart(); return }
       win.checkSelected(name)
       frame.grabToImage(function(result) {
         result.saveToFile(win.outDir + "/" + name + ".png")

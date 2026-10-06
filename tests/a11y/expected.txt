@@ -1,0 +1,92 @@
+SCENE 01-home
+  said '4 results. Firefox, Web Browser'
+  [application] 'Qml Runtime'
+    [text] 'Nodi' desc='Firefox, Web Browser'
+    [list] 'Results'
+      [list item] 'Firefox' desc='Web Browser' selected
+      [list item] 'Lock Screen' desc='System'
+      [list item] 'Screenshot' desc='Trigger > Capture, keys PRINT'
+      [list item] 'Bluetooth' desc='Toggle, ON'
+SCENE 48-moved
+  said '3 results. Lock Screen, System'
+  said 'Stay Awake, Trigger > Toggle, OFF, 2 of 3'
+  [application] 'Qml Runtime'
+    [text] 'Nodi' desc='Stay Awake, Trigger > Toggle, OFF'
+    [list] 'Results'
+      [list item] 'Lock Screen' desc='System'
+      [list item] 'Stay Awake' desc='Trigger > Toggle, OFF' selected
+      [list item] 'World clock' desc='The time now in your saved zones'
+SCENE 13-nothing
+  said 'No match. Search Google: zzqx, Opens google.com'
+  [application] 'Qml Runtime'
+    [text] 'Nodi' desc='Search Google: zzqx, Opens google.com'
+    [list] 'Results'
+      [list item] 'Search Google: zzqx' desc='Opens google.com' selected
+      [list item] 'Search YouTube: zzqx' desc='Opens youtube.com'
+      [list item] 'Search GitHub: zzqx' desc='Opens github.com'
+      [list item] 'Wikipedia: zzqx' desc='Opens en.wikipedia.org'
+      [list item] 'Find files named zzqx' desc='Files under home'
+      [list item] 'Ask: zzqx' desc='Claude'
+SCENE 49-fallback-moved
+  said 'Search GitHub: zzqx, Opens github.com, 3 of 6'
+  [application] 'Qml Runtime'
+    [text] 'Nodi' desc='Search GitHub: zzqx, Opens github.com'
+    [list] 'Results'
+      [list item] 'Search Google: zzqx' desc='Opens google.com'
+      [list item] 'Search YouTube: zzqx' desc='Opens youtube.com'
+      [list item] 'Search GitHub: zzqx' desc='Opens github.com' selected
+      [list item] 'Wikipedia: zzqx' desc='Opens en.wikipedia.org'
+      [list item] 'Find files named zzqx' desc='Files under home'
+      [list item] 'Ask: zzqx' desc='Claude'
+SCENE 25-no-match
+  said 'No match'
+  [application] 'Qml Runtime'
+    [text] 'Nodi'
+    [list] 'Results' hidden
+SCENE 11-confirm
+  said 'Enter again to Shutdown'
+  [application] 'Qml Runtime'
+    [text] 'Nodi' desc='Shutdown, System'
+    [list] 'Results'
+      [list item] 'Shutdown' desc='System, Enter again' selected
+SCENE 12-palette
+  said 'Actions for Firefox. New Window, 2 of 11'
+  [application] 'Qml Runtime'
+    [text] 'Actions for Firefox' desc='New Window'
+    [list] 'Actions'
+      [list item] 'Open' desc='Enter'
+      [list item] 'New Window' selected
+      [list item] 'New Private Window'
+      [list item] 'Copy desktop id'
+      [list item] 'Add to favourites' desc='Ctrl Shift F'
+      [list item] 'Add alias' desc='Ctrl Shift A'
+      [list item] 'Set hotkey'
+      [list item] 'Copy deeplink' desc='Ctrl Shift D'
+      [list item] 'Reset ranking'
+      [list item] 'Hide' desc='Ctrl Shift H'
+      [list item] 'Uninstall'
+    [list] 'Results' hidden
+      [list item] 'Firefox' desc='Web Browser' selected,hidden
+      [list item] 'New Window' desc='Firefox' hidden
+      [list item] 'New Private Window' desc='Firefox' hidden
+SCENE 50-palette-moved
+  said 'New Window, 2 of 11'
+  said 'Add to favourites, 5 of 11'
+  [application] 'Qml Runtime'
+    [text] 'Actions for Firefox' desc='Add to favourites'
+    [list] 'Actions'
+      [list item] 'Open' desc='Enter'
+      [list item] 'New Window'
+      [list item] 'New Private Window'
+      [list item] 'Copy desktop id'
+      [list item] 'Add to favourites' desc='Ctrl Shift F' selected
+      [list item] 'Add alias' desc='Ctrl Shift A'
+      [list item] 'Set hotkey'
+      [list item] 'Copy deeplink' desc='Ctrl Shift D'
+      [list item] 'Reset ranking'
+      [list item] 'Hide' desc='Ctrl Shift H'
+      [list item] 'Uninstall'
+    [list] 'Results' hidden
+      [list item] 'Firefox' desc='Web Browser' selected,hidden
+      [list item] 'New Window' desc='Firefox' hidden
+      [list item] 'New Private Window' desc='Firefox' hidden

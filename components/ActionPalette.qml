@@ -41,6 +41,9 @@ Column {
     boundsBehavior: Flickable.StopAtBounds
     model: nodi.paletteOpen ? nodi.paletteActions : []
     currentIndex: nodi.paletteIndex
+    Accessible.role: Accessible.List
+    Accessible.name: "Actions"
+    Accessible.ignored: !nodi.paletteOpen
     // Clear of the fades, as the list's selection is (lib/Scroll.js): with
     // Contain alone the chosen action sat under one (Fable 2026-10-05).
     onCurrentIndexChanged: Scroll.keep(actions, currentIndex, nodi.rowPeek, ListView.Contain)
@@ -51,6 +54,11 @@ Column {
       required property var modelData
       width: actions.width
       height: nodi.rowHeight + (modelData.section ? nodi.sectionHeight : 0)
+      Accessible.role: Accessible.ListItem
+      Accessible.name: String(modelData.label || "")
+      Accessible.description: modelData.confirm && nodi.paletteArmed === modelData.label ? "Enter again" : (modelData.chord ? String(modelData.chord) : "")
+      Accessible.selectable: true
+      Accessible.selected: index === nodi.paletteIndex
 
       Text {
         visible: !!actionCell.modelData.section

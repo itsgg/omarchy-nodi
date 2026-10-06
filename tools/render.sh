@@ -41,6 +41,42 @@ cp "$root/tools/render/Harness.qml" "$work/Harness.qml"
 # Every scene drawn this run, or a failure: the pictures of an earlier run
 # go first, so `make docs` cannot copy one a crash left behind (Fable
 # 2026-10-04).
+# A screen reader's view instead (item 71): the scenes NODI_A11Y names,
+# on a private X server, D-Bus and accessibility bus, under a runtime
+# directory of their own (the at-spi launcher names its sockets by it: one
+# shared with the session took over the session's own bus, 2026-10-05).
+# What tools/a11y-walk.py heard goes to <out-dir>/a11y.txt.
+if [[ -n ${NODI_A11Y:-} ]]; then
+  run="$work/run"
+  mkdir -m 700 "$run"
+  exec 4>"$work/display"
+  Xvfb -displayfd 4 -nolisten tcp -screen 0 1600x1000x24 >"$work/xvfb.log" 2>&1 &
+  xvfb=$!
+  trap 'kill "$xvfb" 2>/dev/null || true; rm -rf -- "$work"' EXIT
+  for _ in $(seq 1 50); do [[ -s $work/display ]] && break; sleep 0.1; done
+  display=":$(head -n1 "$work/display")"
+  env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 XDG_RUNTIME_DIR="$run" DISPLAY="$display" \
+    QT_QPA_PLATFORM=xcb QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1 QT_FORCE_STDERR_LOGGING=1 \
+    dbus-run-session -- /usr/bin/bash -c '
+      /usr/lib/at-spi-bus-launcher --launch-immediately >/dev/null 2>&1 &
+      sleep 0.5
+      # Its bus would start the registry through systemd, which this
+      # session has none of.
+      /usr/lib/at-spi2-registryd >/dev/null 2>&1 &
+      sleep 0.3
+      timeout 60 qml6 -I "$1" "$1/Harness.qml" -- "$2" "a11y=$3" /dev/null >"$1/log" 2>&1 &
+      h=$!
+      timeout 70 /usr/bin/python3 -I "$4" "$1/log" "$h" >"$5/a11y.txt"
+      wait "$h" || true' nodi-a11y "$work" "${NODI_SCREEN:-1920x1200}" "$NODI_A11Y" "$root/tools/a11y-walk.py" "$out" || true
+  kill "$xvfb" 2>/dev/null || true
+  cp "$work/log" "$out/a11y-harness.log"
+  problems=$(grep -E "Error|TypeError|ReferenceError|is not a type|Binding loop" "$work/log" | sed "s#file://$work/##g" | sort -u || true)
+  if [[ -n $problems ]]; then echo "$problems"; fi
+  echo "a11y: $(grep -c '^SCENE ' "$out/a11y.txt" || true) scenes heard, in $out/a11y.txt"
+  [[ -z $problems ]]
+  exit
+fi
+
 want=$("$node" -e 'const t = require("fs").readFileSync(process.argv[1], "utf8"); console.log(JSON.parse(t.slice(t.indexOf("=") + 1)).length)' "$work/scenes.js")
 rm -f -- "$out"/*.png
 QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 120 qml6 -I "$work" "$work/Harness.qml" -- "${NODI_SCREEN:-1920x1200}" "$out" >"$work/log" 2>&1 || true
