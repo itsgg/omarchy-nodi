@@ -126,8 +126,32 @@ for (const [q, key, n] of [["chromium", "app:chromium", 40], ["discord", "app:Di
   for (let i = 0; i < n; i++) docsHistory = History.record(docsHistory, row.key, now - i * 3600e3, History.snapshot(row));
 }
 
+// A calendar (ROADMAP 67): a review under way, a 1:1 within the hour, the
+// rest of the week.
+const MIN = 60000;
+const at = (d, h, m) => new Date(2026, 8, d, h, m).getTime();
+const calEvent = (key, title, start, end, more) => Object.assign({ key, title, start, end, allDay: false, day: "2026-09-23", calendar: "Work",
+  location: "", link: "", tentative: false, d: "c0" + key }, more || {});
+const calendar = {
+  calendars: [{ name: "Work", ok: true }],
+  events: [
+    calEvent("a", "Design review", now - 5 * MIN, now + 25 * MIN, { link: "https://meet.google.com/abc-defg-hij" }),
+    calEvent("b", "1:1 with Asha", now + 12 * MIN, now + 42 * MIN, { location: "Room 4, second floor" }),
+    calEvent("c", "Gym", at(23, 18, 0), at(23, 19, 0)),
+    calEvent("d", "Company holiday", at(24, 0, 0), at(25, 0, 0), { allDay: true, day: "2026-09-24" }),
+    calEvent("e", "Standup", at(25, 10, 0), at(25, 10, 15), { day: "2026-09-25", link: "https://meet.google.com/abc-defg-hij" }),
+    calEvent("f", "Partner sync", at(25, 17, 0), at(25, 17, 30), { day: "2026-09-25", link: "https://teams.microsoft.com/l/meetup-join/x", tentative: true })
+  ],
+  details: { c0a: { page: "https://calendar.google.com/calendar/event?eid=x", organizer: "Asha", guests: 4,
+                    description: "Walk through the new preview pane and the calendar rows.\n\nNotes go in the team doc." },
+             c0b: { page: "https://calendar.google.com/calendar/event?eid=y", organizer: "Asha", guests: 2, description: "" } }
+};
+const withCalendar = Object.assign({}, config, { calendar: { ics: "https://calendar.google.com/calendar/ical/me%40example.com/private-x/basic.ics" } });
+
 const scenes = [
   scene("01-home", "", { history }),
+  scene("45-calendar-home", "", { history, calendar }, null, withCalendar),
+  scene("46-calendar-list", "cal ", { calendar }, () => ({ selectedIndex: 0 }), withCalendar),
   scene("02-sum", "2+2"),
   scene("03-currency", "100 usd to eur"),
   scene("04-windows-and-app", "brave", { windows }),

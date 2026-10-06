@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const problems = [];
 const read = rel => readFileSync(join(root, rel), "utf8");
-const files = dir => readdirSync(join(root, dir)).filter(f => /\.(js|qml|mjs|sh|md)$/.test(f)).map(f => join(dir, f));
+const files = dir => readdirSync(join(root, dir)).filter(f => /\.(js|qml|mjs|sh|md|py)$/.test(f)).map(f => join(dir, f));
 
 // 1. Processes
 for (const rel of ["Nodi.qml", ...files("components")]) {

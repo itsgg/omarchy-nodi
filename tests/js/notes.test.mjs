@@ -27,7 +27,7 @@ test("note: one dated line added to the notes file, made if missing", () => {
     const bare = join(dir, "bare.md");
     writeFileSync(bare, "no newline at the end");
     execFileSync("/usr/bin/bash", ["-c", N.ADD, "nodi", bare, "next"]);
-    assert.match(readFileSync(bare, "utf8"), /^no newline at the end\n- \d{4}-\d{2}-\d{2} \d{2}:\d{2} next\n$/, "never glued to the last line (Sonnet 2026-10-07)");
+    assert.match(readFileSync(bare, "utf8"), /^no newline at the end\n- \d{4}-\d{2}-\d{2} \d{2}:\d{2} next\n$/, "never glued to the last line (Sonnet 2026-10-06)");
   } finally { rmSync(dir, { recursive: true, force: true }); }
   const other = Engine.run("note x", Object.assign({}, config, { notes: { file: "~/Akshi/inbox.md" } }), services({}));
   assert.equal(mine(other)[0].subtitle, "Adds a dated line to ~/Akshi/inbox.md", "the file of nodi.json");

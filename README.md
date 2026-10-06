@@ -61,6 +61,7 @@ text already typed:
 | `github.com/itsgg`, `localhost:3000`, `bm work` | Open a site as it is typed; your browser's bookmarks, three of them in any search |
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
 | `pkg zed`, `define serendipity` | Arch's packages and the AUR, installed in Omarchy's terminal; a word's senses from Wiktionary, English first and a few in the other languages it has |
+| `cal`, `cal standup`, `join` | Your calendar, once its iCal address is set (`"calendar": { "ics": ... }`): a meeting under way or within the hour first on the empty bar, Enter joining it (Meet, Zoom, Teams); the next eight days in order, each saying its day |
 | `note call the bank`, `notes bank` | One dated line in `~/Documents/notes.md` (`"notes": { "file": ... }`); its lines found again, Enter opening the file (at the line, in a terminal editor) |
 | `ask why is the sky blue`, or Tab | A quick answer from Claude, a conversation for ten minutes, or about the selected text or the window you came from; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
@@ -107,6 +108,10 @@ that does not parse changes nothing, and a notification says why.
   ],
   // A few words from Claude for apps with no description of their own.
   "apps": { "describe": true },
+  // Your calendar, by its secret iCal address (Google Calendar: Settings,
+  // the calendar, Integrate calendar); a list for more than one, and your
+  // address, so an invitation you declined is left out.
+  "calendar": { "ics": "https://calendar.google.com/calendar/ical/.../basic.ics", "me": "you@example.com" },
   // What `tr` and Translate on selected text go to (English unless set).
   "translate": { "language": "Tamil" },
   // Ask's model, and MCP servers its answers may use, each call on your Enter
@@ -385,6 +390,11 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   record it keeps of the process (`~/.claude/sessions`) and the end of
   its own transcript in `~/.claude/projects`, for the last thing you
   asked it.
+- With a calendar set, it fetches each iCal address when the bar opens,
+  every ten minutes at most, keeping a copy in `~/.cache/nodi/calendar/`
+  (yours alone), and works out its next nine days with Python's standard
+  library (`lib/ics.py`); the address goes to that program in its
+  environment, which only you can read, never in its arguments.
 - From a search's third letter it looks for files of that name under
   your home with fd (`"files": { "root": false }` turns that off), and
   under `in` for files that hold the words with ripgrep.

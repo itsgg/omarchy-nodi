@@ -13,7 +13,7 @@ Item {
   visible: false
 
   property var providers: []
-  property var env: ({})            // { user, home, cacheDir, path } for the sources' argv
+  property var env: ({})            // { user, home, cacheDir, pluginDir, path } for the sources' argv
 
   signal arrived(string key)
 
@@ -50,7 +50,10 @@ Item {
       requests.waiting[slot] = key
     }
     requests.put(key, Requests.begun(requests.cache[key], Date.now()))
-    reader.run(argv, { key: key, param: param, slot: slot })
+    // What a source hands its program in the environment (a secret iCal
+    // address, providers/calendar.js), with the read it is for.
+    var env = source.environment ? source.environment(param, requests.env) : null
+    reader.run(argv, { key: key, param: param, slot: slot, env: env })
   }
 
   function make(slot, name, source) {

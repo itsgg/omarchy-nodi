@@ -2,7 +2,7 @@
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
 
-// Notes in one line (ROADMAP 68, L 17). `note <text>` adds "- 2026-10-07
+// Notes in one line (ROADMAP 68, L 17). `note <text>` adds "- 2026-10-06
 // 00:42 <text>" to a Markdown file, "notes": { "file": ... } in nodi.json,
 // ~/Documents/notes.md unless set, made with its folder if missing, the
 // time taken as it is added. `notes <words>` finds its lines that hold
@@ -15,7 +15,7 @@ var DEFAULT = "~/Documents/notes.md"
 var LIMIT = 20
 
 // The line, dated as it is added; the folder made if missing, and a file
-// that ends without a newline given one first (Sonnet 2026-10-07).
+// that ends without a newline given one first (Sonnet 2026-10-06).
 var ADD = 'mkdir -p -- "$(dirname -- "$1")" || exit 1; [ -s "$1" ] && [ -n "$(tail -c 1 -- "$1")" ] && printf "\\n" >> "$1"'
   + "\n" + 'printf -- "- %s %s\\n" "$(date "+%Y-%m-%d %H:%M")" "$2" >> "$1"'
 
@@ -103,7 +103,7 @@ var provider = {
       var low = Match.fold(l.raw)
       if (!words.every(function(w) { return low.indexOf(w) !== -1 })) continue
       // By its line, or for a big file's newest part, by its text (Sonnet
-      // 2026-10-07: every row there was "note:0").
+      // 2026-10-06: every row there was "note:0").
       out.push({ key: l.n ? "note:" + l.n : "note:t:" + l.raw.slice(0, 200), title: l.text.length > 110 ? l.text.slice(0, 107) + "..." : l.text,
                  subtitle: (l.date ? l.date + (l.n ? ", " : "") : "") + (l.n ? "line " + l.n : ""), icon: ICON, score: 97 - out.length * 0.01, copy: l.text,
                  remember: false, run: Run.shell(OPEN, [file, String(l.n || 1)]), actionLabel: "Open",

@@ -559,9 +559,17 @@ baseline query loses rank.
     types the path in. L 18.
 67. **Calendar**: the next meeting first, Enter joins; from an ICS link in
     nodi.json, off until one is set (his call). L 9.
+    Done 2026-10-06: `"calendar": { "ics": ... }` (one address or a list,
+    "me" for declined invitations), read by lib/ics.py, Python's standard
+    library only, which works out repeats, moved and cancelled occurrences
+    and time zones (tzdata, then the feed's VTIMEZONE) and matched
+    recurring-ical-events on about 9000 random occurrences around DST
+    changes. A meeting under way or within the hour leads the empty bar
+    and Enter joins it (Meet, Zoom, Teams and the like) or opens it in
+    Google Calendar; `cal` lists the next eight days in order.
 68. **Notes in one line**: `note <text>` appends a dated line to a Markdown
     file set in nodi.json; `notes <words>` finds the line. L 17.
-    Done 2026-10-07: `note <text>` adds "- 2026-10-07 00:42 <text>" to
+    Done 2026-10-06: `note <text>` adds "- 2026-10-06 00:42 <text>" to
     `"notes": { "file": ... }`, ~/Documents/notes.md unless set, made if
     missing; `notes <words>` its lines holding every word, newest first,
     the lines around in the pane, Enter opening the file at the line in
@@ -569,7 +577,7 @@ baseline query loses rank.
 69. **Small fits**: Ask's "continue in a terminal" through
     `omarchy-agent-prompt`, so it follows Omarchy's default agent; a paste
     that focuses the window it came from first. X 20.
-    Done 2026-10-07: "Continue in your agent" already ran
+    Done 2026-10-06: "Continue in your agent" already ran
     omarchy-agent-prompt; a paste (Omarchy's paste commands, never their
     copy-only form) now focuses the window the bar opened over first, then
     types, so a pointer or an app that took the focus meanwhile does not
