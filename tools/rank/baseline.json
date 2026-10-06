@@ -1,20 +1,24 @@
 {
  "summary": {
   "intended": {
-   "queries": 118,
-   "first": 111,
-   "topThree": 115,
+   "queries": 121,
+   "first": 114,
+   "topThree": 118,
    "notShown": 0,
-   "mrr": 0.963
+   "mrr": 0.964
   },
   "classes": {
    "name": {
-    "queries": 30,
-    "first": 29
+    "queries": 31,
+    "first": 30
    },
    "prefix": {
-    "queries": 8,
-    "first": 7
+    "queries": 9,
+    "first": 8
+   },
+   "synonym": {
+    "queries": 29,
+    "first": 28
    },
    "initials": {
     "queries": 2,
@@ -35,10 +39,6 @@
    "description": {
     "queries": 8,
     "first": 8
-   },
-   "synonym": {
-    "queries": 28,
-    "first": 27
    },
    "verb": {
     "queries": 3,
@@ -103,6 +103,9 @@
   "logout": 1,
   "hibernate": 1,
   "susp": 1,
+  "install": 1,
+  "instal": 1,
+  "uninstall": 1,
   "suspend": 1,
   "screensh": 1,
   "screenshot": 1,

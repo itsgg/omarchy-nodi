@@ -19,9 +19,11 @@ var LIMIT = 10
 var CONFIRM = { "system.logout": true, "system.reboot": true, "system.shutdown": true, "setup.reset": true }
 
 // Installers and removers answer only a query that asks for them, except
-// the ones that install no package (a web app, a TUI, a theme).
+// the ones that install no package (a web app, a TUI, a theme) and the
+// Install and Remove submenus themselves, which answer their own names as
+// every submenu does ("instal" found neither, 2026-10-06).
 var GATED = /^(install|remove)(\.|$)/
-var UNGATED = /^(install\.(webapp|tui|style)|remove\.(webapp|tui|theme))(\.|$)/
+var UNGATED = /^(install|remove)$|^(install\.(webapp|tui|style)|remove\.(webapp|tui|theme))(\.|$)/
 var GATE_WORDS = { install: "install", remove: "remove", uninstall: "remove" }
 
 // What people call Omarchy's rows when they do not know the menu's word.
@@ -252,12 +254,14 @@ var provider = {
     var qw = Match.words(q)
     if (q.length < 2 || qw.length === 0) return []
 
-    // "install zed": only the install tree, matched on the rest.
+    // "install zed": only the install tree, matched on the rest. The word
+    // alone ("install", "uninstall") is the tree on the menu's own word:
+    // its submenu first, then what is in it, where it answered nothing
+    // but the web's searches (the replay of his picks, 2026-10-06).
     // Own keys: "constructor" is a word, not an installer gate (codex 2026-10-04).
     var gate = own(GATE_WORDS, qw[0]) || ""
     var words = gate ? qw.slice(1) : qw
-    var text = gate ? words.join(" ") : q
-    if (gate && words.length === 0) return []
+    var text = gate ? (words.length ? words.join(" ") : gate) : q
 
     var hits = []
     var entries = entriesOf(menu)
