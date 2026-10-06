@@ -26,6 +26,7 @@ import "lib/Pane.js" as Pane
 import "lib/Opens.js" as Opens
 import "lib/PickLog.js" as PickLog
 import "lib/Markdown.js" as Markdown
+import "lib/Appearance.js" as Appearance
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -109,7 +110,8 @@ Item {
 
   // How it looks and measures, from components/Look.qml.
   // Held wide under Ctrl+K too, so the actions do not narrow the card.
-  Look { id: look; screenWidth: panel.width; screenHeight: panel.height; chrome: card.chrome; wide: root.preview !== null || (root.paletteOpen && root.anyPreview) }
+  Look { id: look; screenWidth: panel.width; screenHeight: panel.height; chrome: card.chrome; highContrast: root.appearance.highContrast
+         wide: root.preview !== null || (root.paletteOpen && root.anyPreview) }
   readonly property alias background: look.background
   readonly property alias foreground: look.foreground
   readonly property alias secondary: look.secondary
@@ -258,6 +260,7 @@ Item {
     readsAfterFrame.stop()
     root.refreshWindows()
     root.refreshToggles()
+    root.refreshAppearance()
     root.refreshThemes()
     root.refreshReminders()
     root.refreshZones()
@@ -2012,6 +2015,22 @@ Item {
     togglesReader.run(["/usr/bin/bash", "-c", Toggles.probeScript()])
   }
 
+  // The desktop's motion and contrast preferences (ROADMAP 73), read at
+  // each open: higher contrast marks the selected row in every theme and
+  // raises secondary text to 7:1; reduced motion, or Hyprland's
+  // animations off, leaves the card's resizing unanimated.
+  property var appearance: ({ highContrast: false, reducedMotion: false })
+  readonly property bool reducedMotion: !!root.appearance.reducedMotion
+  function refreshAppearance() { appearanceReader.run(["/usr/bin/bash", "-c", Appearance.PROBE]) }
+  Reader {
+    id: appearanceReader
+    timeoutMs: 3000
+    onFinished: function(text, ok) {
+      var a = Appearance.parse(text)
+      if (a.highContrast !== root.appearance.highContrast || a.reducedMotion !== root.appearance.reducedMotion) root.appearance = a
+    }
+  }
+
   Reader {
     id: togglesReader
     timeoutMs: 4000
@@ -2079,6 +2098,8 @@ Item {
 
   Component.onCompleted: {
     root.refreshWindows()
+    // Before the first open, so it is drawn as asked (Sonnet 2026-10-06).
+    root.refreshAppearance()
     cacheMaker.run(["/usr/bin/mkdir", "-p", root.cacheDir, root.stateDir, root.cacheDir + "/ask"])
     appsDebounce.restart()
     requests.request("omarchy-commands")

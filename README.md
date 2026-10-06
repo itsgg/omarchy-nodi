@@ -381,6 +381,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   by `make opens`), with nothing of what was typed, and the last 1000 rows
   run from a query (`picks-log.json`, read by `make picks`): the queries
   typed, the row's key and its place, no titles. It binds its hotkey in the running Hyprland and edits no config file.
+- At each open it reads the desktop's contrast and motion preferences
+  (the portal's `org.freedesktop.appearance`, `gdbus`) and whether
+  Hyprland animates (`hyprctl getoption animations:enabled`).
 - It asks the shell for its plugins (`omarchy-shell shell listPlugins`)
   once an hour, when a search first needs them. While it is open it reads
   each tray app's menu and its submenus one level down, which asks the
