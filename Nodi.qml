@@ -1616,6 +1616,30 @@ Item {
     onTriggered: if (JSON.stringify(desktopState.snapshot()) !== seen) root.recompute()
   }
 
+  // Rows that change as you watch (a script filter's "rerun", Rows liveMs):
+  // the bar asks again at the quickest of their paces while they show,
+  // and the read that lands recomputes it.
+  readonly property int liveMs: {
+    var m = 0
+    for (var i = 0; i < root.rows.length; i++) if (root.rows[i].liveMs && (!m || root.rows[i].liveMs < m)) m = root.rows[i].liveMs
+    return m
+  }
+  Timer {
+    id: liveTimer
+    interval: Math.max(500, root.liveMs)
+    repeat: true
+    running: root.opened && root.liveMs > 0
+    onTriggered: root.askLive()
+  }
+
+  // A tick asks the providers again, so what is due is read, and leaves the
+  // list as it is: a read that changes the rows recomputes the bar as it
+  // lands, and one that does not is not shown anew (Requests.same).
+  function askLive() {
+    if (root.aliasRow || root.wordAsk || root.pickSession || root.captureRow) return
+    Engine.run(input.text, root.config, root.services())
+  }
+
   // ---------------------------------------------------------------- reads
 
   // What providers ask for through ctx.request (lib/Requests.js): the

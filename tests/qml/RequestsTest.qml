@@ -13,6 +13,8 @@ Item {
   signal done(bool ok, string report)
   property var failures: []
   property int step: 0
+  property int sameArrivals: 0
+  property real sameFirstAt: 0
 
   function check(cond, what) { if (!cond) test.failures.push(what) }
 
@@ -36,7 +38,9 @@ Item {
       // program sees the session's PATH.
       typed: { argv: function(p) { return ["/usr/bin/bash", "-c", 'sleep 1.2; : > "$1/$0.done"; printf "%s %s" "$0" "$PATH"', p, test.marks] },
                parse: function(text) { return text.trim() }, maxAgeMs: 60000, supersede: true, sessionPath: true },
-      marks: { argv: function() { return ["/usr/bin/ls", "-1", test.marks] }, parse: function(text) { return text.trim().split("\n").filter(Boolean) }, maxAgeMs: 0 }
+      marks: { argv: function() { return ["/usr/bin/ls", "-1", test.marks] }, parse: function(text) { return text.trim().split("\n").filter(Boolean) }, maxAgeMs: 0 },
+      // Read twice to the same text: the second lands without an arrival.
+      same: { argv: function() { return ["/usr/bin/printf", "x"] }, parse: function(text) { return [text] }, maxAgeMs: 0 }
     }
   })
 
@@ -49,6 +53,7 @@ Item {
   Connections {
     target: requests
     function onArrived(key) {
+      if (key === "same") { test.sameArrivals++; test.sameFirstAt = requests.cache["same"].at }
       if (key !== "chain:a") return
       requests.request("chain", "c")
       requests.request("chain", "d")
@@ -75,12 +80,15 @@ Item {
     // Replaced before it starts, then replaced while it runs.
     requests.request("typed", "a")
     requests.request("typed", "b")
+    requests.request("same")
+    sameAgain.start()
     typedLater.start()
     peek.start()
     later.start()
   }
 
   Timer { id: typedLater; interval: 300; onTriggered: requests.request("typed", "c") }
+  Timer { id: sameAgain; interval: 1500; onTriggered: requests.request("same") }
   Timer { id: peek; interval: 3400; onTriggered: requests.request("marks") }
 
   Timer {
@@ -116,6 +124,9 @@ Item {
             "a concurrent source reads its keys side by side (one at a time would take 3.6 s): " + JSON.stringify(sides))
       check(Object.keys(requests.readers).filter(function(k) { return k.indexOf("side:") === 0 }).length === 0,
             "a concurrent key's Reader is gone once its read lands: " + Object.keys(requests.readers).join(","))
+      var sm = requests.request("same", "", { fetch: false })
+      check(test.sameArrivals === 1 && sm.state === "ready" && sm.value[0].trim() === "x" && sm.at > test.sameFirstAt,
+            "a second read of the same text lands without an arrival (Requests.same): " + test.sameArrivals + " " + JSON.stringify(sm))
       test.done(test.failures.length === 0, test.failures.join("; "))
     }
   }

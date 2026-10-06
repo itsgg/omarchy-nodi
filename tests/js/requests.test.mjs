@@ -79,4 +79,17 @@ test("the cache keeps the newest entries, never one mid-read", () => {
   cache.rates = { state: "ready", value: {}, at: -1 };
   assert.ok(!R.prune(cache, 64).includes("rates"), "one-entry sources are never forgotten, however old");
   assert.equal(R.prune(cache, 64).length, 6);
+  cache["list:x"] = { state: "ready", value: [], at: -5 };
+  const kept = R.prune(cache, 64, k => k.indexOf("list:") === 0);
+  assert.ok(!kept.includes("list:x"), "a source that keeps is never forgotten (Sonnet 2026-10-06)");
+  assert.ok(R.prune(cache, 64).includes("list:x"), "else the oldest goes first");
+});
+
+test("a read that lands with what the entry held is the same, and the bar is not worked out again", () => {
+  const ready = v => ({ state: "ready", value: v, at: 1 });
+  assert.equal(R.same(ready([{ a: 1 }]), ready([{ a: 1 }])), true);
+  assert.equal(R.same(ready([{ a: 1 }]), ready([{ a: 2 }])), false);
+  assert.equal(R.same(null, ready([])), false, "a first read always shows");
+  assert.equal(R.same({ state: "error", error: "x", value: [1] }, ready([1])), false, "an error mended shows");
+  assert.equal(R.same(ready([1]), { state: "error", error: "x", value: [1] }), false, "a failure shows");
 });
