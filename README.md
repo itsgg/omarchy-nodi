@@ -54,6 +54,7 @@ text already typed:
 | `> htop` | A command, in a terminal |
 | `12*8 + 15%`, `5 km to mi`, `100 usd to eur`, `3pm to tokyo` | Answers |
 | `:fire`, `cb`, `f `, `notes.org`, `find report`, `~/Downloads/` | Emoji, clipboard, recent files (one by its whole name in any search), files, folders |
+| `q4 report`, `find img cat`, `in budget` | Files by name in any search, three at most; one kind of file (img, doc, video, audio, dir); files that hold the words, in `~/Work` and `~/Documents` (`"files": { "contents": [...] }`) |
 | `cb img`, `cb url`, `cb invoice` | One kind of entry; an image by the words in it. Ctrl+K pins an entry first, kept after the history drops it, or sends it to a device; "paste in sequence" pastes the newest text, then each older one on each press |
 | `kill chromium`, `ports`, `services` | Processes, listening ports, user services |
 | `h github`, `prs`, `tmux`, `ssh `, `man ls` | Browser history, pull requests, tmux, SSH hosts, man pages |
@@ -379,6 +380,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   record it keeps of the process (`~/.claude/sessions`) and the end of
   its own transcript in `~/.claude/projects`, for the last thing you
   asked it.
+- From a search's third letter it looks for files of that name under
+  your home with fd (`"files": { "root": false }` turns that off), and
+  under `in` for files that hold the words with ripgrep.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 

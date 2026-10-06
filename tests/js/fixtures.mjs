@@ -75,6 +75,7 @@ export function requester(data, asked) {
       : name === "power-profiles" ? data.powerProfiles
       : name === "notifications" ? data.notifications
       : name === "find" ? (data.found && data.found.q === param ? data.found.list : undefined)
+      : name === "contents" ? data.contents
       : name === "projects" ? data.projects
       : name === "tmux" ? data.tmux
       : name === "ssh" ? data.ssh
