@@ -1,5 +1,7 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/Score.js" as Score
+.import "../lib/Match.js" as Match
 
 // Script filters: a program of yours turns what is typed after a keyword
 // into rows, as Alfred's script filters and Walker's menus do. Set in
@@ -31,12 +33,43 @@
 //     "actions": [{ "title": "Copy link", "action": { "copy": "..." } }] }   Ctrl+K
 //
 // A line that is not a JSON object with a title is skipped. While a run is
-// on its way, the rows of the one before stay on show.
+// on its way, the rows of the one before stay on show. A row may also say
+// "complete": what Tab fills in ("n meeting "), apart from its action, as
+// Alfred's autocomplete; and "match": more words it is found by, in a list.
+//
+// A list (ROADMAP 57, Alfred's "Alfred filters results", Elephant's cache):
+//
+//   { "keyword": "p", "title": "Projects", "command": ["my-projects"],
+//     "list": true, "refresh": "10m", "root": true }
+//
+// runs the program once, with NODI_QUERY empty and no argument, keeps its
+// rows for `refresh` (10 minutes unless set; the last ones stay on show
+// while it runs again), and finds them as you type, ranked and learned
+// from as every row is: under its keyword, and with "root": true in any
+// search too, three at most, from the second letter, by a clean match.
+// "rerun": "2s" runs a filter that is no list again at that pace while its
+// rows show (half a second to a minute), for rows that change as you watch.
 
 var LIMIT = 50
+// A list is read once and searched here, so it may hold more.
+var LIST_LIMIT = 1000
 var MAX = { title: 200, subtitle: 300, badge: 24, markdown: 65536, id: 200, risk: 500 }
 
 function text(v, max) { return typeof v === "string" ? v.slice(0, max) : "" }
+
+// "10m", "30s", "2h", "500ms" in milliseconds, held between `min` and
+// `max`; `fallback` for anything else.
+function duration(v, fallback, min, max) {
+  var m = String(v === undefined || v === null ? "" : v).trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/)
+  if (!m) return fallback
+  var ms = Number(m[1]) * { ms: 1, s: 1000, m: 60000, h: 3600000 }[m[2]]
+  return Math.min(max, Math.max(min, ms))
+}
+
+var REFRESH = 10 * 60000
+function refreshOf(f) { return duration(f.refresh, REFRESH, 10000, 24 * 3600000) }
+function rerunOf(f) { return duration(f.rerun, 0, 500, 60000) }
+function timeoutOf(f) { return Math.min(10000, Math.max(500, Number(f.timeoutMs) || 3000)) }
 
 // The filters set in nodi.json that can run: a keyword without a space,
 // and a command of strings.
@@ -106,7 +139,8 @@ function parse(textOut, f) {
   var lines = String(textOut || "").split("\n")
   var rows = []
   var read = 0
-  for (var i = 0; i < lines.length && rows.length < LIMIT; i++) {
+  var limit = f.list ? LIST_LIMIT : LIMIT
+  for (var i = 0; i < lines.length && rows.length < limit; i++) {
     var line = lines[i].trim()
     if (!line) continue
     var o
@@ -127,7 +161,10 @@ function parse(textOut, f) {
       score: 97 - rows.length * 0.01,
       copy: act.copy || "",
       run: act.run || null,
-      complete: act.complete || "",
+      complete: typeof o.complete === "string" && o.complete ? o.complete.slice(0, MAX.title) : (act.complete || ""),
+      match: text(o.match, MAX.subtitle),
+      // Read again at the filter's pace while it shows ("rerun").
+      liveMs: f.rerunMs || 0,
       confirm: confirmOf(o.confirm).confirm,
       confirmWord: confirmOf(o.confirm).confirmWord,
       risk: text(o.risk, MAX.risk),
@@ -153,6 +190,111 @@ function parse(textOut, f) {
 // the list does not blink empty at every keystroke.
 var shown = Object.create(null)
 
+// A run's argv and its output's rows, for either source. Its KILL after
+// half a second: the reader's own timeout kills this one at a second, and
+// one that ignored TERM then lived on (Fable 2026-10-04). A list is read
+// once for every query: no query, and no window.
+function argvOf(param) {
+  var p = JSON.parse(param)
+  return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000), "/usr/bin/env", "NODI_QUERY=" + (p.list ? "" : p.query)]
+    .concat(windowEnv(p.list ? null : p.window), p.command, p.list ? [] : [p.query])
+}
+
+function parseOf(textOut, ok, param) {
+  var p = JSON.parse(param)
+  if (!ok) throw "it exited with an error or ran past " + p.timeoutMs / 1000 + " s"
+  return parse(textOut, { keyword: p.keyword, title: p.title, icon: p.icon, rerunMs: p.rerunMs || 0, list: !!p.list })
+}
+
+function sourceOf(f) { return f.list === true ? "filter-list" : "filter" }
+
+// What a run of `f` is keyed by and runs with. The window is in the key
+// too: what a program says of one window is not its answer for another. A
+// list's run has neither query nor window: one list serves every query.
+function paramOf(f, query, ctx) {
+  // A list follows its refresh; rerun is for a run on each query.
+  var p = { keyword: f.keyword, title: f.title || f.keyword, icon: f.icon || "", command: f.command, timeoutMs: timeoutOf(f) }
+  if (f.list === true) { p.list = true; p.refreshMs = refreshOf(f) }
+  else { p.query = query; p.window = ctx.window || null; p.rerunMs = rerunOf(f) }
+  return JSON.stringify(p)
+}
+
+// A list's rows as the score sees them, worked out once for each list read.
+var prepared = Object.create(null)
+
+function preparedOf(keyword, rows) {
+  var kept = prepared[keyword]
+  if (kept && kept.rows === rows) return kept
+  kept = { rows: rows,
+           fields: rows.map(function(r) { return Score.prepare({ name: r.title, keywords: r.match ? [r.match] : [], description: r.subtitle }) }),
+           // With the title's initials, so "wr" still finds Weekly report
+           // (Sonnet 2026-10-06).
+           hay: rows.map(function(r) {
+             var initials = Match.words(r.title).map(function(w) { return w.charAt(0) }).join("")
+             return Match.fold(r.title + " " + (r.match || "") + " " + (r.subtitle || "")) + " " + initials
+           }) }
+  prepared[keyword] = kept
+  return kept
+}
+
+// The rows of a list that `q` names, the best named first and the
+// program's order among equals: [{ row, tier }]. All of them for no words.
+// `root`: clean matches only, of rows that hold the query's first two
+// letters, so a thousand rows cost a root keystroke about what the menu
+// does; a typo, or the letters in order, are for under the keyword
+// (measured in Qt: 6 to 13 ms a keystroke for 1,000 rows before).
+function named(f, rows, q, root) {
+  if (!String(q || "").trim()) return rows.map(function(r) { return { row: r, tier: "" } })
+  var kept = preparedOf(f.keyword, rows)
+  var lead = root ? Match.fold(q).trim().slice(0, 2) : ""
+  var out = []
+  for (var i = 0; i < rows.length; i++) {
+    if (lead && kept.hay[i].indexOf(lead) === -1) continue
+    var t = kept.fields[i] ? Score.tier(q, kept.fields[i]) : ""
+    if (t && !(root && Score.loose(t))) out.push({ row: rows[i], tier: t, i: i })
+  }
+  out.sort(function(a, b) { return Score.ORDER.indexOf(a.tier) - Score.ORDER.indexOf(b.tier) || a.i - b.i })
+  return out
+}
+
+function withScore(row, score) {
+  var c = {}
+  for (var k in row) c[k] = row[k]
+  c.score = score
+  return c
+}
+
+// A list with "root": true in any search, from the second letter: three
+// rows at most, ranked with every other row by how well the query names
+// them (lib/Score.js), as things to open.
+var ROOT_MAX = 3
+
+function rootRows(query, ctx) {
+  var q = String(query || "").trim()
+  if (q.length < 2 || !ctx.request) return []
+  var out = []
+  var seen = Object.create(null)
+  var all = list(ctx.settings)
+  for (var i = 0; i < all.length; i++) {
+    var f = all[i]
+    if (f.list !== true || f.root !== true) { seen[f.keyword] = true; continue }
+    // A keyword is one filter's, the first's, as filterFor finds it.
+    if (seen[f.keyword]) continue
+    seen[f.keyword] = true
+    var got = ctx.request("filter-list", paramOf(f, "", ctx))
+    if (!Array.isArray(got.value)) continue
+    var hits = named(f, got.value, q, true).slice(0, ROOT_MAX)
+    for (var h = 0; h < hits.length; h++) {
+      var c = withScore(hits[h].row, undefined)
+      delete c.score
+      c.tier = hits[h].tier
+      c.kind = "item"
+      out.push(c)
+    }
+  }
+  return out
+}
+
 var provider = {
   id: "filters",
   name: "Filters",
@@ -162,26 +304,37 @@ var provider = {
       // The param carries the command, the query and the deadline, so one
       // source serves every filter and a run is keyed by what it ran.
       // Its own deadline inside the reader's, so each filter keeps its own.
-      argv: function(param) {
-        var p = JSON.parse(param)
-        // Its KILL after half a second: the reader's own timeout kills this
-        // one at a second, and one that ignored TERM then lived on (Fable
-        // 2026-10-04).
-        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000), "/usr/bin/env", "NODI_QUERY=" + p.query]
-          .concat(windowEnv(p.window), p.command, [p.query])
-      },
-      parse: function(textOut, ok, param) {
-        var p = JSON.parse(param)
-        if (!ok) throw "it exited with an error or ran past " + p.timeoutMs / 1000 + " s"
-        return parse(textOut, { keyword: p.keyword, title: p.title, icon: p.icon })
-      },
+      argv: argvOf,
+      parse: parseOf,
       // The same query's rows stand for 3 s: its arrival recomputes the bar,
-      // which asks again, and a shorter life read it again for ever.
-      maxAgeMs: 3000,
+      // which asks again, and a shorter life read it again for ever. Rows
+      // that rerun, a little under their pace, so each of the bar's ticks
+      // finds them due (Nodi.qml liveTimer).
+      maxAgeMs: function(param) {
+        var p = JSON.parse(param)
+        return p.rerunMs ? Math.round(p.rerunMs * 0.8) : 3000
+      },
       retryMs: 5000,
       timeoutMs: 10000,
       maxBytes: 1048576,
       supersede: true,
+      sessionPath: true
+    },
+    // A list's read, on a reader of its own and never ended by another
+    // read: on the one filter reader, two root lists ended each other's
+    // run at every keystroke, and a slow one never landed (Sonnet
+    // 2026-10-06). A list stands for its refresh.
+    "filter-list": {
+      argv: argvOf,
+      parse: parseOf,
+      maxAgeMs: function(param) { return JSON.parse(param).refreshMs },
+      // Kept in the cache for its refresh, however many reads come after
+      // (lib/Requests.js prune).
+      keep: true,
+      retryMs: 60000,
+      timeoutMs: 10000,
+      maxBytes: 4194304,
+      concurrent: true,
       sessionPath: true
     }
   },
@@ -202,20 +355,18 @@ var provider = {
   ],
   match: function(query, ctx) {
     var hit = filterFor(query, ctx.settings)
-    if (!hit) return []
+    if (!hit) return rootRows(query, ctx)
     var f = hit.filter
     var title = f.title || f.keyword
-    var timeoutMs = Math.min(10000, Math.max(500, Number(f.timeoutMs) || 3000))
-    // The window is in the key too: what a program says of one window is not
-    // its answer for another.
-    var param = JSON.stringify({ keyword: f.keyword, title: title, icon: f.icon || "", command: f.command, query: hit.query, timeoutMs: timeoutMs,
-                                 window: ctx.window || null })
-    var got = ctx.request ? ctx.request("filter", param) : { state: "pending" }
-    if (got.state === "ready") {
-      shown[f.keyword] = got.value
-      return got.value.length ? got.value : [{ title: "Nothing from " + title, subtitle: hit.query ? "for " + hit.query : title, score: 40, copy: "", remember: false }]
+    var got = ctx.request ? ctx.request(sourceOf(f), paramOf(f, hit.query, ctx)) : { state: "pending" }
+    // A read that failed keeps the rows it had, which stay on show
+    // (lib/Requests.js settled; Sonnet 2026-10-06).
+    if (got.state === "ready" || (got.state === "error" && Array.isArray(got.value))) {
+      var rows = f.list === true ? named(f, got.value, hit.query).map(function(n, i) { return withScore(n.row, 97 - i * 0.01) }) : got.value
+      if (f.list !== true) shown[f.keyword] = got.value
+      return rows.length ? rows : [{ title: "Nothing from " + title, subtitle: hit.query ? "for " + hit.query : title, score: 40, copy: "", remember: false }]
     }
     if (got.state === "error") return [{ title: title + " could not answer", subtitle: String(got.error || ""), score: 40, copy: "", remember: false }]
-    return shown[f.keyword] || [{ title: "Asking " + title + "...", subtitle: hit.query || title, score: 40, copy: "", remember: false }]
+    return (f.list !== true && shown[f.keyword]) || [{ title: "Asking " + title + "...", subtitle: hit.query || title, score: 40, copy: "", remember: false }]
   }
 }

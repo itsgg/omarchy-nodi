@@ -190,7 +190,7 @@ the start when it has no `preview`. It gets no hotkey or link, and
 loaded. A row with an `id` is remembered and ranked like any other.
 `actions` are what Ctrl+K offers, each with `exec`, `open`, `copy` or
 `paste`, and `confirm`, `risk` and `undoable` as a row has them; one that
-asks shows its command and risk while Ctrl+K is up. At most 50 rows; a
+asks shows its command and risk while Ctrl+K is up. At most 50 rows (1,000 in a list, below); a
 line that is not such an object is skipped. While a run is on its way, the
 last rows stay. Fields are cut to a length: title 200 characters, subtitle
 300, badge 24, icon 8, id 200, risk 500, preview 64 KB, and 12 actions.
@@ -199,6 +199,20 @@ without a word: a filter whose keyword has a space or whose program holds
 `=` or starts with `-`, an `exec` whose program starts with `-`, a copy or
 paste of nothing, an image that is not an absolute path, and an `open`
 that is neither a URL nor an absolute path.
+
+A row may also carry `complete`, what Tab fills in (`"n meeting "`),
+apart from its action, and `match`, more words it is found by. A filter
+with `"list": true` runs its program once, with `NODI_QUERY` empty and no
+argument, and keeps the rows for `"refresh"` (`"10m"` unless set, 10 s at
+least; the last rows stay while it runs again); what you type after its
+keyword then finds them, ranked and learned from as every row is, with no
+run on each keystroke. With `"root": true` too, up to three of them come
+up in any search from the second letter, among the rest, named cleanly
+(by a word's start or the initials; a typo finds them under the keyword
+only). `"rerun": "2s"` runs a filter that is no list again at that pace
+while its rows show (half a second to a minute), for rows that change as
+you watch; give such a row an `id`, or a change of its title makes it
+another row, which loses a second Enter it waited for.
 
 A row or action with `"undoable": true` and an `exec` action is run by
 Nodi itself, which reads what it prints. If its last line is

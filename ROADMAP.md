@@ -474,6 +474,12 @@ baseline query loses rank.
 57. **Script filters, further**: a cached list mode ranked at root;
     autocomplete, match text, hidden data and rerun; multi-step filters
     and a rofi adapter. E 2, 4, 5; L 19.
+    First part done 2026-10-06: `"list": true` runs the program once and
+    keeps its rows for `refresh` (10 minutes), found locally under the
+    keyword and, with `"root": true`, three at most in any search, ranked
+    with every row; a row's `complete` and `match`; `"rerun"` reads a
+    filter's rows again at its pace while they show. Multi-step filters
+    (hidden data handed back) and the rofi adapter are the second part.
 58. **Other plugins' panels and the tray's menus as rows.** L 7.
 59. **The window it was opened over**: screenshot it, read its text, a
     terminal in its directory, move, float, pin; capture results come back

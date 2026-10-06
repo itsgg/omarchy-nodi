@@ -78,8 +78,14 @@ Item {
     }
     var source = Requests.sourceOf(requests.providers, name)
     if (!source) return
-    requests.put(tag.key, Requests.settled(requests.cache[tag.key], source, text, ok, tag.param, Date.now()))
-    requests.arrived(tag.key)
+    var before = requests.cache[tag.key]
+    var after = Requests.settled(before, source, text, ok, tag.param, Date.now())
+    // The same rows again: held as they were, so what is worked out of
+    // them by identity stays, and nothing to show anew (Requests.same).
+    var unchanged = Requests.same(before, after)
+    if (unchanged) after.value = before.value
+    requests.put(tag.key, after)
+    if (!unchanged) requests.arrived(tag.key)
   }
 
   // What a saved copy gives before any read (rates.json at start).
@@ -90,10 +96,16 @@ Item {
     if (entry && !(requests.cache[key] && requests.cache[key].pending)) { requests.put(key, entry); requests.arrived(key) }
   }
 
+  // Whether a key's source keeps its entries (`keep`, lib/Requests.js prune).
+  function keeps(key) {
+    var source = Requests.sourceOf(requests.providers, key.slice(0, key.indexOf(":")))
+    return !!(source && source.keep)
+  }
+
   function put(key, entry) {
     if (entry) requests.cache[key] = entry
     else delete requests.cache[key]
-    var old = Requests.prune(requests.cache, 64)
+    var old = Requests.prune(requests.cache, 64, requests.keeps)
     for (var i = 0; i < old.length; i++) delete requests.cache[old[i]]
   }
 }
