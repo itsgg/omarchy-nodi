@@ -309,6 +309,20 @@ baseline query loses rank.
     "New question" as Ctrl+K rows (Ctrl+R is the query history below, and
     Ctrl+N moves down); Ctrl+K "About this window" (a capture of the
     window it was opened over) and "About the selection". L 3.
+    Done 2026-10-06: the held session is a conversation across closes: a
+    question within ten minutes of the last answer follows it, and "New
+    question" starts afresh, both rows under the answer rather than
+    behind Ctrl+K; closing the bar refuses a run waiting on him, and a run
+    Claude asks for while it is closed is refused, so no proposal waits
+    unseen, and after Claude's run closes the bar, asking again lets it
+    take the next step (item 44's request of several steps). Under a typed
+    question, "Ask about the
+    selection" sends the text fenced, and "Ask about this window" a
+    picture of the window the bar opened over, taken from its own buffer
+    by its ext-foreign-toplevel handle (`grim -T` with Hyprland's
+    stableId, 1280 pixels wide at most), so the bar is not in it; the held
+    session takes an image block (probed with Claude Code 2.1.289). "Ask
+    again" was there; Ctrl+R stays the query history.
 44. **Ask acts through rows**: `nodi_search` and `nodi_run` over the
     session's permission channel, no other tools; a proposed row shows
     armed with its risk and exact command, Enter allows, Escape denies.

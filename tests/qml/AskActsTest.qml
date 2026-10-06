@@ -9,8 +9,8 @@ import "../../components"
 // run called unasked refused, a second run refused while the first waits,
 // the first allowed by him and run once, the next refused by him. Another
 // that exits while a run waits, and one recycled while a run waits, then
-// asked again. One whose allowed run ends the session from inside the
-// call, as the bar's run closes the bar, then is asked again. One asked
+// asked again. One whose allowed run closes the bar from inside the call:
+// the conversation goes on, and its next run is refused. One asked
 // about the selection, with its text, twice: asked again, the text goes
 // again (ROADMAP 47). No model is asked. Run by tools/qs-test.sh inside
 // Quickshell.
@@ -21,7 +21,7 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 5
+  property int remaining: 9
   readonly property string fake: String(Qt.resolvedUrl("fake-claude.py")).replace(/^file:\/\//, "")
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
 
@@ -102,17 +102,20 @@ Item {
     workDir: test.dir
     checker: function(k) { return "" }
     property bool ran: false
-    // As Nodi.qml askRun: the run closes the bar, which recycles the
-    // session, inside the session's own call; a question then waits for
-    // the fresh one.
-    runner: function(k) { closing.ran = true; closing.recycle(); closing.send("say ok"); return "Ran: Lock; the bar closed" }
+    property int proposals: 0
+    // As Nodi.qml askRun: the run closes the bar (shown goes false) inside
+    // the session's own call; the conversation goes on, and a next run is
+    // refused until he opens the bar and asks again (ROADMAP 43).
+    runner: function(k) { closing.ran = true; closing.shown = false; return "Ran: Lock. The bar closed." }
     onPhaseChanged: {
-      if (phase === "proposing") { Qt.callLater(closing.allow); return }
+      if (phase === "proposing") { closing.proposals++; Qt.callLater(closing.allow); return }
       if (phase !== "error" && phase !== "done") return
-      if (!closing.ran || phase !== "done" || closing.answer !== "ok") test.failures.push("recycled in the run: " + closing.ran + " " + phase + " " + closing.error + closing.answer)
+      if (!closing.ran || closing.proposals !== 1 || phase !== "done" || closing.answer !== "ok")
+        test.failures.push("the bar closed in the run: " + closing.ran + " " + closing.proposals + " " + phase + " " + closing.error + closing.answer)
       test.finished()
     }
   }
+
 
   Ask {
     id: selected
@@ -130,8 +133,79 @@ Item {
     }
   }
 
+  // A question with the window's picture (ROADMAP 43).
+  Ask {
+    id: picture
+    acts: true
+    program: test.fake
+    workDir: test.dir
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || picture.answer !== "ok") test.failures.push("with a picture: " + phase + " " + picture.error + picture.answer)
+      test.finished()
+    }
+  }
+
+  // The bar closed: a run Claude asks for is refused, never left waiting.
+  Ask {
+    id: closedBar
+    acts: true
+    shown: false
+    program: test.fake
+    workDir: test.dir
+    checker: function(k) { return "" }
+    onPhaseChanged: {
+      if (phase === "proposing") test.failures.push("proposed while the bar is closed")
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || closedBar.answer !== "ok") test.failures.push("closed bar: " + phase + " " + closedBar.error + closedBar.answer)
+      test.finished()
+    }
+  }
+
+  // Long after its last answer, a question starts afresh: the stand-in
+  // answers one question a process, so the second is answered only by a
+  // fresh session.
+  Ask {
+    id: forgetful
+    acts: true
+    freshMs: 1
+    program: test.fake
+    workDir: test.dir
+    property int round: 0
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || forgetful.answer !== "ok") test.failures.push("afresh, round " + forgetful.round + ": " + phase + " " + forgetful.error + forgetful.answer)
+      if (++forgetful.round === 1) { later.start(); return }
+      test.finished()
+    }
+  }
+  Timer { id: later; interval: 50; onTriggered: forgetful.send("say ok") }
+
+  // Asked again long after, a question about the selection starts afresh
+  // and still goes with its text (Fable 2026-10-06: the recycle forgot it).
+  Ask {
+    id: lateAgain
+    acts: true
+    freshMs: 1
+    program: test.fake
+    workDir: test.dir
+    property int round: 0
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || lateAgain.answer !== "ok") test.failures.push("asked again late, round " + lateAgain.round + ": " + phase + " " + lateAgain.error + lateAgain.answer)
+      if (++lateAgain.round === 1) { againLater.start(); return }
+      test.finished()
+    }
+  }
+  Timer { id: againLater; interval: 50; onTriggered: lateAgain.send("Fix the spelling and grammar of the selection") }
+
   function start() {
-    closing.send("recycle in the run")
+    picture.send("What is in the picture?", "What is in the picture?", "window", { mediaType: "image/jpeg", data: "AAAA" })
+    closedBar.send("while the bar is closed")
+    forgetful.send("say ok")
+    lateAgain.send("Fix the spelling and grammar of the selection",
+                   "Fix the spelling and grammar of the text below. Reply with the result only.\n\n<text>\nteh\n</text>", "selection")
+    closing.send("the bar closes in the run")
     selected.send("Fix the spelling and grammar of the selection",
                   "Fix the spelling and grammar of the text below. Reply with the result only.\n\n<text>\nteh\n</text>", "selection")
     ask.send("lock my screen")

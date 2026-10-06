@@ -351,12 +351,9 @@ Item {
     root.aliasRow = null
     root.endWord()
     root.endCapture()
-    // A question sent with its text (the selection's) is not kept as the
-    // query: asked again after the recycle, Claude would get the bare
-    // sentence (Fable 2026-10-06).
-    if (askSession.used && askSession.message !== askSession.question
-        && input.text.replace(/^\s*ask\s+/i, "").trim() === askSession.question) input.text = ""
-    askSession.recycle()
+    // Claude's conversation goes on (ROADMAP 43), so a kept question sent
+    // with its text is asked again with it; a run it waits on is refused.
+    askSession.hidden()
     // Nobody sees an answer once the bar is closed: it stops, and the next
     // open asks afresh.
     answerSession.reset()
@@ -458,7 +455,7 @@ Item {
       request: requests.request,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model,
-             proposal: root.proposed(), context: askSession.context },
+             proposal: root.proposed(), context: askSession.context, capturing: windowShot.active },
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
       window: root.cameFrom,
@@ -878,20 +875,49 @@ Item {
     } else if (row.nodi === "show") {
       root.savePrefs(Prefs.shownRow(root.prefs, row.key))
     } else if (row.nodi === "askAllow") {
+      // Not in the first moment after it shows: an Enter pressed for the
+      // row that was there runs nothing (Fable 2026-10-06).
+      var shown = askSession.proposal ? Date.now() - (askSession.proposal.at || 0) : 0
+      if (shown < 400) return
       askSession.allow()
     } else if (row.nodi === "askDeny") {
       askSession.deny()
     } else if (row.nodi === "askWith" && row.ask) {
       // Claude on a text (the selection, a translation): asked as Ask asks,
       // the field showing the question, so the answer and its paste are Ask's.
-      if (askSession.busy()) return
+      if (askSession.busy() || windowShot.active) return
       root.askRows = ({})
       askSession.send(row.ask.question, row.ask.message, row.ask.context)
       input.text = "ask " + row.ask.question
       input.cursorPosition = input.text.length
+    } else if (row.nodi === "askNew") {
+      if (askSession.busy()) return
+      askSession.recycle()
+      input.text = "ask "
+      input.cursorPosition = input.text.length
+    } else if (row.nodi === "askWindow" && row.ask) {
+      // The window the bar opened over, captured from its own buffer by
+      // its ext-foreign-toplevel handle (grim -T), so the bar on top is not
+      // in it; 1280 pixels wide at most (ROADMAP 43).
+      var w = root.cameFrom
+      if (askSession.busy() || windowShot.active || !w.stableId) return
+      root.askRows = ({})
+      root.shotAsk = row.ask
+      // grim scales the window's buffer, which is its layout width times
+      // its own monitor's scale (Fable 2026-10-06), else the focused one's.
+      var mon = Hyprland.focusedMonitor
+      var mons = Hyprland.monitors.values || []
+      for (var mi = 0; mi < mons.length; mi++) if (mons[mi].id === w.monitor) mon = mons[mi]
+      var ms = mon && mon.lastIpcObject && Number(mon.lastIpcObject.scale) > 0 ? Number(mon.lastIpcObject.scale) : 1
+      var px = w.width * ms
+      var scale = px > 1280 ? (1280 / px).toFixed(3) : "1"
+      windowShot.run(["/usr/bin/bash", "-c", 'set -o pipefail; grim -T "$1" -s "$2" -t jpeg -q 80 - | base64 -w0', "nodi-shot", w.stableId, scale])
+      input.text = "ask " + row.ask.question
+      input.cursorPosition = input.text.length
     } else if (row.nodi === "ask") {
       var q = input.text.replace(/^\s*ask\s+/i, "").trim()
-      if (q && !askSession.busy()) { root.askRows = ({}); askSession.send(q) }
+      // Not while a window's picture is taken for this question (askWindow).
+      if (q && !askSession.busy() && !windowShot.active) { root.askRows = ({}); askSession.send(q) }
     } else if (row.nodi === "runWord" && root.wordAsk) {
       if (input.text.trim() !== root.wordAsk.word) return
       var w = root.wordAsk
@@ -1374,10 +1400,31 @@ Item {
     searcher: root.askSearch
     checker: root.askCheck
     runner: root.askRun
+    shown: root.opened
     onPhaseChanged: if (root.opened) root.recompute()
   }
 
   // ---------------------------------------------------------------- Ask acts
+
+  // A question about the window, waiting for its picture (askWindow).
+  property var shotAsk: null
+
+  Reader {
+    id: windowShot
+    timeoutMs: 5000
+    maxBytes: 8388608
+    onActiveChanged: if (root.opened) root.recompute()
+    onFinished: function(text, ok) {
+      var a = root.shotAsk
+      root.shotAsk = null
+      if (!a) return
+      var data = ok ? String(text).replace(/\s+/g, "") : ""
+      // No picture (the window gone, grim failing): the question goes as
+      // text, and says so.
+      if (data) askSession.send(a.question, a.message, a.context, { mediaType: "image/jpeg", data: data })
+      else askSession.send(a.question, a.question + "\n\n(The window could not be captured.)", "")
+    }
+  }
 
   // What Claude found for the question being answered, by key: it runs
   // only rows its search returned, and a new question starts it afresh.
@@ -1419,19 +1466,19 @@ Item {
   }
 
   // Claude's run, after his Enter allowed it: as Enter on the row runs it
-  // (execute), so the bar closes first and the session with it. A paste,
-  // a picker or a terminal gets the focus the bar held, and an undoable
-  // run is the Undoer's (Fable 2026-10-06: a paste typed into the bar's
-  // own field). A request of several steps ends at its first run. The
-  // field is emptied first: Claude's run is a use of the row, not a pick
-  // for what was typed.
+  // (execute), so the bar closes first. A paste, a picker or a terminal
+  // gets the focus the bar held, and an undoable run is the Undoer's
+  // (Fable 2026-10-06: a paste typed into the bar's own field). The
+  // conversation goes on, but a next run waits until he opens the bar and
+  // asks again (Ask.qml shown). The field is emptied first: Claude's run is
+  // a use of the row, not a pick for what was typed.
   function askRun(key) {
     var why = root.askCheck(key)
     if (why) return why
     var row = root.askRows[key]
     input.text = ""
     root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)
-    return "Ran: " + row.title + "; the bar closed"
+    return "Ran: " + row.title + ". The bar closed; anything more waits until he asks again."
   }
 
   // The run waiting for his answer, as the bar shows it.
