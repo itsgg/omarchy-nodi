@@ -91,8 +91,12 @@ QtObject {
   function rowSize(row) { return look.rowSize(row) }
   function iconSource(icon) { return icon ? "file://" + String(icon).split("/").map(encodeURIComponent).join("/") : "" }
   function paletteContext() { return { activeWorkspace: 1, knows: function() { return true } } }
-  function queryChanged() {}
-  function handleKey(key, modifiers) { fake.note("handleKey", [key, modifiers || 0]); return true }
+  // What the query reads as the bar is told it changed: a test sets
+  // `probe` to read it as Nodi would (card.composedNow).
+  property var probe: null
+  function queryChanged() { fake.note("queryChanged", fake.probe ? [fake.probe()] : []) }
+  // Noted, and left to the field, as the real one leaves a letter.
+  function handleKey(key, modifiers) { fake.note("handleKey", [key, modifiers || 0]); return false }
   function focusInput() { fake.note("focusInput") }
   function activate(index) { fake.note("activate", [index]) }
   function openPalette() { fake.note("openPalette", [fake.selectedIndex]); return fake.opens }

@@ -166,6 +166,17 @@ const scenes = [
     p = Prefs.hiddenRow(p, sig.key, History.snapshot(sig));
     return scene("51-mine", "?mine", { prefs: p });
   })(),
+  // Right-to-left titles (ROADMAP 76): aligned left, as every other.
+  (() => {
+    const Rows = load("lib/Rows.js");
+    const rows = [
+      { key: "file:/home/u/notes/\u0645\u0644\u0627\u062d\u0638\u0627\u062a.md", title: "\u0645\u0644\u0627\u062d\u0638\u0627\u062a.md", subtitle: "~/notes", icon: "󰈙", badge: "" },
+      { key: "file:/home/u/notes/\u05e9\u05dc\u05d5\u05dd.txt", title: "\u05e9\u05dc\u05d5\u05dd.txt", subtitle: "~/notes", icon: "󰈙", badge: "new" },
+      { key: "file:/home/u/notes/plan.md", title: "plan.md", subtitle: "~/notes", icon: "󰈙", badge: "" }
+    ].map((r, i) => plain(Rows.normalize(Object.assign({ kind: "item", tier: "prefix" }, r), { id: "files", name: "Files" }, 0, i)));
+    return { name: "52-rtl", query: "notes", rows, mode: null, selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0,
+             paletteArmed: "", paletteRow: null, armedKey: "" };
+  })(),
   scene("47-file-dialog", "", { history, window: { address: "0x5a1", "class": "xdg-desktop-portal-gtk", title: "Save File", floating: true },
     chooserFolders: [["recent", "Downloads"], ["recent", "Work/kalvi/docs"], ["z", "Learn"], ["z", "Work/GG/nodi"], ["bookmark", "Projects"],
                      ["xdg", "Documents"], ["xdg", "Pictures"]].map(([kind, p]) => ({ kind, path: "/home/u/" + p })) }),

@@ -64,6 +64,8 @@ Rectangle {
       visible: text !== ""
       textFormat: Text.PlainText
       text: pane.p.title || ""
+      // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
+      horizontalAlignment: Text.AlignLeft
       color: nodi.foreground
       font.family: nodi.fontFamily
       font.pixelSize: Style.font.title
@@ -75,6 +77,8 @@ Rectangle {
       visible: text !== ""
       textFormat: Text.PlainText
       text: pane.p.subtitle || ""
+      // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
+      horizontalAlignment: Text.AlignLeft
       color: nodi.secondary
       font.family: nodi.fontFamily
       font.pixelSize: Style.font.caption
@@ -100,6 +104,7 @@ Rectangle {
           width: labelRow.labelWidth
           textFormat: Text.PlainText
           text: String(modelData[0])
+          horizontalAlignment: Text.AlignLeft
           color: nodi.secondary
           font.family: nodi.fontFamily
           font.pixelSize: Style.font.caption
@@ -111,6 +116,7 @@ Rectangle {
           width: parent.width - labelRow.labelWidth - parent.spacing
           textFormat: Text.PlainText
           text: String(modelData[1])
+          horizontalAlignment: Text.AlignLeft
           color: nodi.foreground
           font.family: nodi.fontFamily
           font.pixelSize: Style.font.caption
@@ -167,6 +173,7 @@ Rectangle {
       wrapMode: Text.Wrap
       textFormat: pane.hasMarkdown ? Text.MarkdownText : Text.PlainText
       text: pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : (pane.p.text || "")
+      horizontalAlignment: Text.AlignLeft
       color: nodi.foreground
       linkColor: nodi.foreground
       font.family: nodi.fontFamily

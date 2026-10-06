@@ -1,10 +1,10 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test rank rank-update opens picks replay lint compile qstest ui shots textsize a11y a11y-update themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test rank rank-update opens picks replay lint compile qstest ui shots textsize a11y a11y-update ime themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 
-check: test rank lint compile qstest ui shots textsize a11y hygiene manifest validate
+check: test rank lint compile qstest ui shots textsize a11y ime hygiene manifest validate
 	@echo "all checks passed"
 
 test:
@@ -78,6 +78,13 @@ A11Y_SCENES := 01-home,48-moved,13-nothing,49-fallback-moved,25-no-match,11-conf
 a11y:
 	@NODI_A11Y=$(A11Y_SCENES) tools/render.sh shots/a11y
 	@diff -u tests/a11y/expected.txt shots/a11y/a11y.txt && echo "a11y: as expected"
+
+# An input method composing into the card (ROADMAP 76): fcitx5 on a
+# private X server and D-Bus; the query follows the composition, then
+# what is committed (tests/ime/expected.txt).
+ime:
+	@NODI_IME=1 tools/render.sh shots/ime
+	@diff -u tests/ime/expected.txt shots/ime/ime.txt && echo "ime: as expected"
 
 a11y-update:
 	@NODI_A11Y=$(A11Y_SCENES) tools/render.sh shots/a11y

@@ -21,7 +21,9 @@ Column {
     verticalAlignment: Text.AlignBottom
     bottomPadding: Style.spacing.xs
     textFormat: Text.PlainText
+    objectName: "paletteTitle"
     text: nodi.paletteRow ? nodi.paletteRow.title : ""
+    horizontalAlignment: Text.AlignLeft
     color: nodi.secondary
     font.family: nodi.fontFamily
     font.pixelSize: Style.font.caption
@@ -127,6 +129,8 @@ Column {
         anchors.verticalCenter: parent.verticalCenter
         textFormat: Text.PlainText
         text: actionItem.modelData.label
+        // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
+        horizontalAlignment: Text.AlignLeft
         color: actionItem.selected ? nodi.selectedInk : nodi.foreground
         font.family: nodi.fontFamily
         font.pixelSize: Style.font.heading
