@@ -259,8 +259,27 @@ With `--json`, each line is an object as a script filter prints one
 chooses, so an `action` is not read. A pick takes 5000 rows and 8 MB at
 most. Every form exits 0 when done, 1 when a pick ends without a choice,
 2 when Nodi refuses (an unknown row, a row that asks first, rows it could
-not read) or the command is misused, and 3 when Nodi cannot be reached
-(a pick whose bar goes away while it waits ends as 1).
+not read), its function fails or the command is misused, 3 when Nodi cannot be reached (a
+pick whose bar goes away while it waits ends as 1), and 4 when a newer
+pick took the bar before this one was answered.
+
+### For agents
+
+`nodi mcp` is the bar as an MCP server on stdin and stdout, for Claude
+Code or any other agent. Its tools: `search` the bar's rows (each with a
+key, what it runs, and whether it asks first), `run` one by its key
+(refusing a row that asks, as `nodi run` does), `propose` one (the bar
+opens on it with its command; your Enter runs it, Escape refuses), and
+`approve`, a permission prompt tool for a headless `claude -p`: the bar
+shows the tool and its input, and your Enter allows it. A key a search
+found runs as found for ten minutes; one question waits in the bar at a
+time, and a newer one takes its place, the older answered "not asked".
+A query or a key is 64 KB at most.
+
+```sh
+claude mcp add nodi -- nodi mcp
+claude -p "..." --permission-prompt-tool mcp__nodi__approve
+```
 
 ## What it touches
 
@@ -269,6 +288,8 @@ not read) or the command is misused, and 3 when Nodi cannot be reached
 - A command or script a row runs that fails and says why is reported in a
   notification, "<row> failed", with its last line of errors; a failure
   that says nothing, or a program closed, is not.
+- `nodi mcp` runs only when an agent starts it, and runs a row only by
+  `run`, which the agent's own permissions gate, or by your Enter.
 - It goes online for exchange rates (open.er-api.com, once a day, or every
   ten minutes while that fails), for `prs` (through `gh`), and for Claude,
   through Claude Code's `claude` command, under `ask` and, if turned on, to describe

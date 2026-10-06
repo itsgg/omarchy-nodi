@@ -6,7 +6,7 @@ import "../../components"
 // components/PickSession.qml through a real FIFO, as bin/nodi makes one: a
 // request is read and said ready with its rows; end() writes the answer
 // into the FIFO and gives back what the field held; a newer request ends
-// the open one with "cancel"; alive() says which is open; a directory that
+// the open one with "replaced"; alive() says which is open; a directory that
 // is not a pick's is refused, and a row-file that cannot be read cancels.
 // Run by tools/qs-test.sh inside Quickshell.
 Item {
@@ -62,7 +62,7 @@ Item {
     interval: 600
     onTriggered: {
       check(test.readyCount === 1 && picks.current && picks.current.rows.length === 3, "ready, with its rows: " + JSON.stringify(picks.current && picks.current.rows))
-      // A second pick ends the first with cancel.
+      // A second pick ends the first: replaced, not cancelled by him.
       check(picks.request(test.ask(test.second), "typed into the first pick") === "ok", "the second is taken")
       check(test.endedWith.length === 1 && test.endedWith[0] === "my query", "the first ended, the field's text given back: " + JSON.stringify(test.endedWith))
       chosen.start()
@@ -96,7 +96,7 @@ Item {
     command: ["/usr/bin/bash", "-c", 'printf "%s|%s|%s" "$(cat "$1/heard" 2>/dev/null)" "$(cat "$2/heard" 2>/dev/null)" "$(cat "$3/heard" 2>/dev/null)"; rm -rf -- "$1" "$2" "$3"', "pick-test", test.first, test.second, test.third]
     stdout: StdioCollector { id: heardOut }
     onExited: {
-      check(heardOut.text === "cancel|pick 3|error", "each FIFO heard its answer, unreadable rows an error: " + JSON.stringify(heardOut.text))
+      check(heardOut.text === "replaced|pick 3|error", "each FIFO heard its answer, unreadable rows an error: " + JSON.stringify(heardOut.text))
       test.done(test.failures.length === 0, test.failures.join("; "))
     }
   }
