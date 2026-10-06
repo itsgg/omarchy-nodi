@@ -279,10 +279,14 @@ Item {
   }
 
   // After an action the bar starts empty next time; a plain close keeps the query.
+  // Emptied after the close too: a pick or a confirm word the close ends
+  // gives the field back what it held, which an action's close must not
+  // keep (Fable 2026-10-06: Claude's run landing while one was open).
   function finish() {
     input.text = ""
     root.selectedIndex = 0
     root.dismiss()
+    if (input.text !== "") input.text = ""
   }
 
   function toggle() {
@@ -357,7 +361,6 @@ Item {
 
   function services() {
     var desktop = desktopState.snapshot()
-    desktopTimer.seen = JSON.stringify(desktop)
     return {
       zones: root.zones, localZone: root.localZone,
       emojis: root.emojis, apps: root.apps, windows: root.windows, history: root.history, picks: root.picks, reminders: root.reminders,
@@ -365,7 +368,8 @@ Item {
       toggleStates: root.toggleStates, themes: root.themes, home: root.home, descriptions: root.appDescriptions,
       request: requests.request,
       prefs: root.prefs,
-      ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model },
+      ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model,
+             proposal: root.proposed() },
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
       window: root.cameFrom,
@@ -389,7 +393,11 @@ Item {
       root.results = Pick.rows(input.text, root.pickSession.rows || [])
       root.mode = { label: "Pick", icon: Pick.PROVIDER.icon }
     } else {
-      root.results = Engine.run(input.text, root.config, root.services())
+      var svc = root.services()
+      root.results = Engine.run(input.text, root.config, svc)
+      // The desktop the rows show, so the timer redraws them when it moves;
+      // a search for Claude does not count (Fable 2026-10-06).
+      desktopTimer.seen = JSON.stringify(svc.desktop)
       root.mode = Engine.mode(input.text, root.config)
     }
     root.selectedIndex = NodiKeys.reselect(before, root.rows, input.text)
@@ -666,9 +674,13 @@ Item {
       input.text = ""
     } else if (row.nodi === "show") {
       root.savePrefs(Prefs.shownRow(root.prefs, row.key))
+    } else if (row.nodi === "askAllow") {
+      askSession.allow()
+    } else if (row.nodi === "askDeny") {
+      askSession.deny()
     } else if (row.nodi === "ask") {
       var q = input.text.replace(/^\s*ask\s+/i, "").trim()
-      if (q) askSession.send(q)
+      if (q && !askSession.busy()) { root.askRows = ({}); askSession.send(q) }
     } else if (row.nodi === "runWord" && root.wordAsk) {
       if (input.text.trim() !== root.wordAsk.word) return
       var w = root.wordAsk
@@ -800,6 +812,7 @@ Item {
       typed: root.typedSinceOpen,
       pick: !!root.pickSession,
       answering: root.answerShown && answerSession.running,
+      proposing: askSession.phase === "proposing",
       rows: root.rows.length,
       selected: root.selectedIndex,
       page: Math.max(1, Math.floor(list.height / Math.max(1, root.rowHeight))),
@@ -859,6 +872,7 @@ Item {
     case "helpBack": root.helpBack(); break
     case "dismiss": root.dismiss(); break
     case "stopAnswer": answerSession.stop(); break
+    case "refuse": askSession.deny(); break
     case "edit": root.edit(act.how); break
     case "recall": root.recall(); break
     case "cancelPrompt":
@@ -1143,7 +1157,74 @@ Item {
     id: askSession
     model: String((root.config.ask && root.config.ask.model) || "haiku")
     workDir: root.cacheDir + "/ask"
+    // The bar's rows as Claude's tools, unless nodi.json says
+    // "ask": { "actions": false } (ROADMAP 44).
+    acts: !(root.config.ask && root.config.ask.actions === false)
+    searcher: root.askSearch
+    checker: root.askCheck
+    runner: root.askRun
     onPhaseChanged: if (root.opened) root.recompute()
+  }
+
+  // ---------------------------------------------------------------- Ask acts
+
+  // What Claude found for the question being answered, by key: it runs
+  // only rows its search returned, and a new question starts it afresh.
+  property var askRows: ({})
+
+  // Claude's search: the bar's ranking for the query, eight rows at most,
+  // as data; a row that asks says how. Nodi's own rows (an undo, which
+  // Enter takes through the Undoer) are not Claude's (Fable 2026-10-06).
+  function askSearch(q) {
+    var rows = Engine.run(String(q || ""), root.config, root.services()).filter(function(r) { return !!r.run && !r.help && !r.nodi })
+    var kept = {}
+    var out = []
+    for (var i = 0; i < rows.length && out.length < 8; i++) {
+      var r = rows[i]
+      kept[r.key] = r
+      out.push({ key: r.key, title: r.title, subtitle: r.subtitle, kind: r.kind,
+                 asks: r.confirmWord ? "a typed word" : r.confirm ? "a second Enter" : "" })
+    }
+    var all = {}
+    for (var k in root.askRows) all[k] = root.askRows[k]
+    for (var k2 in kept) all[k2] = kept[k2]
+    root.askRows = all
+    return out
+  }
+
+  // Why Claude may not run a key, "" when it may: asked before a run is
+  // shown to him, and again before it runs.
+  function askCheck(key) {
+    var row = root.askRows[key]
+    if (!row) return "No row has that key; search first and run a key it returned."
+    if (row.confirmWord) return "That row asks for a typed word; he must run it from the bar himself."
+    if (!Run.command(row.run, root.appAction, row.title)) return "That row cannot run here."
+    return ""
+  }
+
+  // Claude's run, after his Enter allowed it: as Enter on the row runs it
+  // (execute), so the bar closes first and the session with it. A paste,
+  // a picker or a terminal gets the focus the bar held, and an undoable
+  // run is the Undoer's (Fable 2026-10-06: a paste typed into the bar's
+  // own field). A request of several steps ends at its first run. The
+  // field is emptied first: Claude's run is a use of the row, not a pick
+  // for what was typed.
+  function askRun(key) {
+    var why = root.askCheck(key)
+    if (why) return why
+    var row = root.askRows[key]
+    input.text = ""
+    root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)
+    return "Ran: " + row.title + "; the bar closed"
+  }
+
+  // The run waiting for his answer, as the bar shows it.
+  function proposed() {
+    var p = askSession.proposal
+    if (!p) return null
+    var row = root.askRows[p.key]
+    return row ? { key: p.key, title: row.title, subtitle: row.subtitle, run: row.run, risk: row.risk, confirmWord: row.confirmWord }
+               : { key: p.key, title: p.key, subtitle: "A row Claude did not find by searching", run: null, risk: "", confirmWord: "" }
   }
 
   // The answer the card shows, while the query is the question it answers.
@@ -1158,6 +1239,7 @@ Item {
   readonly property var preview: root.readPreview(Pane.choose({
     paletteOpen: root.paletteOpen,
     ask: root.askShown !== "" ? { question: askSession.question, model: askSession.model, text: root.askShown } : null,
+    proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
     answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
     word: root.wordAsk,
     palette: root.paletteOpen ? { row: root.paletteRow, action: root.paletteActions[root.paletteIndex] || null, actions: root.paletteActions,

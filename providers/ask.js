@@ -37,6 +37,17 @@ var provider = {
       return [{ key: "ask:new", title: "Ask " + name + ": " + q, subtitle: name, icon: "󰚩", score: 98,
                 copy: q, nodi: "ask", actionLabel: "Ask", remember: false }]
     }
+    // Claude asks to run a row it found (ROADMAP 44): Enter runs it, Escape
+    // or the second row refuses, and Claude is told either way.
+    if (a.phase === "proposing" && a.proposal) {
+      var p = a.proposal
+      return [
+        { key: "ask:allow", title: "Run " + p.title, subtitle: p.subtitle || "Claude asks to run it", icon: "󰚩", score: 99, copy: "",
+          nodi: "askAllow", actionLabel: "Run", remember: false },
+        { key: "ask:deny", title: "Refuse", subtitle: "Claude is told no", icon: "󰜺", score: 98, copy: "",
+          nodi: "askDeny", actionLabel: "Refuse", remember: false }
+      ]
+    }
     if (a.phase === "waiting" || a.phase === "streaming") {
       return [{ key: "ask:wait", title: a.phase === "waiting" ? "Asking " + name + "..." : "Answering...", subtitle: q, icon: "󰚩",
                 score: 98, copy: a.answer || "", remember: false }]

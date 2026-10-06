@@ -312,6 +312,16 @@ baseline query loses rank.
     session's permission channel, no other tools; a proposed row shows
     armed with its risk and exact command, Enter allows, Escape denies.
     E 1, 7.
+    Done 2026-10-06: the held session gets the bar's search and run as its
+    only tools (no built-in tool), over the pipe it already reads; a search
+    runs at once, a run shows in the bar with its command and risk and runs
+    on his Enter, Escape refusing; a row that asks for a word, a key no
+    search returned and a second run while one waits are refused with a
+    reason, unshown; only the key he allowed runs, once, as Enter on the
+    row runs it: the bar closes first, so a request of several steps ends
+    at its first run. Real Claude Code 2.1.289 with Haiku: "lock my screen"
+    searched, proposed Lock and ran it in 4.7 s. `"ask": { "actions":
+    false }` turns it off.
 45. **`nodi mcp`**, the bar as an MCP server: `search`, `run` (refusing
     rows that ask, as `nodi run` does) and `propose` (the bar opens on the
     row armed and returns Enter or Escape). E 3.
