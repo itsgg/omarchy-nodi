@@ -478,8 +478,12 @@ baseline query loses rank.
     keeps its rows for `refresh` (10 minutes), found locally under the
     keyword and, with `"root": true`, three at most in any search, ranked
     with every row; a row's `complete` and `match`; `"rerun"` reads a
-    filter's rows again at its pace while they show. Multi-step filters
-    (hidden data handed back) and the rofi adapter are the second part.
+    filter's rows again at its pace while they show. Second part done
+    2026-10-06: a row's `{"next": ...}` takes the filter a step on, the
+    program run once with NODI_PICK, NODI_INFO (the row's hidden `info`),
+    NODI_DATA and NODI_STEP, Escape a step back, a step that prints
+    nothing closing the bar; `"format": "rofi"` runs rofi scripts as they
+    are (ROFI_RETV, ROFI_INFO, ROFI_DATA, entry options, no-custom).
 58. **Other plugins' panels and the tray's menus as rows.** L 7.
     First part done 2026-10-06: the shell's list of plugins, read once an
     hour, gives each enabled plugin of someone else's that opens (an

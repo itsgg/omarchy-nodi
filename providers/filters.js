@@ -49,6 +49,23 @@
 // search too, three at most, from the second letter, by a clean match.
 // "rerun": "2s" runs a filter that is no list again at that pace while its
 // rows show (half a second to a minute), for rows that change as you watch.
+//
+// Steps (ROADMAP 57, the rofi loop in Nodi's terms): a row whose action is
+// { "next": "value" } takes the filter one step on. Enter runs the program
+// again, once, with NODI_PICK the value, NODI_INFO the row's "info" (kept
+// from view), NODI_DATA what the run before printed as a line { "data":
+// "..." }, NODI_STEP how many steps in, and no query or argument; its rows
+// are found by what is typed after the keyword, as a list's are, and
+// Escape steps back. A step that prints no row has done its work, and the
+// bar closes. A step never runs twice by itself: it may do what it says.
+//
+// "format": "rofi" runs a rofi script as rofi does (rofi-script(5)): first
+// with no argument and ROFI_RETV=0, then on Enter with the entry as its
+// argument, ROFI_RETV=1 (2 for what was typed, offered as a row unless the
+// script says no-custom), ROFI_INFO and ROFI_DATA, each run once. A line
+// is an entry, its options after a NUL as key\x1fvalue pairs (icon, meta,
+// info, nonselectable, display); a line starting with a NUL sets data,
+// message (shown under the field) or no-custom.
 
 var LIMIT = 50
 // A list is read once and searched here, so it may hold more.
@@ -114,7 +131,19 @@ function actionOf(a) {
   if (typeof a.copy === "string" && a.copy) return { run: Run.copy(a.copy), copy: a.copy }
   if (typeof a.paste === "string" && a.paste) return { run: Run.exec(["omarchy-menu-emoji-insert", a.paste]), copy: a.paste }
   if (typeof a.query === "string") return { complete: a.query }
+  if (typeof a.next === "string") return { next: a.next.slice(0, 4096) }
   return {}
+}
+
+// A theme's icon by name, or an absolute path; anything else is none.
+function iconOf(v) {
+  var s = typeof v === "string" ? v : ""
+  return s.charAt(0) === "/" || /^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(s) ? s.slice(0, 200) : ""
+}
+
+// A step on: what Enter hands the program's next run.
+function nextOf(f, pick, info, retv) {
+  return { keyword: f.keyword, pick: String(pick), info: text(info, 4096), data: "", retv: retv || 1 }
 }
 
 // How a line asks before it runs: { confirm, confirmWord }. true is a
@@ -135,9 +164,14 @@ function previewOf(p) {
 
 // The program's output as rows for the filter `f`; null when nothing in it
 // could be read, which is an error, not an empty answer.
-function parse(textOut, f) {
+function parse(textOut, f) { return parseLines(textOut, f).rows }
+
+// Nodi's lines as { rows, data }: data from a line { "data": "..." }, for
+// the next step's NODI_DATA.
+function parseLines(textOut, f) {
   var lines = String(textOut || "").split("\n")
   var rows = []
+  var data = ""
   var read = 0
   var limit = f.list ? LIST_LIMIT : LIMIT
   for (var i = 0; i < lines.length && rows.length < limit; i++) {
@@ -145,6 +179,7 @@ function parse(textOut, f) {
     if (!line) continue
     var o
     try { o = JSON.parse(line) } catch (e) { continue }
+    if (o && typeof o === "object" && !Array.isArray(o) && typeof o.data === "string" && o.title === undefined) { data = o.data.slice(0, 4096); continue }
     if (!o || typeof o !== "object" || Array.isArray(o) || typeof o.title !== "string" || !o.title) continue
     read++
     var act = actionOf(o.action)
@@ -174,6 +209,7 @@ function parse(textOut, f) {
       remember: !!id,
       preview: previewOf(o.preview),
       group: f.title || f.keyword,
+      next: act.next !== undefined ? nextOf(f, act.next, o.info, 1) : null,
       actions: Array.isArray(o.actions) ? o.actions.slice(0, 12).map(function(a) {
         var x = actionOf(a && a.action)
         var c = confirmOf(a && a.confirm)
@@ -183,7 +219,45 @@ function parse(textOut, f) {
     }
     rows.push(row)
   }
-  return rows
+  for (var r = 0; r < rows.length; r++) if (rows[r].next) rows[r].next.data = data
+  return { rows: rows, data: data }
+}
+
+// A rofi script's output as { rows, data, message, noCustom }.
+function parseRofi(textOut, f) {
+  var out = { rows: [], data: "", message: "", noCustom: false }
+  var lines = String(textOut || "").split("\n")
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i]
+    if (!line) continue
+    if (line.charAt(0) === "\u0000") {
+      var opt = line.slice(1).split("\u001f")
+      var value = opt.slice(1).join("\u001f")
+      if (opt[0] === "data") out.data = value.slice(0, 4096)
+      else if (opt[0] === "message") out.message = value.slice(0, MAX.subtitle)
+      else if (opt[0] === "no-custom") out.noCustom = value === "true"
+      continue
+    }
+    if (out.rows.length >= LIST_LIMIT) continue
+    var nul = line.indexOf("\u0000")
+    var entry = nul === -1 ? line : line.slice(0, nul)
+    var opts = Object.create(null)
+    if (nul !== -1) {
+      var parts = line.slice(nul + 1).split("\u001f")
+      for (var p = 0; p + 1 < parts.length; p += 2) opts[parts[p]] = parts[p + 1]
+    }
+    var title = text(opts.display || entry, MAX.title)
+    if (!title.trim()) continue
+    out.rows.push({
+      key: "filter:" + f.keyword + ":rofi:" + out.rows.length + ":" + entry.slice(0, MAX.id),
+      title: title, subtitle: "", icon: f.icon || "", image: iconOf(opts.icon), badge: "",
+      score: 97 - out.rows.length * 0.01, copy: "", run: null, match: text(opts.meta, MAX.subtitle),
+      remember: false, group: f.title || f.keyword, actions: [],
+      next: opts.nonselectable === "true" ? null : nextOf(f, entry, opts.info, 1)
+    })
+  }
+  for (var r = 0; r < out.rows.length; r++) if (out.rows[r].next) out.rows[r].next.data = out.data
+  return out
 }
 
 // The rows each filter last showed, kept while a newer run is on its way so
@@ -264,6 +338,60 @@ function withScore(row, score) {
   return c
 }
 
+function copyOf(row) {
+  var c = {}
+  for (var k in row) c[k] = row[k]
+  return c
+}
+
+// A row that steps on: Enter is Nodi's own (Nodi.qml stepInto), with what
+// the next run is handed and the row's title to name the step by.
+function stepping(row) {
+  if (!row.next) return row
+  var c = copyOf(row)
+  c.next = { keyword: row.next.keyword, pick: row.next.pick, info: row.next.info, data: row.next.data, retv: row.next.retv, label: String(row.title) }
+  c.nodi = "filterNext"
+  c.actionLabel = "Open"
+  c.remember = false
+  c.run = null
+  return c
+}
+
+// The step `f` is at (ctx.filterStep, Nodi.qml), or null for none; a rofi
+// script is always at one, its first run (ROFI_RETV=0) once each open:
+// keyed by when the bar last closed, which holds while it is open.
+function stepOf(f, ctx) {
+  var st = ctx.filterStep
+  var trail = st && st.keyword === f.keyword && Array.isArray(st.trail) ? st.trail : []
+  var last = trail.length ? trail[trail.length - 1] : null
+  // The window as it was when the step was taken, so the key never moves
+  // under a step while the bar refreshes its windows (Sonnet 2026-10-06).
+  if (last) return { pick: last.pick, info: last.info, data: last.data, retv: last.retv, depth: trail.length, at: last.at, window: last.window || null }
+  return f.format === "rofi" ? { pick: "", info: "", data: "", retv: 0, depth: 0, at: ctx.session || 0, window: null } : null
+}
+
+function stepRows(f, q, step, ctx) {
+  var title = f.title || f.keyword
+  var param = JSON.stringify({ keyword: f.keyword, title: title, icon: f.icon || "", command: f.command, format: f.format === "rofi" ? "rofi" : "",
+                               timeoutMs: timeoutOf(f), step: step })
+  var got = ctx.request ? ctx.request("filter-step", param) : { state: "pending" }
+  var v = got.value
+  if (got.state === "error" && !v) return [{ title: title + " could not answer", subtitle: String(got.error || ""), score: 40, copy: "", remember: false }]
+  if (!v) return [{ title: "Asking " + title + "...", subtitle: step.depth ? step.pick : title, score: 40, copy: "", remember: false }]
+  // Nothing printed after a pick: the program has done its work.
+  if (!v.rows.length && step.depth > 0) return [{ key: "filter:done", title: title + ": done", subtitle: step.pick, score: 40, copy: "", remember: false, nodi: "filterDone" }]
+  var rows = named(f, v.rows, q).map(function(n, i) {
+    var c = stepping(withScore(n.row, 97 - i * 0.01))
+    if (v.message) c.hint = v.message
+    return c
+  })
+  // What was typed, as rofi takes it (ROFI_RETV=2), unless the script says no-custom.
+  if (f.format === "rofi" && q && !v.noCustom)
+    rows.push(stepping({ key: "filter:" + f.keyword + ":custom", title: "Use \"" + q + "\"", subtitle: title, icon: f.icon || "", score: 40, copy: "",
+                         remember: false, next: { keyword: f.keyword, pick: q, info: "", data: v.data, retv: 2 } }))
+  return rows.length ? rows : [{ title: "Nothing from " + title, subtitle: q ? "for " + q : title, score: 40, copy: "", remember: false }]
+}
+
 // A list with "root": true in any search, from the second letter: three
 // rows at most, ranked with every other row by how well the query names
 // them (lib/Score.js), as things to open.
@@ -277,7 +405,8 @@ function rootRows(query, ctx) {
   var all = list(ctx.settings)
   for (var i = 0; i < all.length; i++) {
     var f = all[i]
-    if (f.list !== true || f.root !== true) { seen[f.keyword] = true; continue }
+    // A rofi script answers only its own keyword, as rofi runs it.
+    if (f.list !== true || f.root !== true || f.format === "rofi") { seen[f.keyword] = true; continue }
     // A keyword is one filter's, the first's, as filterFor finds it.
     if (seen[f.keyword]) continue
     seen[f.keyword] = true
@@ -289,7 +418,7 @@ function rootRows(query, ctx) {
       delete c.score
       c.tier = hits[h].tier
       c.kind = "item"
-      out.push(c)
+      out.push(stepping(c))
     }
   }
   return out
@@ -336,6 +465,34 @@ var provider = {
       maxBytes: 4194304,
       concurrent: true,
       sessionPath: true
+    },
+    // A step's run (Steps above): once. It is never read again, not even
+    // after a failure, while the bar is open, and is forgotten when it
+    // closes (Nodi.qml close); taken again, a step is another (its `at`).
+    // Each on its own reader and never ended by another, for a step may
+    // be doing what it says.
+    "filter-step": {
+      argv: function(param) {
+        var p = JSON.parse(param)
+        var s = p.step
+        var env = ["NODI_QUERY=", "NODI_PICK=" + s.pick, "NODI_INFO=" + s.info, "NODI_DATA=" + s.data, "NODI_STEP=" + s.depth]
+        if (p.format === "rofi") env = env.concat(["ROFI_RETV=" + s.retv, "ROFI_INFO=" + s.info, "ROFI_DATA=" + s.data])
+        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000), "/usr/bin/env"].concat(env, windowEnv(s.window), p.command,
+          p.format === "rofi" && s.depth > 0 ? [s.pick] : [])
+      },
+      parse: function(textOut, ok, param) {
+        var p = JSON.parse(param)
+        if (!ok) throw "it exited with an error or ran past " + p.timeoutMs / 1000 + " s"
+        var f = { keyword: p.keyword, title: p.title, icon: p.icon, list: true }
+        return p.format === "rofi" ? parseRofi(textOut, f) : parseLines(textOut, f)
+      },
+      maxAgeMs: Number.MAX_VALUE,
+      retryMs: Number.MAX_VALUE,
+      keep: true,
+      timeoutMs: 10000,
+      maxBytes: 4194304,
+      concurrent: true,
+      sessionPath: true
     }
   },
   modes: function(settings) {
@@ -357,12 +514,15 @@ var provider = {
     var hit = filterFor(query, ctx.settings)
     if (!hit) return rootRows(query, ctx)
     var f = hit.filter
+    var step = stepOf(f, ctx)
+    if (step) return stepRows(f, hit.query, step, ctx)
     var title = f.title || f.keyword
     var got = ctx.request ? ctx.request(sourceOf(f), paramOf(f, hit.query, ctx)) : { state: "pending" }
     // A read that failed keeps the rows it had, which stay on show
     // (lib/Requests.js settled; Sonnet 2026-10-06).
     if (got.state === "ready" || (got.state === "error" && Array.isArray(got.value))) {
-      var rows = f.list === true ? named(f, got.value, hit.query).map(function(n, i) { return withScore(n.row, 97 - i * 0.01) }) : got.value
+      var rows = f.list === true ? named(f, got.value, hit.query).map(function(n, i) { return stepping(withScore(n.row, 97 - i * 0.01)) })
+        : got.value.map(stepping)
       if (f.list !== true) shown[f.keyword] = got.value
       return rows.length ? rows : [{ title: "Nothing from " + title, subtitle: hit.query ? "for " + hit.query : title, score: 40, copy: "", remember: false }]
     }

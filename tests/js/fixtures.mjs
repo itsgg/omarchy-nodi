@@ -88,7 +88,7 @@ export function requester(data, asked) {
       : name === "ocr" ? data.ocr
       : name === "scripts" ? data.scripts
       : name === "script-output" ? (data.scriptOutput || {})[JSON.parse(param)[1]]
-      : name === "filter" || name === "filter-list" ? (typeof data.filter === "function" ? filtered(data.filter, param) : undefined) : undefined;
+      : name === "filter" || name === "filter-list" || name === "filter-step" ? (typeof data.filter === "function" ? filtered(data.filter, param) : undefined) : undefined;
     if (value && value.failed) return { state: "error", error: value.failed };
     if (data.failed && data.failed[name]) return { state: "error", error: data.failed[name], value };
     return value === undefined || value === null ? { state: "pending" } : { state: "ready", value, error: "", at: 0 };
