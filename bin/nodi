@@ -8,11 +8,14 @@
 #   nodi pick [--json] [--placeholder <text>]
 #                             rows from stdin, a line each; the one chosen is
 #                             printed as it was read
+#   nodi mcp                  the bar as an MCP server on stdin and stdout,
+#                             for another agent (README, "For agents")
 #
 # Exit status: 0 done, 1 nothing was chosen (Escape, or the bar closed),
 # 2 Nodi refused it (an unknown row, a row that asks first, rows it could
-# not read) or the command was misused, 3 Nodi could not be reached (the
-# shell not running, Nodi not loaded, omarchy-shell or jq missing).
+# not read), its function failed, or the command was misused, 3 Nodi could not be reached (the
+# shell not running, Nodi not loaded, omarchy-shell or jq missing), 4 a
+# newer pick took the bar before this one was answered.
 #
 # Everything goes through Omarchy's shell IPC (omarchy-shell): summon opens
 # the bar with a payload, call runs one of Nodi's functions. A pick's rows go
@@ -30,7 +33,7 @@ export PATH
 id=io.github.itsgg.nodi
 ipc=${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-shell
 
-usage() { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
 
 fail() { echo "nodi: $*" >&2; exit 2; }
 # Kept apart from a refusal, so a caller can tell "no" from "not there"
@@ -48,13 +51,15 @@ ask() {
   local out
   out=$("$ipc" shell "$@") || unreachable "the Omarchy shell cannot be reached, or this Nodi is too old for it"
   [ "$out" = unknown ] && unreachable "Nodi is not loaded"
+  # What the shell answers when the function threw (Fable 2026-10-06).
+  [ "$out" = error ] && fail "Nodi failed to answer; the shell's log says why"
   printf '%s' "$out"
 }
 
 open_with() {
   local payload
   payload=$(jq -cn --arg q "$1" '{query: $q}') || fail "could not encode the query"
-  out=$(ask summon "$id" "$payload") || exit 3
+  out=$(ask summon "$id" "$payload") || exit $?
   [ "$out" = ok ] || fail "Nodi did not open ($out)"
 }
 
@@ -70,16 +75,21 @@ pick() {
   done
   runtime=${XDG_RUNTIME_DIR:-/tmp}
   dir=$(mktemp -d "${runtime%/}/nodi-pick.XXXXXXXX") || fail "no directory for the rows"
+  rid=${dir##*.}
   trap 'rm -rf -- "$dir"' EXIT
+  # Ended from outside (`nodi mcp`'s client went away, Ctrl-C under a slow
+  # producer): the directory goes, and the bar is told, so no question
+  # waits there for nobody (Fable 2026-10-06: set this late, a signal
+  # while the rows were read left the directory).
+  trap '"$ipc" shell call "$id" cancelPick "$rid" >/dev/null 2>&1; exit 1' TERM INT HUP
   cat > "$dir/rows" || fail "could not read stdin"
   mkfifo -m 600 "$dir/answer" || fail "no FIFO for the answer"
   # Read and write: opening it so never waits for a writer, and Nodi's
   # write never waits for this reader.
   exec 3<>"$dir/answer"
-  rid=${dir##*.}
   req=$(jq -cn --arg dir "$dir" --arg id "$rid" --arg p "$placeholder" --argjson json "$json" \
     '{dir: $dir, id: $id, placeholder: $p, json: $json}') || fail "could not encode the request"
-  out=$(ask call "$id" pick "$req") || exit 3
+  out=$(ask call "$id" pick "$req") || exit $?
   [ "$out" = ok ] || fail "Nodi refused the pick ($out)"
   reply=""
   while ! IFS= read -r -t 2 reply <&3; do
@@ -97,19 +107,172 @@ pick() {
       sed -n "$((n + 1))p" "$dir/rows"
       exit 0 ;;
     error) fail "Nodi could not read the rows (more than 8 MB, or gone)" ;;
+    replaced) exit 4 ;;
     *) exit 1 ;;
   esac
 }
 
+# ---------------------------------------------------------------- nodi mcp
+
+# The bar as an MCP server (ROADMAP 45, 46): JSON-RPC 2.0, a message a
+# line on stdin and stdout, MCP's stdio transport. Its tools: search the
+# bar's rows, run one (refusing a row that asks, as `nodi run` does),
+# propose one (the bar opens on it; his Enter runs it, Escape refuses), and
+# approve, a permission prompt tool for `claude -p --permission-prompt-tool
+# mcp__nodi__approve`: the bar shows the tool and its input, his Enter
+# allows it. A call that cannot reach the bar is a tool error, never the
+# end of the server.
+
+MCP_TOOLS='[
+ {"name": "search", "description": "Search the Omarchy command bar (Nodi) for rows: apps, open windows, settings and toggles, Omarchy menu actions and commands, keybindings, snippets, files and the rest of what the bar holds. Returns up to 8 rows, best first, each with a key to run or propose it by, what it runs, and whether it asks before running.",
+  "inputSchema": {"type": "object", "properties": {"query": {"type": "string", "description": "What a person would type in the bar"}}, "required": ["query"]},
+  "annotations": {"readOnlyHint": true}},
+ {"name": "run", "description": "Run a row by its key, from search, at once. A row that asks before it runs is refused: propose it instead.",
+  "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+  "annotations": {"readOnlyHint": false}},
+ {"name": "propose", "description": "Show a row, by its key from search, in the bar on the person'"'"'s screen: Enter runs it, Escape refuses. Waits for the answer.",
+  "inputSchema": {"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+  "annotations": {"readOnlyHint": false}},
+ {"name": "approve", "description": "A permission prompt tool for claude -p (--permission-prompt-tool mcp__nodi__approve): shows the tool and its input in the bar; Enter allows it, Escape refuses.",
+  "inputSchema": {"type": "object", "properties": {"tool_name": {"type": "string"}, "input": {"type": "object"}, "tool_use_id": {"type": "string"}}, "required": ["tool_name", "input"]},
+  "annotations": {"readOnlyHint": true}}
+]'
+
+MCP_VERSIONS=" 2024-11-05 2025-03-26 2025-06-18 2025-11-25 "
+MCP_PICK=""
+
+mcp_result() { jq -cn --argjson id "$1" --argjson r "$2" '{jsonrpc: "2.0", id: $id, result: $r}'; }
+mcp_error() { jq -cn --argjson id "$1" --argjson c "$2" --arg m "$3" '{jsonrpc: "2.0", id: $id, error: {code: $c, message: $m}}'; }
+# A tool's answer: its text, and whether it is an error. The text goes in
+# on stdin: an approve's input can pass the 128 KB one argument may hold
+# (Fable 2026-10-06: the reply was lost, after he had allowed it).
+mcp_text() {
+  printf '%s' "$2" | jq -cRs --argjson id "$1" --argjson e "${3:-false}" \
+    '{jsonrpc: "2.0", id: $id, result: {content: [{type: "text", text: .}], isError: $e}}'
+}
+
+# One row in the bar, chosen with Enter or not: exit 0 chosen, 1 not, 4 a
+# newer pick took the bar, 2 or 3 it refused or could not be reached. In
+# the background, so a signal ending the server ends the pick too.
+# Why a call to the bar failed, by ask's exit: 2 its function failed, 3 or
+# else it could not be reached (Fable 2026-10-06).
+mcp_why() { if [ "$1" -eq 2 ]; then echo "Nodi failed to answer; the shell's log says why"; else echo "The bar cannot be reached"; fi; }
+
+mcp_ask() {
+  local s
+  printf '%s\n' "$2" | "$0" pick --json --placeholder "$1" >/dev/null 2>&1 &
+  MCP_PICK=$!
+  wait "$MCP_PICK"; s=$?
+  MCP_PICK=""
+  return $s
+}
+
+mcp_call() {
+  local mid=$1 msg=$2 name key q out info row s
+  # Params of any shape: what is not an object names nothing.
+  name=$(jq -r '((try .params.name catch null) // "") | tostring' <<<"$msg")
+  # A query or a key goes to the shell as one argument, which holds 128 KB:
+  # past 64 KB it is refused here, never sent to fail as an unreachable bar.
+  q=$(jq -r '((try .params.arguments.query catch null) // "") | tostring' <<<"$msg")
+  key=$(jq -r '((try .params.arguments.key catch null) // "") | tostring' <<<"$msg")
+  # Bytes, not characters: 60000 Tamil letters are 180000 bytes (Fable 2026-10-06).
+  if [ "$(LC_ALL=C; echo $(( ${#q} > ${#key} ? ${#q} : ${#key} )))" -gt 65536 ]; then
+    mcp_text "$mid" "Too long: a query or a key is 64 KB at most" true; return
+  fi
+  jq -e '(try .params.arguments catch "bad") | . == null or type == "object"' >/dev/null <<<"$msg" \
+    || { mcp_error "$mid" -32602 "arguments must be an object"; return; }
+  case $name in
+    search)
+      out=$(ask call "$id" search "$q") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+      mcp_text "$mid" "$out" ;;
+    run)
+      out=$(ask call "$id" runFound "$key") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+      if [ "$out" = ok ]; then mcp_text "$mid" "Ran $key"; else mcp_text "$mid" "Not run: $out" true; fi ;;
+    propose)
+      info=$(ask call "$id" describeRow "$key") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+      jq -e . >/dev/null 2>&1 <<<"$info" || { mcp_text "$mid" "Not run: $info" true; return; }
+      # A row that asks for a typed word is never run for an agent: say so
+      # before his Enter, which could not be honoured (Fable 2026-10-06).
+      if [ "$(jq -r '.asks' <<<"$info")" = "a typed word" ]; then
+        mcp_text "$mid" "Not run: it asks for a typed word; open it in the bar" true; return
+      fi
+      row=$(jq -c '{title: ("Run " + (.title | gsub("[[:cntrl:]]"; " "))), subtitle: (.command | gsub("\\s*\\n+\\s*"; " ")),
+                    preview: {title: (.title | gsub("[[:cntrl:]]"; " ")), subtitle: (if .risk != "" then .risk else .subtitle end), markdown: ("```\n" + .command + "\n```")}}' <<<"$info")
+      mcp_ask "An agent asks to run this: Enter runs it, Escape refuses" "$row"; s=$?
+      if [ $s -eq 0 ]; then
+        out=$(ask call "$id" runProposed "$key") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+        if [ "$out" = ok ]; then mcp_text "$mid" "He ran it"; else mcp_text "$mid" "Not run: $out" true; fi
+      elif [ $s -eq 1 ]; then mcp_text "$mid" "He refused it"
+      elif [ $s -eq 4 ]; then mcp_text "$mid" "Not asked: another question took the bar first" true
+      else mcp_text "$mid" "The bar could not ask him" true; fi ;;
+    approve)
+      row=$(jq -c '.params.arguments as $a | ($a.input // {}) as $i
+        | {title: ("Allow " + ($a.tool_name // "a tool" | tostring | gsub("[[:cntrl:]]"; " "))),
+           subtitle: (($i.command // $i.file_path // $i.url // $i.query // ($i | tojson)) | tostring
+                      | gsub("\\s*\\n+\\s*"; " ") | gsub("[[:cntrl:]]"; " ") | .[0:300]),
+           preview: {title: ($a.tool_name // "" | tostring | gsub("[[:cntrl:]]"; " ")), subtitle: "An agent asks to use it",
+                     markdown: ("```json\n" + ($i | tojson) + "\n```")}}' <<<"$msg")
+      mcp_ask "An agent asks to use a tool: Enter allows it, Escape refuses" "$row"; s=$?
+      if [ $s -eq 0 ]; then
+        mcp_text "$mid" "$(jq -c '{behavior: "allow", updatedInput: (.params.arguments.input // {})}' <<<"$msg")"
+      else
+        case $s in
+          1) out="He refused it in the bar." ;;
+          4) out="Another question took the bar first; he was not asked." ;;
+          *) out="The bar could not ask him." ;;
+        esac
+        mcp_text "$mid" "$(jq -cn --arg m "$out" '{behavior: "deny", message: $m}')"
+      fi ;;
+    *) mcp_error "$mid" -32602 "no tool $name" ;;
+  esac
+}
+
+mcp() {
+  local line kind method mid version asked
+  version=$(jq -r '.version // "0"' "$(dirname -- "$(readlink -f -- "$0")")/../manifest.json" 2>/dev/null) || version=0
+  # The client gone (its transport ends the server): a pick it left in the
+  # bar goes too (Fable 2026-10-06).
+  trap '[ -n "$MCP_PICK" ] && kill -TERM "$MCP_PICK" 2>/dev/null; exit 0' TERM INT HUP
+  # A last line without its newline is still read.
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "${line//[[:space:]]/}" ] || continue
+    # "request", "note" (no id: answered by nothing) or "bad" (a batch, a
+    # string), and the method; JSON that does not parse is -32700.
+    if ! kind=$(jq -r 'if type != "object" then "bad" elif has("id") then "request" else "note" end' <<<"$line" 2>/dev/null); then
+      mcp_error null -32700 "parse error"; continue
+    fi
+    [ "$kind" = bad ] && { mcp_error null -32600 "not a request object"; continue; }
+    method=$(jq -r '.method // "" | tostring' <<<"$line")
+    mid=$(jq -c 'if has("id") then .id else null end' <<<"$line")
+    if [ "$kind" = note ]; then continue; fi
+    [ -n "$method" ] || { mcp_error "$mid" -32600 "no method"; continue; }
+    case $method in
+      initialize)
+        # The client's version when it is one this server speaks, else the newest.
+        asked=$(jq -r '.params.protocolVersion // "" | tostring' <<<"$line")
+        case $MCP_VERSIONS in *" $asked "*) ;; *) asked=2025-11-25 ;; esac
+        mcp_result "$mid" "$(jq -cn --arg v "$version" --arg p "$asked" '{protocolVersion: $p,
+          capabilities: {tools: {}}, serverInfo: {name: "nodi", version: $v}}')" ;;
+      ping) mcp_result "$mid" '{}' ;;
+      tools/list) mcp_result "$mid" "$(jq -c '{tools: .}' <<<"$MCP_TOOLS")" ;;
+      tools/call) mcp_call "$mid" "$line" ;;
+      # server/discover (MCP 2026-07-28) among them: the client falls back
+      # to initialize, as Claude Code 2.1.289 does (probed 2026-10-06).
+      *) mcp_error "$mid" -32601 "no method $method" ;;
+    esac
+  done
+}
+
 case ${1-} in
-  "") out=$(ask summon "$id" '{}') || exit 3; [ "$out" = ok ] || fail "Nodi did not open ($out)" ;;
+  "") out=$(ask summon "$id" '{}') || exit $?; [ "$out" = ok ] || fail "Nodi did not open ($out)" ;;
   -h|--help) usage ;;
   --) shift; open_with "$*" ;;
   run)
     [ $# -eq 2 ] || fail "usage: nodi run <key>"
-    out=$(ask call "$id" runRow "$2") || exit 3
+    out=$(ask call "$id" runRow "$2") || exit $?
     [ "$out" = ok ] || fail "$2: $out"
     ;;
   pick) shift; pick "$@" ;;
+  mcp) [ $# -eq 1 ] || fail "usage: nodi mcp"; mcp ;;
   *) open_with "$*" ;;
 esac

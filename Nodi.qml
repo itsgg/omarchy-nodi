@@ -688,31 +688,141 @@ Item {
     return true
   }
 
+  // ---------------------------------------------------------------- nodi mcp
+
+  // Rows another agent found through `nodi mcp` (bin/nodi, ROADMAP 45), by
+  // key, with when: a run names one no hotkey or history holds, for ten
+  // minutes, the last 64.
+  property var foundRows: ({})
+  property var foundOrder: []
+  readonly property int foundMs: 10 * 60 * 1000
+
+  function foundRow(key) {
+    var f = root.foundRows[String(key || "")]
+    return f && Date.now() - f.at < root.foundMs ? f.row : null
+  }
+
+  // `nodi mcp`'s search: the rows as JSON, each kept for a run.
+  function search(query) {
+    var rows = root.agentRows(query)
+    var found = {}
+    var order = root.foundOrder.slice()
+    var now = Date.now()
+    for (var k in root.foundRows) found[k] = root.foundRows[k]
+    for (var i = 0; i < rows.length; i++) {
+      if (!found[rows[i].key]) order.push(rows[i].key)
+      found[rows[i].key] = { row: rows[i], at: now }
+    }
+    while (order.length > 64) delete found[order.shift()]
+    root.foundRows = found
+    root.foundOrder = order
+    return JSON.stringify(rows.map(function(r) {
+      var d = root.agentData(r)
+      d.command = root.oneLine(Run.describe(r.run))
+      if (r.risk) d.risk = r.risk
+      return d
+    }))
+  }
+
+  // What a run does, said on one line: a copy keeps its text, a script its
+  // arguments (Fable 2026-10-06: the first line alone lost both).
+  function oneLine(text) {
+    var t = String(text || "").replace(/\s*\n+\s*/g, " ").trim()
+    return t.length > 300 ? t.slice(0, 297) + "..." : t
+  }
+
+  // What a key runs: { s: its snapshot, remember }, or null. With `agent`,
+  // a row `nodi mcp`'s search found runs as found, the fresher of the two,
+  // a moment's row (a kill) included, as Claude's run would, and is
+  // remembered only if its provider says so; else the saved row, as its
+  // provider gives it now (lib/Engine.js resolve), never a moment's.
+  function keySnapshot(k, agent) {
+    var found = agent ? root.foundRow(k) : null
+    if (found) return { s: History.snapshot(found), remember: !!found.remember }
+    var saved = Prefs.snapshotFor(root.prefs, k, root.history)
+    var live = saved ? Engine.resolve(k, saved, root.config, root.services()) : null
+    var s = live ? History.snapshot(live) : saved
+    return History.replayable(s) ? { s: s, remember: true } : null
+  }
+
+  // Rows `nodi mcp` showed him to propose, by key, kept until his Enter
+  // runs one, so what runs is what he saw however late he answers (Fable
+  // 2026-10-06); the last eight.
+  property var shownRows: ({})
+  property var shownOrder: []
+
+  // What a row is, for `nodi mcp` to show before it is run: JSON, or
+  // "unknown row".
+  function describeRow(key) {
+    var k = String(key || "")
+    var a = root.keySnapshot(k, true)
+    if (!a || !a.s || !a.s.run) return "unknown row"
+    // One that asks for a typed word is never run for an agent, so it is
+    // not kept for a run (bin/nodi refuses it before asking him).
+    if (!a.s.confirmWord) root.shownRows[k] = a
+    root.shownOrder = root.shownOrder.filter(function(x) { return x !== k }).concat([k])
+    while (root.shownOrder.length > 8) delete root.shownRows[root.shownOrder.shift()]
+    var s = a.s
+    return JSON.stringify({ key: k, title: String(s.title || ""), subtitle: String(s.subtitle || ""), command: Run.describe(s.run),
+                            risk: String(s.risk || ""), asks: s.confirmWord ? "a typed word" : s.confirm ? "a second Enter" : "" })
+  }
+
+  // `nodi mcp`'s run: a row its search found, else a saved one; a row that
+  // asks first is refused.
+  function runFound(key) { return root.runKey(key, false, true) }
+
+  // A row an agent proposed and he chose with Enter (`nodi mcp` propose):
+  // that Enter is the row's second one, so a row that asks runs; one that
+  // asks for a typed word still does not.
+  function runProposed(key) { return root.runKey(key, true, true) }
+
+  // A pick whose asker went away (`nodi mcp`'s client closed): ended, and
+  // the bar with it, only if it is still the open one.
+  function cancelPick(id) {
+    if (picks.alive(id) !== "yes") return "ok"
+    root.endPick("cancel")
+    if (root.opened) root.dismiss()
+    return "ok"
+  }
+
   // A row by its key, from a hotkey or a deeplink: `omarchy-shell shell call
   // io.github.itsgg.nodi runRow '<key>'` (lib/Hotkey.js deeplink). It runs
-  // what the row ran when the hotkey or the link was set.
-  function runRow(key) {
+  // what the row ran when the hotkey or the link was set, never what an
+  // agent's search found (Fable 2026-10-06: a hotkey ran an agent's stale
+  // copy for ten minutes).
+  function runRow(key) { return root.runKey(key, false, false) }
+
+  // A proposed row runs as it was shown (shownRows). Over IPC it takes one
+  // argument, so neither flag can be set from there.
+  function runKey(key, confirmed, agent) {
     // The window focused at the press, as a provider resolving the row sees
     // it, not the one of the bar's last open (Fable 2026-10-05).
     root.noteWindow()
-    var saved = Prefs.snapshotFor(root.prefs, String(key || ""), root.history)
-    // The row as its provider gives it now, when it can (lib/Engine.js resolve).
-    var live = saved ? Engine.resolve(String(key), saved, root.config, root.services()) : null
-    var s = live ? History.snapshot(live) : saved
-    // A moment's row (a kill by pid) is never run again (lib/History.js).
-    var replayable = History.replayable(s)
-    var argv = replayable ? Run.command(s.run, root.appAction, String(s.title || "")) : null
+    var k = String(key || "")
+    var proposed = confirmed === true && agent === true
+    // A proposed row runs only as it was shown; none kept (evicted, or the
+    // shell reloaded since) is no row (Fable 2026-10-06).
+    if (proposed && !root.shownRows[k]) return "unknown row"
+    var a = proposed ? root.shownRows[k] : root.keySnapshot(k, agent === true)
+    if (proposed) {
+      delete root.shownRows[k]
+      root.shownOrder = root.shownOrder.filter(function(x) { return x !== k })
+    }
+    var s = a ? a.s : null
+    var remember = a ? a.remember : false
+    var argv = s ? Run.command(s.run, root.appAction, String(s.title || "")) : null
     if (!argv) return "unknown row"
     // A row that asks before it runs is run from the bar only: `nodi run`
     // names any remembered row, where a hotkey or a link is never given one.
-    if (s.confirm) return "it asks before it runs; open it in the bar"
+    if (s.confirmWord) return "it asks for a typed word; open it in the bar"
+    if (s.confirm && confirmed !== true) return "it asks before it runs; open it in the bar"
     // The bar is not open: what is focused now is what a launch replaces,
     // not what was focused when the bar last opened (codex 2026-10-04).
     if (s.run.kind === "app") launchFeedback.opened()
     if (s.undoable && s.run.kind === "exec") undoer.run(argv, s.title)
     else Quickshell.execDetached(argv)
     if (s.run.kind === "app") launchFeedback.begin(s.title)
-    root.remember(String(key), "", s)
+    if (remember) root.remember(k, "", s)
     if (s.toggle) { root.toggleStates = Toggles.flipped(root.toggleStates, s.toggle); toggleReprobe.restart() }
     return "ok"
   }
@@ -1232,24 +1342,29 @@ Item {
   // only rows its search returned, and a new question starts it afresh.
   property var askRows: ({})
 
-  // Claude's search: the bar's ranking for the query, eight rows at most,
-  // as data; a row that asks says how. Nodi's own rows (an undo, which
-  // Enter takes through the Undoer) are not Claude's (Fable 2026-10-06).
-  function askSearch(q) {
+  // The bar's ranking for a query, for an agent (Claude's search here,
+  // `nodi mcp`'s): eight rows at most that run something. Nodi's own rows
+  // (an undo, which Enter takes through the Undoer) are not an agent's
+  // (Fable 2026-10-06).
+  function agentRows(q) {
     var rows = Engine.run(String(q || ""), root.config, root.services()).filter(function(r) { return !!r.run && !r.help && !r.nodi })
-    var kept = {}
-    var out = []
-    for (var i = 0; i < rows.length && out.length < 8; i++) {
-      var r = rows[i]
-      kept[r.key] = r
-      out.push({ key: r.key, title: r.title, subtitle: r.subtitle, kind: r.kind,
-                 asks: r.confirmWord ? "a typed word" : r.confirm ? "a second Enter" : "" })
-    }
+    return rows.slice(0, 8)
+  }
+
+  // A row as an agent reads it; a row that asks says how.
+  function agentData(r) {
+    return { key: r.key, title: r.title, subtitle: r.subtitle, kind: r.kind,
+             asks: r.confirmWord ? "a typed word" : r.confirm ? "a second Enter" : "" }
+  }
+
+  // Claude's search: as data, its rows kept for its run.
+  function askSearch(q) {
+    var rows = root.agentRows(q)
     var all = {}
     for (var k in root.askRows) all[k] = root.askRows[k]
-    for (var k2 in kept) all[k2] = kept[k2]
+    for (var i = 0; i < rows.length; i++) all[rows[i].key] = rows[i]
     root.askRows = all
-    return out
+    return rows.map(root.agentData)
   }
 
   // Why Claude may not run a key, "" when it may: asked before a run is

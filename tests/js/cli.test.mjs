@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawnSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +22,10 @@ case "$2" in
   summon) echo ok ;;
   call)
     case "$4" in
-      runRow) echo "$FAKE_RUNROW" ;;
+      runRow|runFound) echo "$FAKE_RUNROW" ;;
+      runProposed) echo "\${FAKE_RUNPROPOSED:-ok}" ;;
+      search) printf '%s\\n' "\${FAKE_SEARCH:-[]}" ;;
+      describeRow) printf '%s\\n' "\${FAKE_DESCRIBE:-unknown row}" ;;
       pickAlive) echo "$FAKE_ALIVE" ;;
       pick)
         dir=$(printf '%s' "$5" | /usr/bin/jq -r .dir)
@@ -48,8 +51,9 @@ function setup() {
 
 function nodi(t, args, opts = {}) {
   const env = {
-    OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"),
-    FAKE_PICK: opts.pick || "cancel", FAKE_ALIVE: opts.alive || "yes", FAKE_RUNROW: opts.runRow || "ok", FAKE_DOWN: opts.down ? "1" : "0"
+    OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"), LANG: "C.UTF-8",
+    FAKE_PICK: opts.pick || "cancel", FAKE_ALIVE: opts.alive || "yes", FAKE_RUNROW: opts.runRow || "ok", FAKE_DOWN: opts.down ? "1" : "0",
+    FAKE_SEARCH: opts.search || "[]", FAKE_DESCRIBE: opts.describe || "unknown row", FAKE_RUNPROPOSED: opts.runProposed || "ok"
   };
   const r = spawnSync(NODI, args, { env, input: opts.input || "", timeout: 15000 });
   return { status: r.status, out: r.stdout.toString(), err: r.stderr.toString(), log: (() => { try { return readFileSync(join(t, "log"), "utf8") } catch (e) { return "" } })() };
@@ -134,5 +138,156 @@ test("a bar that closes without answering ends the wait; a shell that is down is
     r = nodi(t, ["pick", "--bogus"], { input: "a\n" });
     assert.equal(r.status, 2);
     assert.match(r.err, /unknown option/);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+// nodi mcp (ROADMAP 45, 46): JSON-RPC a line each way.
+function mcp(t, messages, opts = {}) {
+  writeFileSync(join(t, "log"), "");
+  const input = messages.map(m => typeof m === "string" ? m : JSON.stringify(m)).join("\n") + "\n";
+  const r = nodi(t, ["mcp"], { ...opts, input });
+  const replies = r.out.split("\n").filter(Boolean).map(l => JSON.parse(l));
+  return { ...r, replies, byId: Object.fromEntries(replies.filter(x => x.id !== null).map(x => [x.id, x])) };
+}
+const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+const text = reply => reply.result.content[0].text;
+
+test("nodi mcp: the handshake, the tools, and what it does not know", () => {
+  const t = setup();
+  try {
+    const r = mcp(t, [{ jsonrpc: "2.0", id: 1, method: "server/discover", params: {} },
+                      { jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {} } },
+                      { jsonrpc: "2.0", method: "notifications/initialized" },
+                      { jsonrpc: "2.0", id: 3, method: "tools/list" },
+                      { jsonrpc: "2.0", id: 4, method: "ping" },
+                      "not json",
+                      call(5, "nope", {})]);
+    assert.equal(r.status, 0);
+    assert.equal(r.byId[1].error.code, -32601, "server/discover: method not found, so the client falls back to initialize");
+    assert.equal(r.byId[2].result.protocolVersion, "2025-11-25");
+    assert.equal(r.byId[2].result.serverInfo.name, "nodi");
+    assert.deepEqual(r.byId[3].result.tools.map(x => x.name), ["search", "run", "propose", "approve"]);
+    assert.deepEqual(r.byId[4].result, {});
+    assert.equal(r.replies.find(x => x.id === null).error.code, -32700);
+    assert.equal(r.byId[5].error.code, -32602);
+    assert.equal(r.replies.length, 7 - 1, "a notification gets no reply");
+    const e = mcp(t, [{ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "1999-01-01" } },
+                      [{ jsonrpc: "2.0", id: 2, method: "ping" }], "\"text\"",
+                      { jsonrpc: "2.0", id: 3 },
+                      { jsonrpc: "2.0", method: "tools/call", params: { name: "run", arguments: { key: "x" } } }]
+                     .map(m => typeof m === "string" ? m : JSON.stringify(m)).concat([JSON.stringify({ jsonrpc: "2.0", id: 4, method: "ping" })]));
+    assert.equal(e.byId[1].result.protocolVersion, "2025-11-25", "a version it does not speak: the newest it does");
+    assert.deepEqual(e.replies.filter(x => x.id === null).map(x => x.error.code), [-32600, -32600], "a batch and a string are no requests");
+    assert.equal(e.byId[3].error.code, -32600, "an id and no method");
+    assert.doesNotMatch(e.log, /runRow/, "a tools/call without an id is a notification: not run");
+    assert.deepEqual(e.byId[4].result, {});
+    const ids = mcp(t, [{ jsonrpc: "2.0", id: false, method: "ping" }, { jsonrpc: "2.0", id: null, method: "nope" }]);
+    assert.deepEqual(ids.replies.map(x => [x.id, x.error ? x.error.code : "ok"]), [[false, "ok"], [null, -32601]], "ids as given (Fable 2026-10-06)");
+    const last = nodi(t, ["mcp"], { input: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "ping" }) });
+    assert.equal(JSON.parse(last.out).id, 9, "a last line without its newline is read");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp: search and run go to the bar; a refusal and an unreachable bar are tool errors, the server goes on", () => {
+  const t = setup();
+  try {
+    const rows = JSON.stringify([{ key: "menu:system.lock", title: "Lock", subtitle: "System", kind: "action", asks: "", command: "omarchy-lock-screen" }]);
+    let r = mcp(t, [call(1, "search", { query: "lock" }), call(2, "run", { key: "menu:system.lock" })], { search: rows });
+    assert.equal(text(r.byId[1]), rows);
+    assert.equal(text(r.byId[2]), "Ran menu:system.lock");
+    assert.match(r.log, /call io\.github\.itsgg\.nodi search lock\n/);
+    assert.match(r.log, /call io\.github\.itsgg\.nodi runFound menu:system\.lock\n/, "an agent's run may name a row its search found, a hotkey's may not");
+    r = mcp(t, [call(1, "run", { key: "menu:system.reboot" })], { runRow: "it asks before it runs; open it in the bar" });
+    assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Not run: it asks before it runs; open it in the bar", true]);
+    r = mcp(t, [call(1, "search", { query: "x" })], { search: "error" });
+    assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Nodi failed to answer; the shell's log says why", true],
+                     "the shell's answer when the function threw: a failure, not an unreachable bar (Fable 2026-10-06)");
+    assert.equal(nodi(t, ["run", "x"], { runRow: "error" }).status, 2, "nodi run too");
+    r = mcp(t, [call(1, "search", { query: "q".repeat(70000) })]);
+    assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Too long: a query or a key is 64 KB at most", true]);
+    r = mcp(t, [call(1, "search", { query: "த".repeat(30000) })]);
+    assert.equal(text(r.byId[1]), "Too long: a query or a key is 64 KB at most", "90000 bytes in 30000 letters (Fable 2026-10-06)");
+    r = mcp(t, [call(1, "search", { query: "த".repeat(20000) })]);
+    assert.equal(r.byId[1].result.isError, false, "60000 bytes go");
+    const longKey = "history:https://example.com/" + "a".repeat(5000);
+    r = mcp(t, [call(1, "run", { key: longKey })]);
+    assert.equal(text(r.byId[1]), "Ran " + longKey, "a long key a search returned still runs (Fable 2026-10-06)");
+    r = mcp(t, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: "str" }]);
+    assert.deepEqual([r.byId[1].error.code, r.err], [-32602, ""], "params of another shape: no tool, and nothing on stderr");
+    r = mcp(t, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "approve", arguments: "x" } }]);
+    assert.deepEqual([r.byId[1].error.code, r.err], [-32602, ""], "arguments of another shape");
+    assert.doesNotMatch(r.log, / search /, "never sent to the shell");
+    r = mcp(t, [call(1, "search", { query: "x" }), { jsonrpc: "2.0", id: 2, method: "ping" }], { down: true });
+    assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["The bar cannot be reached", true]);
+    assert.deepEqual(r.byId[2].result, {}, "still answering");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp: propose shows the row with its command; his Enter runs it, Escape does not", () => {
+  const t = setup();
+  try {
+    const describe = JSON.stringify({ key: "menu:system.reboot", title: "Reboot", subtitle: "System", command: "omarchy-cmd-reboot", risk: "Restarts the computer", asks: "a second Enter" });
+    let r = mcp(t, [call(1, "propose", { key: "menu:system.reboot" })], { describe, pick: "pick 0" });
+    assert.equal(text(r.byId[1]), "He ran it");
+    assert.match(r.log, /call io\.github\.itsgg\.nodi runProposed menu:system\.reboot\n/);
+    const shown = JSON.parse(readFileSync(join(t, "log.rows"), "utf8"));
+    assert.deepEqual([shown.title, shown.subtitle, shown.preview.subtitle], ["Run Reboot", "omarchy-cmd-reboot", "Restarts the computer"]);
+    assert.match(readFileSync(join(t, "log.req"), "utf8"), /An agent asks to run this/);
+    r = mcp(t, [call(1, "propose", { key: "menu:system.reboot" })], { describe, pick: "cancel" });
+    assert.equal(text(r.byId[1]), "He refused it");
+    assert.doesNotMatch(r.log, /runProposed/);
+    r = mcp(t, [call(1, "propose", { key: "k" })], { pick: "cancel",
+              describe: JSON.stringify({ key: "k", title: "Two\nlines", subtitle: "", command: "a\n\n$1 = 'x'", risk: "", asks: "" }) });
+    const two = JSON.parse(readFileSync(join(t, "log.rows"), "utf8"));
+    assert.deepEqual([two.title, two.subtitle], ["Run Two lines", "a $1 = 'x'"], "one line each, the pick's JSON intact");
+    r = mcp(t, [call(1, "propose", { key: "k" })], { pick: "pick 0",
+              describe: JSON.stringify({ key: "k", title: "Erase", subtitle: "", command: "x", risk: "", asks: "a typed word" }) });
+    assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Not run: it asks for a typed word; open it in the bar", true]);
+    assert.doesNotMatch(r.log, / pick | runProposed /, "not asked: his yes could not be honoured (Fable 2026-10-06)");
+    r = mcp(t, [call(1, "propose", { key: "made:up" })]);
+    assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Not run: unknown row", true]);
+    assert.doesNotMatch(r.log, / pick /, "nothing shown for a row the bar does not know");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp: approve answers Claude Code's permission prompt tool as it reads it (probed 2026-10-06)", () => {
+  const t = setup();
+  try {
+    const args = { tool_name: "Bash", input: { command: "touch /tmp/x", description: "make x" }, tool_use_id: "toolu_1" };
+    let r = mcp(t, [call(1, "approve", args)], { pick: "pick 0" });
+    assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "allow", updatedInput: args.input });
+    const shown = JSON.parse(readFileSync(join(t, "log.rows"), "utf8"));
+    assert.deepEqual([shown.title, shown.subtitle], ["Allow Bash", "touch /tmp/x"]);
+    r = mcp(t, [call(1, "approve", args)], { pick: "cancel" });
+    assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "deny", message: "He refused it in the bar." });
+    r = mcp(t, [call(1, "approve", { tool_name: "Bash", input: { command: "cd x &&\n  make\tall" } })], { pick: "cancel" });
+    assert.equal(JSON.parse(readFileSync(join(t, "log.rows"), "utf8")).subtitle, "cd x && make all", "one line (Fable 2026-10-06)");
+    r = mcp(t, [call(1, "approve", { tool_name: "Write", input: { file_path: "/tmp/y", content: "z" } })], { pick: "cancel" });
+    assert.equal(JSON.parse(readFileSync(join(t, "log.rows"), "utf8")).subtitle, "/tmp/y", "what the tool acts on");
+    const big = { tool_name: "Write", input: { file_path: "/tmp/big", content: "x".repeat(300000) } };
+    r = mcp(t, [call(1, "approve", big)], { pick: "pick 0" });
+    assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "allow", updatedInput: big.input }, "past the 128 KB of one argument (Fable 2026-10-06)");
+    r = mcp(t, [call(1, "approve", args), call(2, "propose", { key: "k" })], { pick: "replaced",
+              describe: JSON.stringify({ key: "k", title: "K", subtitle: "", command: "k", risk: "", asks: "" }) });
+    assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "deny", message: "Another question took the bar first; he was not asked." },
+                     "a newer pick is no refusal of his");
+    assert.deepEqual([text(r.byId[2]), r.byId[2].result.isError], ["Not asked: another question took the bar first", true]);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp: ended while a question waits in the bar, it takes the question away", async () => {
+  const t = setup();
+  try {
+    const env = { OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"), FAKE_PICK: "none",
+                  FAKE_ALIVE: "yes", FAKE_RUNROW: "ok", FAKE_DOWN: "0" };
+    const p = spawn(NODI, ["mcp"], { env });
+    p.stdin.write(JSON.stringify(call(1, "approve", { tool_name: "Bash", input: { command: "true" } })) + "\n");
+    await new Promise(r => setTimeout(r, 1500));
+    p.kill("SIGTERM");
+    await new Promise(r => p.on("exit", r));
+    await new Promise(r => setTimeout(r, 500));
+    const log = readFileSync(join(t, "log"), "utf8");
+    const id = JSON.parse(readFileSync(join(t, "log.req"), "utf8")).id;
+    assert.match(log, new RegExp("call io\\.github\\.itsgg\\.nodi cancelPick " + id + "\\n"), "the bar is told (Fable 2026-10-06)");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });

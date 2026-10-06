@@ -326,8 +326,26 @@ baseline query loses rank.
 45. **`nodi mcp`**, the bar as an MCP server: `search`, `run` (refusing
     rows that ask, as `nodi run` does) and `propose` (the bar opens on the
     row armed and returns Enter or Escape). E 3.
+    Done 2026-10-06: bin/nodi `mcp`, JSON-RPC a line each way in bash and
+    jq; the bar answers `search` (its rows for agents, the same Claude's
+    Ask gets) and keeps the keys found, so `run` and `propose` can name
+    them; `propose` shows the row through `nodi pick` and runs it on his
+    Enter, a row that asks included (that Enter is its second). Claude
+    Code 2.1.289 first sends MCP 2026-07-28's `server/discover`; Nodi says
+    it has no such method and Claude Code falls back to `initialize`
+    (probed). End to end with real Claude Code and a stand-in shell: it
+    searched, and its Bash call went through `approve`. Fable's review
+    (FIX FIRST) found a reply lost past 128 KB of input, rows a search
+    listed and a run refused, and a pick left in the bar when the client
+    went away; all fixed with tests.
 46. **Approval for headless agents**: a permission prompt tool in `nodi
     mcp` for `claude -p` runs. E 6.
+    Done 2026-10-06: `approve` takes Claude Code's `{tool_name, input,
+    tool_use_id}`, shows the tool and what it acts on in the bar, and
+    answers `{"behavior": "allow", "updatedInput": ...}` on Enter, else
+    `{"behavior": "deny", "message": ...}`; both shapes probed with Claude
+    Code 2.1.289 (a write allowed ran, a denied one is listed in
+    permission_denials). A read-only shell command never asks.
 47. **The selection as context**: `{selection}` in keywords and snippets,
     rows on a fresh selection (fix spelling, rewrite, translate, change
     case, search), the result pasted over it. Item 19's "Wayland gives no
