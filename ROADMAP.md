@@ -548,6 +548,13 @@ baseline query loses rank.
     them, 30 files in 2 s, never "in 2 weeks", a date; `find img|doc|
     video|audio|dir` and `f img` one kind.
 65. **Packages and a dictionary.** L 20.
+    Done 2026-10-06: `pkg <name>` lists pacman's repositories and then the
+    AUR (yay), installed ones marked, Enter installing in Omarchy's
+    terminal as its installers do (omarchy-pkg-add, -aur-add), an
+    installed one's page on Enter and its removal in Ctrl+K after a second
+    Enter; `define <word>` from Wiktionary's REST API (dictionaryapi.dev
+    timed out or had none for common words), English first, then any
+    language that has the word, a sense a row, Enter copying it.
 66. **A file chooser jump**: over a Save dialog, folders lead and Enter
     types the path in. L 18.
 67. **Calendar**: the next meeting first, Enter joins; from an ICS link in

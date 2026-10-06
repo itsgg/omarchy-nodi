@@ -85,6 +85,9 @@ export function requester(data, asked) {
       : name === "bookmarks" ? data.bookmarks
       : name === "prs" ? data.prs
       : name === "clipboard-text" ? data.clipboardText
+      : name === "pkg-repo" ? data.pkgRepo
+      : name === "pkg-aur" ? data.pkgAur
+      : name === "define" ? data.define
       : name === "suggest" ? data.suggest
       : name === "plugins" ? data.plugins
       : name === "agent-usage" ? data.agentUsage
