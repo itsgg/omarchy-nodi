@@ -9,7 +9,7 @@
   "emoji": { "onEnter": "paste" },
   "time": { "zones": ["UTC", "America/New_York", "Europe/London"], "clock24": true },
   "clipboard": { "limit": 30 },
-  "files": { "limit": 30 },
+  "files": { "limit": 30, "root": true, "contents": ["~/Work", "~/Documents"] },
   "snippets": [],
   "scripts": { "dirs": ["~/.config/omarchy/nodi/scripts"] },
   "filters": [],

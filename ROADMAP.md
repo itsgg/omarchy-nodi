@@ -540,6 +540,13 @@ baseline query loses rank.
     first; each keystroke ends the read before it.
 64. **Files**: names in root search, contents under `in`, type filters.
     L 16, Q 12.
+    Done 2026-10-06: from the third letter of any search, fd under home by
+    the longest word, each name holding every word, three at most, under
+    any app named as well, the web's searches staying under them (off
+    with `"root": false`); `in <words>` by ripgrep in the folders under
+    `"contents"` (~/Work and ~/Documents), the first line that holds
+    them, 30 files in 2 s, never "in 2 weeks", a date; `find img|doc|
+    video|audio|dir` and `f img` one kind.
 65. **Packages and a dictionary.** L 20.
 66. **A file chooser jump**: over a Save dialog, folders lead and Enter
     types the path in. L 18.
