@@ -28,6 +28,10 @@ export const intended = [
   ["logout", "menu:system.logout", "name"],
   ["hibernate", "menu:system.hibernate", "name"],
   ["susp", "menu:system.suspend", "prefix"],
+  // The installer gate's own word, and the start of it (2026-10-06).
+  ["install", "menu:install", "name"],
+  ["instal", "menu:install", "prefix"],
+  ["uninstall", "menu:remove", "synonym"],
   ["suspend", "menu:system.suspend", "name"],
   ["screensh", "menu:trigger.capture.screenshot", "prefix"],
   ["screenshot", "menu:trigger.capture.screenshot", "name"],

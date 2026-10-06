@@ -98,7 +98,15 @@ test("installers answer only when asked", () => {
   const z = top("install zed", withMenu());
   assert.equal(z.title, "Zed"); assert.equal(z.subtitle, "Install > Editor");
   assert.equal(top("remove zed", withMenu()).subtitle, "Remove > Editor");
-  assert.equal(run("install", withMenu()).filter(r => r.provider === "menu").length, 0);
+  // The word alone: its submenu first, then what is in it (2026-10-06:
+  // it answered nothing but the web's searches); the submenu by the start
+  // of its name too.
+  const alone = run("install", withMenu()).filter(r => r.provider === "menu");
+  assert.equal(alone[0].key, "menu:install");
+  assert.ok(alone.length > 1 && alone.slice(1).every(r => r.subtitle.startsWith("Install")), alone.map(r => r.subtitle).join());
+  assert.equal(run("instal", withMenu()).find(r => r.provider === "menu").key, "menu:install");
+  assert.equal(run("uninstall", withMenu()).find(r => r.provider === "menu").key, "menu:remove", "uninstall is Remove's word");
+  assert.ok(!run("inst", withMenu()).some(r => r.title === "Zed"), "the submenu answers, its installers do not");
   // Each word sees only its own tree, the package-free installers included.
   const where = q => run(q, withMenu()).filter(r => r.provider === "menu").map(r => r.subtitle);
   assert.ok(where("install web").length > 0 && where("install web").every(s => s.startsWith("Install")), where("install web").join());
