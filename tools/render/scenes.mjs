@@ -152,6 +152,10 @@ const scenes = [
   scene("01-home", "", { history }),
   scene("45-calendar-home", "", { history, calendar }, null, withCalendar),
   scene("46-calendar-list", "cal ", { calendar }, () => ({ selectedIndex: 0 }), withCalendar),
+  // Opened over a Save dialog (ROADMAP 66): folders first, Enter typing one in.
+  scene("47-file-dialog", "", { history, window: { address: "0x5a1", "class": "xdg-desktop-portal-gtk", title: "Save File", floating: true },
+    chooserFolders: [["recent", "Downloads"], ["recent", "Work/kalvi/docs"], ["z", "Learn"], ["z", "Work/GG/nodi"], ["bookmark", "Projects"],
+                     ["xdg", "Documents"], ["xdg", "Pictures"]].map(([kind, p]) => ({ kind, path: "/home/u/" + p })) }),
   scene("02-sum", "2+2"),
   scene("03-currency", "100 usd to eur"),
   scene("04-windows-and-app", "brave", { windows }),

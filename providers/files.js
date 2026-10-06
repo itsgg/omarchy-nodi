@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "chooser.js" as Chooser
 .import "../lib/Match.js" as Match
 .import "../lib/Sources.js" as Sources
 .import "../lib/Score.js" as Score
@@ -171,6 +172,8 @@ function fileRow(path, name, isDir, score, home) {
   }
   if (!isDir) row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
   if (isDir) row.complete = tilde(path, home).replace(/\/?$/, "/")
+  // A folder's, which over a file dialog types it in (providers/chooser.js).
+  if (isDir) row.folder = path.length > 1 ? path.replace(/\/+$/, "") : path
   return row
 }
 
@@ -213,7 +216,11 @@ function pathRows(typed, ctx, home) {
 
   var out = []
   var base = dir === "/" ? "" : dir
-  if (!prefix) out.push(fileRow(dir, "Open " + tilde(dir, home), true, 98, home))
+  if (!prefix) {
+    var self = fileRow(dir, "Open " + tilde(dir, home), true, 98, home)
+    self.folderSelf = true
+    out.push(self)
+  }
   var entries = listing.entries || []
   for (var i = 0; i < entries.length && out.length < LIMIT; i++) {
     var e = entries[i]
@@ -277,6 +284,37 @@ function contentRows(q, ctx, home) {
     row.remember = false
     return row
   })
+}
+
+// What the files provider answers, before a file dialog turns its folders.
+function filesFor(query, ctx) {
+  var home = String(ctx.home || "")
+  var raw = String(query).trim()
+  var found = String(query).match(/^\s*find\s+(.*)$/i)
+  if (found && home) return foundRows(found[1].trim(), ctx, home)
+  var inside = String(query).match(/^\s*in\s+(?=\S)(?![\d+\-]|\.\d)(.*)$/i)
+  if (inside && home) return contentRows(inside[1].trim(), ctx, home)
+  var m = String(query).match(/^\s*(?:(?:f|file)\s+(.*)|recent(?:\s+(.*))?)$/i)
+  if (m) return recentRows((m[1] || m[2] || "").trim().toLowerCase(), ctx, home)
+  if (/^(~\/|~$|\/)/.test(raw) && home) return pathRows(raw === "~" ? "~/" : String(query).replace(/^\s+/, ""), ctx, home)
+  // A recent file's whole name at root ("notes.org", "main.cc"): the most
+  // recent such file, as a thing named exactly, so a name that is also a
+  // site's opens the file (Fable 2026-10-06).
+  if (/^[^\/]+\.[^\s\/.]+$/.test(raw)) {
+    var files = Array.isArray(ctx.files) ? ctx.files : []
+    var want = Match.folded(raw)
+    for (var i = 0; i < files.length; i++) {
+      var f = files[i]
+      var name = f && f.path ? (f.name || f.path.split("/").pop()) : ""
+      if (name && Match.folded(name) === want) {
+        var row = fileRow(f.path, name, false, undefined, home)
+        row.tier = "exact"
+        row.kind = "item"
+        return [row]
+      }
+    }
+  }
+  return rootRows(raw, ctx, home)
 }
 
 var provider = {
@@ -379,32 +417,9 @@ var provider = {
                  { q: "~/", note: "Your home folder; Tab goes into a folder" }] }
   ],
   match: function(query, ctx) {
-    var home = String(ctx.home || "")
-    var raw = String(query).trim()
-    var found = String(query).match(/^\s*find\s+(.*)$/i)
-    if (found && home) return foundRows(found[1].trim(), ctx, home)
-    var inside = String(query).match(/^\s*in\s+(?=\S)(?![\d+\-]|\.\d)(.*)$/i)
-    if (inside && home) return contentRows(inside[1].trim(), ctx, home)
-    var m = String(query).match(/^\s*(?:(?:f|file)\s+(.*)|recent(?:\s+(.*))?)$/i)
-    if (m) return recentRows((m[1] || m[2] || "").trim().toLowerCase(), ctx, home)
-    if (/^(~\/|~$|\/)/.test(raw) && home) return pathRows(raw === "~" ? "~/" : String(query).replace(/^\s+/, ""), ctx, home)
-    // A recent file's whole name at root ("notes.org", "main.cc"): the most
-    // recent such file, as a thing named exactly, so a name that is also a
-    // site's opens the file (Fable 2026-10-06).
-    if (/^[^\/]+\.[^\s\/.]+$/.test(raw)) {
-      var files = Array.isArray(ctx.files) ? ctx.files : []
-      var want = Match.folded(raw)
-      for (var i = 0; i < files.length; i++) {
-        var f = files[i]
-        var name = f && f.path ? (f.name || f.path.split("/").pop()) : ""
-        if (name && Match.folded(name) === want) {
-          var row = fileRow(f.path, name, false, undefined, home)
-          row.tier = "exact"
-          row.kind = "item"
-          return [row]
-        }
-      }
-    }
-    return rootRows(raw, ctx, home)
+    var rows = filesFor(query, ctx)
+    // Over a file dialog, a folder types itself in (ROADMAP 66).
+    var d = Chooser.dialogOf(ctx.window)
+    return d ? Chooser.over(d, query, rows, ctx) : rows
   }
 }

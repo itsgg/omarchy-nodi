@@ -557,6 +557,13 @@ baseline query loses rank.
     language that has the word, a sense a row, Enter copying it.
 66. **A file chooser jump**: over a Save dialog, folders lead and Enter
     types the path in. L 18.
+    Done 2026-10-06: over the portal's file dialog, or a floating window
+    titled as one, the empty bar leads with the folders of recent files
+    (recently-used.xbel), zoxide's, GTK bookmarks and XDG folders, and a
+    search's folders (these and fd's, a path's listing) type themselves
+    in: Home, then the path, which in GTK 3's dialog (the portal's) goes
+    in front of a Save's suggested name and opens an Open's location bar,
+    tried on Xvfb with XTest keys; the dialog's own Enter is left to him.
 67. **Calendar**: the next meeting first, Enter joins; from an ICS link in
     nodi.json, off until one is set (his call). L 9.
     Done 2026-10-06: `"calendar": { "ics": ... }` (one address or a list,

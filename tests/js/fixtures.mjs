@@ -93,6 +93,7 @@ export function requester(data, asked) {
       : name === "plugins" ? data.plugins
       : name === "agent-usage" ? data.agentUsage
       : name === "calendar" ? data.calendar
+      : name === "chooser-folders" ? data.chooserFolders
       : name === "agent-sessions" ? data.agentSessions
       : name === "window-cwd" ? data.windowCwd
       : name === "ocr" ? data.ocr
