@@ -76,7 +76,8 @@ what is typed there finds one (Ctrl+Enter copies there too);
 Ctrl+Shift+F, A, D and H favourite, alias, copy the deeplink of and hide
 a row without it, and Ctrl+Shift+P pins a clipboard entry. Ctrl+1 to
 Ctrl+9 run a row directly, Tab fills in, Esc closes, or first steps back
-from Ctrl+K, a prompt or a help topic.
+from Ctrl+K, a prompt or a help topic. With the mouse, a click runs a row,
+a right click opens its actions, and each key in the footer clicks.
 Closed within two minutes, the bar reopens on what was typed, selected;
 later, on its home view. Ctrl+R brings back an earlier query, older on each
 press, and Ctrl+W, Ctrl+E, Ctrl+F and Ctrl+B edit as a shell does. A row you pick for a query comes first for
@@ -412,7 +413,7 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
 ## Develop
 
 ```sh
-make check     # tests, ranking, lint, compile, tests in Quickshell, renders (also at text size 20 on 1536x960), a screen reader's view, hygiene, manifest, validate
+make check     # tests, ranking, lint, compile, tests in Quickshell, the card under QtTest's mouse, renders (also at text size 20 on 1536x960), a screen reader's view, hygiene, manifest, validate
 make rank      # how well it ranks, against tools/rank/baseline.json (make rank-update accepts a change)
 make replay    # your own picks, replayed through today's ranking (from the log make picks reads)
 make reload    # install, clear Quickshell's cache, restart the shell

@@ -628,6 +628,11 @@ baseline query loses rank.
     7:1, reduced motion or animations off leaves the card's resizing
     unanimated. This portal serves contrast (0) and no reduced-motion.
 74. **Mouse**: right click opens Ctrl+K; the footer's keys click. X 14.
+    Done 2026-10-06: a right click selects the row and opens its actions,
+    running nothing; each footer key (Enter, Ctrl K, Tab, Esc, the
+    pane's scroll) is a button that presses that key through the
+    keyboard's own handler. `make ui` (in check) clicks the real card
+    under QtTest, offscreen, with the harness's FakeNodi.
 75. **`?mine`**: every alias, hotkey, favourite and hidden row. X 13.
 76. **Right-to-left titles aligned left; an input method tested** in a
     scratch session, results following the composition. X 15, 16.

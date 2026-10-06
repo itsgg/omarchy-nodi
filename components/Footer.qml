@@ -17,6 +17,13 @@ Item {
 
   Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: nodi.foreground; opacity: 0.1 }
 
+  // A key clicked is that key pressed (ROADMAP 74): the same handler the
+  // keyboard goes through, then the field has the keys again.
+  function press(key, modifiers) {
+    nodi.handleKey(key, modifiers || 0, false)
+    nodi.focusInput()
+  }
+
   Text {
     anchors.left: parent.left
     anchors.leftMargin: Style.spacing.lg + nodi.rowInsetLeft
@@ -48,20 +55,25 @@ Item {
     readonly property bool armed: !!nodi.selectedRow && nodi.armedKey === nodi.selectedRow.key
 
     Text { visible: parent.back; anchors.verticalCenter: parent.verticalCenter; text: "Back"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
-    Keycap { visible: parent.back; label: "Esc"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
+    Keycap { objectName: "key-Esc"; visible: parent.back; label: "Esc"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0
+             clickable: true; onClicked: footer.press(Qt.Key_Escape) }
     Item { visible: parent.back; width: Style.spacing.lg; height: 1 }
 
     // Only while there is more to see: the keys are fzf's, not a launcher's.
     Text { visible: footer.scrollable; anchors.verticalCenter: parent.verticalCenter; text: "Scroll"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
-    Keycap { visible: footer.scrollable; label: "Shift 󰁝󰁅"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
+    // A click scrolls the pane a page, as Shift+PgDn does.
+    Keycap { objectName: "key-Scroll"; visible: footer.scrollable; label: "Shift 󰁝󰁅"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0
+             clickable: true; onClicked: footer.press(Qt.Key_PageDown, Qt.ShiftModifier) }
     Item { visible: footer.scrollable; width: Style.spacing.lg; height: 1 }
 
     Text { visible: parent.more; anchors.verticalCenter: parent.verticalCenter; text: "Actions"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
-    Keycap { visible: parent.more; label: "Ctrl K"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
+    Keycap { objectName: "key-CtrlK"; visible: parent.more; label: "Ctrl K"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0
+             clickable: true; onClicked: footer.press(Qt.Key_K, Qt.ControlModifier) }
     Item { visible: parent.more; width: Style.spacing.lg; height: 1 }
 
     Text { visible: parent.fill; anchors.verticalCenter: parent.verticalCenter; text: "Fill in"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.caption }
-    Keycap { visible: parent.fill; label: "Tab"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
+    Keycap { objectName: "key-Tab"; visible: parent.fill; label: "Tab"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0
+             clickable: true; onClicked: footer.press(Qt.Key_Tab) }
     Item { visible: parent.fill; width: Style.spacing.lg; height: 1 }
 
     Text {
@@ -75,7 +87,8 @@ Item {
       font.bold: true
     }
     // A confirmation shows in the key's urgent fill and border; the word stays readable.
-    Keycap { visible: primaryText.text !== ""; label: "Enter"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground
+    Keycap { objectName: "key-Enter"; visible: primaryText.text !== ""; label: "Enter"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground
+             clickable: true; onClicked: footer.press(Qt.Key_Return)
              tone: parent.primary === "Confirm" || parent.armed ? Color.urgent : nodi.foreground; strong: parent.primary === "Confirm" || parent.armed
              fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
   }

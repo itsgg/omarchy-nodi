@@ -465,6 +465,7 @@ BorderSurface {
     // ---------- footer: what the selected row is, and what the keys do ----------
     Footer {
       id: footer
+      objectName: "footer"
       nodi: card.nodi
       scrollable: pane.overflows
       width: parent.width

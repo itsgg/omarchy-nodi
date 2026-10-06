@@ -88,6 +88,7 @@ Item {
 
     Keycap {
       id: badge
+      objectName: "badge"
       visible: rowItem.digit || rowItem.armed || rowItem.modelData.badge !== ""
       anchors.right: parent.right
       anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
@@ -141,6 +142,7 @@ Item {
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
+      acceptedButtons: Qt.LeftButton | Qt.RightButton
       // Only real pointer movement selects: rows sliding under a
       // resting pointer report positions too, but it has not moved.
       onPositionChanged: function(mouse) {
@@ -150,9 +152,14 @@ Item {
         nodi.lastPointer = Qt.point(p.x, p.y)
         if (!first && nodi.selectedIndex !== rowItem.index) { nodi.selectedIndex = rowItem.index; nodi.armedKey = "" }
       }
-      onClicked: {
+      onClicked: function(mouse) {
         nodi.selectedIndex = rowItem.index
-        nodi.activate(rowItem.index)
+        // A right click opens the row's actions, as Ctrl+K does (ROADMAP 74).
+        // A confirmation waiting on the row is let go only if its actions
+        // open (Sonnet 2026-10-06: a row with none was disarmed for nothing).
+        if (mouse.button === Qt.RightButton) {
+          if (nodi.openPalette()) nodi.armedKey = ""
+        } else nodi.activate(rowItem.index)
         nodi.focusInput()
       }
     }
