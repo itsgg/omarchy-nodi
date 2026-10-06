@@ -59,7 +59,9 @@ var provider = {
     var answer = String(a.answer || "")
     return [
       // The answer itself shows in the pane beside the list.
-      { key: "ask:paste", title: "Paste the answer", subtitle: answer.length + " characters", icon: "󰆒", score: 98, copy: answer, remember: false,
+      // About the selection, the paste goes over it: the window still holds it (providers/selection.js).
+      { key: "ask:paste", title: a.context === "selection" ? "Paste over the selection" : "Paste the answer", subtitle: answer.length + " characters",
+        icon: "󰆒", score: 98, copy: answer, remember: false,
         run: Run.exec(["omarchy-menu-emoji-insert", answer]), actionLabel: "Paste" },
       { key: "ask:copy", title: "Copy the answer", subtitle: "Clipboard", icon: "󰆏", score: 97, copy: answer, remember: false,
         run: Run.copy(answer) },

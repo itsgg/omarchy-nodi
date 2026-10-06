@@ -10,8 +10,10 @@ import "../../components"
 // the first allowed by him and run once, the next refused by him. Another
 // that exits while a run waits, and one recycled while a run waits, then
 // asked again. One whose allowed run ends the session from inside the
-// call, as the bar's run closes the bar, then is asked again. No model is
-// asked. Run by tools/qs-test.sh inside Quickshell.
+// call, as the bar's run closes the bar, then is asked again. One asked
+// about the selection, with its text, twice: asked again, the text goes
+// again (ROADMAP 47). No model is asked. Run by tools/qs-test.sh inside
+// Quickshell.
 Item {
   id: test
   signal done(bool ok, string report)
@@ -19,7 +21,7 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 4
+  property int remaining: 5
   readonly property string fake: String(Qt.resolvedUrl("fake-claude.py")).replace(/^file:\/\//, "")
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
 
@@ -112,8 +114,26 @@ Item {
     }
   }
 
+  Ask {
+    id: selected
+    acts: true
+    program: test.fake
+    workDir: test.dir
+    property int round: 0
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || selected.answer !== "ok") test.failures.push("about the selection, round " + selected.round + ": " + phase + " " + selected.error + selected.answer)
+      if (selected.question !== "Fix the spelling and grammar of the selection" || selected.context !== "selection")
+        test.failures.push("shown as " + JSON.stringify([selected.question, selected.context]))
+      if (++selected.round === 1) { Qt.callLater(function() { selected.send("Fix the spelling and grammar of the selection") }); return }
+      test.finished()
+    }
+  }
+
   function start() {
     closing.send("recycle in the run")
+    selected.send("Fix the spelling and grammar of the selection",
+                  "Fix the spelling and grammar of the text below. Reply with the result only.\n\n<text>\nteh\n</text>", "selection")
     ask.send("lock my screen")
     dying.send("exit while proposing")
     recycled.send("recycle while proposing")

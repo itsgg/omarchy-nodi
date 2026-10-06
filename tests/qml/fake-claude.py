@@ -11,6 +11,8 @@
 #   recycle in the run         asks for a run, then calls it: the bar's run
 #                              ends the session, as an allowed run closes it
 #   say ok                     answers at once
+#   Fix the spelling and ...   a question about the selection: the text
+#                              must come with it, each time it is asked
 import json, sys
 
 def send(o):
@@ -74,6 +76,13 @@ if question == "recycle while proposing":
     request("p1", "mcp__nodi__run", LOCK)
     r = read()
     for _ in sys.stdin: pass
+    sys.exit(0)
+
+if question.startswith("Fix the spelling and grammar of the text below"):
+    while u:
+        want("\n<text>\nteh\n</text>" in u["message"]["content"], "the selection sent with the question: %r" % (u,))
+        answer("ok" if not bad else "fail: " + "; ".join(bad))
+        u = read()
     sys.exit(0)
 
 if question == "say ok":

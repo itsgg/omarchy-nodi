@@ -53,6 +53,7 @@ text already typed:
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
 | `ask why is the sky blue`, or Tab | A quick answer from Claude; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
+| Select text, then open the bar; `fix`, `rewrite shorter`, `case ` | The selection fixed, rewritten, translated or its case changed, pasted over it; or searched |
 | `?` | Help, with every example answered live |
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
@@ -89,7 +90,9 @@ that does not parse changes nothing, and a notification says why.
     { "keyword": "mt", "name": "Meeting", "text": "Meet {argument name=\"who\"} at {argument name=\"when\" default=\"3pm\"}" }
   ],
   // A few words from Claude for apps with no description of their own.
-  "apps": { "describe": true }
+  "apps": { "describe": true },
+  // What `tr` and Translate on selected text go to (English unless set).
+  "translate": { "language": "Tamil" }
 }
 ```
 
@@ -102,7 +105,8 @@ the keyword (the last one takes the rest), `{clipboard}`, `{date}`,
 `{time}` (with `format="d MMM yyyy"` and `offset="+1d"`), `{uuid}`, an
 older clipboard entry `{clipboard offset="1"}` and `{random from="a,b,c"}`
 or `{random min="1" max="6"}`; in snippets also another snippet's text,
-`{snippet name="sig"}`, and `{cursor}`, where the cursor is left after the
+`{snippet name="sig"}`; in both, `{selection}`, the text selected in the
+window you came from; and in snippets `{cursor}`, where the cursor is left after the
 paste, by Left keys over the text after it. Those count places as
 Chromium, Electron and GTK do; a Qt app joins no Indic conjunct, so after
 "क्ष" there the cursor stops a place short. In
@@ -271,6 +275,9 @@ not read) or the command is misused, and 3 when Nodi cannot be reached
   servers and none of your Claude settings, and saves nothing. Its only
   tools are the bar's: a search of the rows, and a run of one, which
   shows in the bar with its command and runs only on your Enter.
+- Each time it opens it reads the text selected in the window you came
+  from (`wl-paste --primary`), keeps it until it closes, and sends it to
+  Claude only when you pick one of Claude's rows on it.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`.
   Among the cache is how long its last 300 opens took (`opens.json`, read
   by `make opens`), with nothing of what was typed, and the last 1000 rows
