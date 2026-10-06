@@ -59,16 +59,38 @@ function pattern(s) {
   }).join(" ")
 }
 
+// What {clipboard offset="N"} and {snippet name="..."} read: the
+// clipboard's history as texts, newest first, and every snippet's text by
+// its keyword and its name.
+function env(ctx, clip) {
+  var history = (Array.isArray(ctx.clipboard) ? ctx.clipboard : []).filter(function(c) { return c && c.type === "text" }).map(function(c) { return String(c.text) })
+  var snippets = Object.create(null)
+  var all = list(ctx.settings)
+  for (var i = 0; i < all.length; i++) {
+    if (all[i].keyword) snippets[all[i].keyword] = all[i].text
+    if (all[i].name) snippets[all[i].name] = all[i].text
+  }
+  return { now: ctx.now ? ctx.now() : new Date(), clipboard: clip, clipboardHistory: history, snippets: snippets }
+}
+
+// Pasted, then the cursor moved back to where {cursor} was: one Left key
+// a character, as a field moves; at most 500.
+function pasteRun(text, back) {
+  if (!(back > 0)) return Run.exec(["omarchy-menu-emoji-insert", text])
+  return Run.shell('omarchy-menu-emoji-insert "$1" || exit; sleep 0.1; n=$2; a=(); while [ "$n" -gt 0 ]; do a+=(-k Left); n=$((n-1)); done; exec wtype "${a[@]}"',
+                   [text, String(Math.min(500, back))])
+}
+
 function row(s, typed, ctx, extra) {
   var name = s.name || s.keyword
   var parts = Placeholders.parse(s.text)
   var clip = null
-  if (Placeholders.uses(parts, "clipboard")) {
+  if (Placeholders.clipboardNeedsNow(parts)) {
     clip = clipboardNow(ctx)
     if (clip === undefined) return extend({ key: "snippet:" + (s.keyword || name), title: name, subtitle: "Reading the clipboard...",
                                             icon: s.icon || "󰅪", copy: "", remember: false, group: "Snippets" }, extra)
   }
-  var filled = Placeholders.fill(s.text, typed, { now: ctx.now ? ctx.now() : new Date(), clipboard: clip })
+  var filled = Placeholders.fill(s.text, typed, env(ctx, clip))
   var out = { key: "snippet:" + (s.keyword || name), title: name, badge: s.keyword || "", icon: s.icon || "󰅪", group: "Snippets",
               hint: pattern(s) }
   // The text in the pane: filled in, or the template while arguments are missing.
@@ -84,7 +106,7 @@ function row(s, typed, ctx, extra) {
   }
   out.subtitle = firstLine(filled.text) || "(empty)"
   out.copy = filled.text
-  out.run = Run.exec(["omarchy-menu-emoji-insert", filled.text])
+  out.run = pasteRun(filled.text, filled.cursorBack)
   out.actionLabel = "Paste"
   out.actions = [
     { label: "Copy", icon: "󰆏", run: Run.copy(filled.text) },

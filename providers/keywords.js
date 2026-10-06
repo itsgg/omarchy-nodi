@@ -38,11 +38,11 @@ function fallsBack(cmd) {
   return Placeholders.argumentsOf(parts).length === 1 && !Placeholders.uses(parts, "clipboard")
 }
 
-function usesClipboard(cmd) { return !!cmd.open && Placeholders.uses(Placeholders.parse(cmd.open), "clipboard") }
+function usesClipboard(cmd) { return !!cmd.open && Placeholders.clipboardNeedsNow(Placeholders.parse(cmd.open)) }
 
 // The clipboard for a link that asks for it: undefined until first read.
 function clipboardFor(cmd, ctx) {
-  if (!cmd.open || !ctx || !Placeholders.uses(Placeholders.parse(cmd.open), "clipboard")) return null
+  if (!cmd.open || !ctx || !Placeholders.clipboardNeedsNow(Placeholders.parse(cmd.open))) return null
   var got = ctx.request ? ctx.request("clipboard-text") : { state: "pending" }
   return got.state === "pending" && got.value === undefined ? undefined : String(got.value || "")
 }
@@ -51,8 +51,9 @@ function usable(cmd) { return !!cmd && !!cmd.keyword && !!(cmd.open || cmd.run) 
 
 function build(cmd, q, ctx) {
   if (cmd.open) {
+    var history = ctx && Array.isArray(ctx.clipboard) ? ctx.clipboard.filter(function(c) { return c && c.type === "text" }).map(function(c) { return String(c.text) }) : []
     var filled = Placeholders.fill(cmd.open, q, { now: ctx && ctx.now ? ctx.now() : new Date(), clipboard: clipboardFor(cmd, ctx) || "",
-                                                  encode: encodeURIComponent })
+                                                  clipboardHistory: history, encode: encodeURIComponent })
     return Run.open(filled.text)
   }
   if (cmd.run && !outdated(cmd)) return Run.shell(cmd.run, [String(q)])

@@ -37,7 +37,7 @@ test("arguments: one takes all, several take a word each and the last the rest, 
 });
 
 test("only the names it knows are placeholders: JSON and code stay as written", () => {
-  assert.equal(fill('{"a": {q}} {cursor} {Date} {date foo}').text, '{"a": } {cursor} {Date} {date foo}');
+  assert.equal(fill('{"a": {q}} {Cursor} {Date} {date foo}').text, '{"a": } {Cursor} {Date} {date foo}');
   assert.equal(fill("{clipboard}", "", { clipboard: "copied" }).text, "copied");
   assert.equal(fill("{q}", "a b&c", { encode: encodeURIComponent }).text, "a%20b%26c");
   assert.match(fill("{uuid}").text, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
@@ -155,3 +155,30 @@ test("dates: an apostrophe in quoted text, a long offset, and one past any date"
   assert.equal(P.fill('{date format="MMM" offset="+9999999999999999999999y"}', "", { now: at }).text, "");
   assert.equal(P.fill('{date format="MMM" offset="+' + "9".repeat(320) + 'y"}', "", { now: at }).text, "", "digits past a number: no date either (Fable 2026-10-05)");
 });
+
+test("the placeholders Alfred and Raycast have: cursor, an older clipboard entry, a snippet, random (ROADMAP 61)", () => {
+  const c = fill("Dear {cursor},\nRegards");
+  assert.deepEqual([c.text, c.cursorBack], ["Dear ,\nRegards", 9], "the marker gone, and the Left keys from its place to the end");
+  assert.equal(fill("{cursor}x{cursor}y").cursorBack, 2, "the first marker counts");
+  assert.equal(fill("plain").cursorBack, 0);
+  assert.equal(fill("a 🎉{cursor}b").cursorBack, 1);
+  assert.equal(fill("{cursor}கொ").cursorBack, 1, "a Tamil consonant with its vowel sign is one place (Fable 2026-10-06)");
+  assert.equal(fill("{cursor}நன்றி").cursorBack, 3, "na, n with virama, ri: three places");
+  assert.equal(fill("{cursor}e\u0301").cursorBack, 1, "a letter and its accent");
+  assert.equal(fill("{cursor}\ud83c\uddee\ud83c\uddf3\ud83c\uddf1\ud83c\uddf0").cursorBack, 2, "two flags");
+  assert.equal(fill("{cursor}\ud83d\udc68\u200d\ud83d\udc69\u200d\ud83d\udc67").cursorBack, 1, "a family joined by zero-width joiners");
+  assert.equal(fill("{cursor}\ud83d\udc4d\ud83c\udffd").cursorBack, 1, "a skin tone");
+  assert.deepEqual(["அஃது", "සිංහල", "ਪੰਜਾਬੀ", "हिन्दी"].map(t => fill("{cursor}" + t).cursorBack), [3, 3, 3, 2],
+                   "aytham a letter, Sinhala's and Gurmukhi's signs marks, a conjunct one place (Fable 2026-10-06; lib/Graphemes.js)");
+  const env = { clipboard: "now", clipboardHistory: ["now", "before", "older"] };
+  assert.equal(fill('{clipboard} {clipboard offset="1"} {clipboard offset="2"} [{clipboard offset="9"}]', "", env).text, "now before older []");
+  assert.equal(fill('{clipboard offset="1"}', "", env).clipboard, false, "an offset reads the history only, not the clipboard now");
+  assert.equal(fill("{clipboard}", "", env).clipboard, true);
+  assert.equal(fill('Hi {snippet name="sig"}', "", { snippets: { sig: "Regards, {q}" } }).text, "Hi Regards, {q}", "one level, as written");
+  assert.equal(fill('{snippet name="none"}').text, "");
+  const r = (n) => () => n;
+  assert.equal(fill('{random from="a, b ,c"}', "", { random: r(0.5) }).text, "b");
+  assert.equal(fill('{random min="1" max="6"}', "", { random: r(0.999) }).text, "6");
+  assert.equal(fill('{random min="5" max="1"}').text, "");
+});
+
