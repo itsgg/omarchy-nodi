@@ -153,6 +153,19 @@ const scenes = [
   scene("45-calendar-home", "", { history, calendar }, null, withCalendar),
   scene("46-calendar-list", "cal ", { calendar }, () => ({ selectedIndex: 0 }), withCalendar),
   // Opened over a Save dialog (ROADMAP 66): folders first, Enter typing one in.
+  // Everything set, in one place (ROADMAP 75).
+  (() => {
+    const one = q => plain(Engine.run(q, config, services(base)))[0];
+    const ff = one("firefox"), term = one("alacritty"), sig = one("signal");
+    let p = Prefs.empty();
+    p = Prefs.withAlias(p, "ff", ff.key, History.snapshot(ff));
+    p = Prefs.withHotkey(p, "SUPER + F", ff.key, History.snapshot(ff));
+    p = Prefs.toggledFavourite(p, term.key, History.snapshot(term));
+    p = Prefs.toggledFavourite(p, ff.key, History.snapshot(ff));
+    p = Prefs.withAlias(p, "sig", sig.key, History.snapshot(sig));
+    p = Prefs.hiddenRow(p, sig.key, History.snapshot(sig));
+    return scene("51-mine", "?mine", { prefs: p });
+  })(),
   scene("47-file-dialog", "", { history, window: { address: "0x5a1", "class": "xdg-desktop-portal-gtk", title: "Save File", floating: true },
     chooserFolders: [["recent", "Downloads"], ["recent", "Work/kalvi/docs"], ["z", "Learn"], ["z", "Work/GG/nodi"], ["bookmark", "Projects"],
                      ["xdg", "Documents"], ["xdg", "Pictures"]].map(([kind, p]) => ({ kind, path: "/home/u/" + p })) }),

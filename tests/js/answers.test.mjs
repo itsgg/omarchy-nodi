@@ -305,7 +305,7 @@ test("the exchange-rate API is asked only by currency queries", () => {
 
 test("help", () => {
   const topics = run("?").map(r => r.title);
-  assert.deepEqual(plain(topics.slice(0, 4)), ["Keys", "Open an app", "Switch window", "Omarchy menu"], "Nodi's own keys first");
+  assert.deepEqual(plain(topics.slice(0, 4)), ["Keys", "Yours", "Open an app", "Switch window"], "Nodi's own keys first, then what you set (ROADMAP 75)");
   const keysTopic = run("?shortcuts");
   assert.deepEqual(plain(keysTopic.map(r => r.badge)).slice(-7), ["Shift 󰁝 󰁅", "Shift PgUp PgDn", "Ctrl D U", "Ctrl R", "Ctrl W", "Ctrl E F B", "Esc"]);
   assert.ok(keysTopic.every(r => r.help && !r.run && !r.complete), "a key is said, not filled in");

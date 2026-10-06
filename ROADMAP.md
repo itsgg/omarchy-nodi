@@ -634,6 +634,12 @@ baseline query loses rank.
     keyboard's own handler. `make ui` (in check) clicks the real card
     under QtTest, offscreen, with the harness's FakeNodi.
 75. **`?mine`**: every alias, hotkey, favourite and hidden row. X 13.
+    Done 2026-10-06: `?mine` (and "Yours" in `?`, its line counting what
+    there is) lists each saved row once, what is set on it under it
+    ("Favourite, alias ff, hotkey SUPER + F"), Enter running it; the
+    hidden ones after, Enter showing each again; Ctrl+K on one of yours
+    changes what is set as on the row itself. Nothing set: how to set
+    each. Second in `?`, after the keys; `?mi` finds it.
 76. **Right-to-left titles aligned left; an input method tested** in a
     scratch session, results following the composition. X 15, 16.
 77. **Starter rows on a first open.** X 11.
