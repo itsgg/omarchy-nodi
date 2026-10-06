@@ -68,7 +68,7 @@ text already typed:
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
 | Select or copy text, then open the bar; `fix`, `rewrite `, `case ` | It fixed, rewritten, translated or its case changed, pasted over the selection or at the cursor; or searched |
 | `tr ta good morning`, `good morning in french` | A translation by Claude; Enter pastes it |
-| `?` | Help, with every example answered live |
+| `?`, `?mine` | Help, with every example answered live; every alias, hotkey, favourite and hidden row you set |
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
 favourite, a hotkey, hide), grouped, each with its key on the right, and
