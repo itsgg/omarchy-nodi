@@ -1,10 +1,10 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test rank rank-update opens picks replay lint compile qstest shots textsize a11y a11y-update themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test rank rank-update opens picks replay lint compile qstest ui shots textsize a11y a11y-update themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 
-check: test rank lint compile qstest shots textsize a11y hygiene manifest validate
+check: test rank lint compile qstest ui shots textsize a11y hygiene manifest validate
 	@echo "all checks passed"
 
 test:
@@ -53,6 +53,11 @@ compile:
 # inside it: tests/qml/*Test.qml.
 qstest:
 	@tools/qs-test.sh
+
+# The real card under QtTest's mouse and keys, offscreen (tests/ui,
+# ROADMAP 74): what a click does, which no scene can show.
+ui:
+	@NODI_UI=1 tools/render.sh shots/ui
 
 # The card drawn offscreen for each scene into shots/; a binding that fails
 # when the card is created fails here.

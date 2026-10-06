@@ -618,9 +618,10 @@ Item {
   // Ctrl+K takes what is typed in a field of its own (Card.qml
   // paletteInput), so the query, and all that reads it, stays as it was
   // (ROADMAP 52).
+  // Whether it opened: a row may have no actions (a prompt's, Nodi's own).
   function openPalette() {
     var acts = Rows.actionsFor(root.selectedRow, root.paletteContext())
-    if (acts.length === 0) return
+    if (acts.length === 0) return false
     root.paletteRow = root.selectedRow
     root.paletteAll = acts
     root.paletteActions = Rows.filterActions(acts, "")
@@ -629,6 +630,7 @@ Item {
     root.paletteOpen = true
     card.paletteInput.text = ""
     card.paletteInput.forceActiveFocus()
+    return true
   }
 
   function closePalette() {

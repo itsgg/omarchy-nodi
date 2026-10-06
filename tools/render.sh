@@ -38,6 +38,21 @@ printf 'module qs.Ui\nBorderSurface 1.0 BorderSurface.qml\nBorderOverlay 1.0 Bor
 ln -s "$root/components" "$work/components"
 ln -s "$root/lib" "$work/lib"
 cp "$root/tools/render/Harness.qml" "$work/Harness.qml"
+cp "$root/tools/render/FakeNodi.qml" "$work/FakeNodi.qml"
+
+# The card under QtTest's mouse instead (NODI_UI=1, ROADMAP 74): each
+# tests/ui/tst_*.qml beside the harness, so it imports the components and
+# FakeNodi as the harness does, run by qmltestrunner offscreen.
+if [[ -n ${NODI_UI:-} ]]; then
+  mkdir -p "$work/ui"
+  cp "$root"/tests/ui/tst_*.qml "$work/ui/"
+  status=0
+  QT_QPA_PLATFORM=offscreen QT_FORCE_STDERR_LOGGING=1 timeout 120 /usr/lib/qt6/bin/qmltestrunner -import "$work" -input "$work/ui" >"$work/uilog" 2>&1 || status=$?
+  sed "s#file://$work/##g" "$work/uilog" | grep -E "^(PASS|FAIL|XFAIL|XPASS|SKIP|Totals)|Actual|Expected|Loc:|Error|TypeError" || true
+  # A warning a test let pass is a failure all the same.
+  if grep -qE "TypeError|ReferenceError|Binding loop|is not a type" "$work/uilog"; then status=1; fi
+  exit $status
+fi
 
 # Every scene drawn this run, or a failure: the pictures of an earlier run
 # go first, so `make docs` cannot copy one a crash left behind (Fable
