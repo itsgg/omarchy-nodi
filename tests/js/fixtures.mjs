@@ -85,6 +85,7 @@ export function requester(data, asked) {
       : name === "prs" ? data.prs
       : name === "clipboard-text" ? data.clipboardText
       : name === "plugins" ? data.plugins
+      : name === "window-cwd" ? data.windowCwd
       : name === "ocr" ? data.ocr
       : name === "scripts" ? data.scripts
       : name === "script-output" ? (data.scriptOutput || {})[JSON.parse(param)[1]]
