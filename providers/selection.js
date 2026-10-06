@@ -9,6 +9,11 @@
 // ctx.selection is { text, fresh }: fresh for two minutes from when it was
 // first seen, so a selection made long ago does not lead the bar.
 //
+// Text copied with Ctrl+C in the last two minutes counts too: of a fresh
+// selection and a fresh copy, the newer leads, the copy on a tie
+// (ctx.selection.source "clipboard", Nodi.qml); a copy's answer pastes
+// where the cursor is.
+//
 //   (empty, fresh)        Fix spelling and grammar, Rewrite..., Translate,
 //                         Change case..., a search, at the top
 //   fix, translate, ...   the same rows by name, while it is fresh (two
@@ -35,21 +40,29 @@ function language(config) {
   return l || "English"
 }
 
+// What the text is called and where it came from: selected, or copied
+// with Ctrl+C (Nodi.qml readSelection). A copy is not selected in the
+// window, so Claude's answer pastes where the cursor is (providers/ask.js).
+function about(sel) {
+  var copied = !!sel && sel.source === "clipboard"
+  return { noun: copied ? "the copied text" : "the selection", context: copied ? "copied" : "selection", label: copied ? "Copied: " : "Selected: " }
+}
+
 // What Claude is asked for each action: the question as the bar shows it,
 // and what the session is told.
-function claudeActions(lang) {
+function claudeActions(lang, ab) {
   return [
     { id: "fix", title: "Fix spelling and grammar", keywords: "fix spelling grammar typo typos correct proofread",
-      question: "Fix the spelling and grammar of the selection",
+      question: "Fix the spelling and grammar of " + ab.noun, context: ab.context,
       ask: "Fix the spelling and grammar of the text below. Keep its meaning, tone, language, line breaks and formatting." },
     { id: "translate", title: "Translate to " + lang, keywords: "translate translation language",
-      question: "Translate the selection to " + lang,
+      question: "Translate " + ab.noun + " to " + lang, context: ab.context,
       ask: "Translate the text below to " + lang + "." },
     { id: "summarize", title: "Summarize", keywords: "summarize summarise summary tldr shorten",
-      question: "Summarize the selection",
+      question: "Summarize " + ab.noun, context: ab.context,
       ask: "Summarize the text below in a few sentences." },
     { id: "explain", title: "Explain", keywords: "explain meaning what does it mean",
-      question: "Explain the selection",
+      question: "Explain " + ab.noun, context: ab.context,
       ask: "Explain the text below briefly." }
   ]
 }
@@ -119,7 +132,7 @@ function searchFor(ctx) {
 
 function claudeRow(a, text, extra) {
   var row = { key: "selection:" + a.id, title: a.title, subtitle: shown(text), icon: ICON, copy: "", remember: false,
-              nodi: "askWith", actionLabel: "Ask", ask: { question: a.question, message: message(a.ask, text), context: "selection" } }
+              nodi: "askWith", actionLabel: "Ask", ask: { question: a.question, message: message(a.ask, text), context: a.context || "selection" } }
   for (var k in extra) row[k] = extra[k]
   return row
 }
@@ -127,7 +140,8 @@ function claudeRow(a, text, extra) {
 // Every row on the selection, in the order the home view shows them.
 function all(text, ctx) {
   var lang = language(ctx.config)
-  var ai = claudeActions(lang)
+  var ab = about(ctx.selection)
+  var ai = claudeActions(lang, ab)
   var out = [
     { c: ai[0], row: function(x) { return claudeRow(ai[0], text, x) } },
     { c: { title: "Rewrite...", keywords: "rewrite reword rephrase edit tone" },
@@ -140,7 +154,7 @@ function all(text, ctx) {
   ]
   var search = searchFor(ctx)
   if (search) {
-    var title = (search.title || search.keyword) + " for the selection"
+    var title = (search.title || search.keyword) + " for " + ab.noun
     out.push({ c: { title: title, keywords: "search web look up google " + search.keyword },
                row: function(x) { return extend({ key: "selection:search", title: title, subtitle: shown(text), icon: search.icon || "󰖟",
                                                   copy: text, run: Keywords.build(search, text, ctx), remember: false }, x) } })
@@ -162,8 +176,24 @@ function homeRows(ctx) {
   var sel = ctx.selection || {}
   if (!sel.fresh || !sel.text) return []
   return all(sel.text, ctx).slice(0, HOME).map(function(a, n) {
-    return a.row({ score: 300 - n, kind: "action", group: "Selected: " + shown(sel.text) })
+    return a.row({ score: 300 - n, kind: "action", group: about(sel).label + shown(sel.text) })
   })
+}
+
+// Ready rewrites under `rewrite ` before he says how, the first chosen, so
+// Enter always does one (his screenshot 2026-10-06: the bare mode showed
+// a hint row, and Enter did nothing).
+var PRESETS = [
+  ["Improve the writing", "clearer and more natural, keeping its meaning"],
+  ["Shorter", "shorter, keeping what matters"],
+  ["More formal", "more formal"],
+  ["Friendlier", "friendlier and warmer"],
+  ["Simpler", "in simpler words"]
+]
+
+function rewriteRow(title, how, text, score, ab) {
+  return claudeRow({ id: "rewrite", title: title, question: "Rewrite " + ab.noun + ": " + how, context: ab.context,
+                     ask: "Rewrite the text below as asked: " + how + "." }, text, { score: score })
 }
 
 var REWRITE = /^\s*rewrite(?:\s+(.*))?$/i
@@ -189,9 +219,15 @@ var provider = {
     if ((m = String(query).match(REWRITE)) && /\s/.test(String(query).replace(/^\s+/, ""))) {
       if (!text) return []
       var how = String(m[1] || "").trim()
-      if (!how) return [{ title: "Rewrite the selection", subtitle: shown(text), score: 40, copy: "", remember: false, hint: "rewrite <how>" }]
-      return [claudeRow({ id: "rewrite", title: "Rewrite: " + how, question: "Rewrite the selection: " + how,
-                          ask: "Rewrite the text below as asked: " + how + "." }, text, { score: 98 })]
+      var ab = about(sel)
+      if (!how) return PRESETS.map(function(p, n) { return rewriteRow(p[0], p[1], text, 98 - n * 0.01, ab) })
+      // His own words first; a preset he typed the start of under it.
+      var rows = [rewriteRow("Rewrite: " + how, how, text, 98, ab)]
+      PRESETS.forEach(function(p, n) {
+        if (p[0].toLowerCase().indexOf(how.toLowerCase()) === 0 && p[0].toLowerCase() !== how.toLowerCase())
+          rows.push(rewriteRow(p[0], p[1], text, 97 - n * 0.01, ab))
+      })
+      return rows
     }
     if ((m = String(query).match(CASE)) && /\s/.test(String(query).replace(/^\s+/, ""))) {
       if (!text) return []
@@ -205,13 +241,13 @@ var provider = {
     var list = all(text, ctx)
     for (var i = 0; i < list.length; i++) {
       var t = Score.tier(q, { name: list[i].c.title, keywords: list[i].c.keywords })
-      if (t && !Score.loose(t)) out.push(list[i].row({ tier: t, kind: "action", group: "Selected: " + shown(text) }))
+      if (t && !Score.loose(t)) out.push(list[i].row({ tier: t, kind: "action", group: about(sel).label + shown(text) }))
     }
     // A case by its name ("uppercase") pastes at once.
     for (var j = 0; j < CASES.length; j++) {
       var ct = Score.tier(q, { name: CASES[j].title, keywords: CASES[j].keywords })
       if (ct && !Score.loose(ct)) out.push(pasteRow("selection:case:" + CASES[j].id, CASES[j].title, CASES[j].change(text),
-                                                    { tier: ct, kind: "action", group: "Selected: " + shown(text) }))
+                                                    { tier: ct, kind: "action", group: about(sel).label + shown(text) }))
     }
     return out
   }

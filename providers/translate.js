@@ -49,11 +49,12 @@ function language(word, namesOnly) {
   return ""
 }
 
-// The question the field shows: the text, or "the selection" for one.
+// The question the field shows: the text, or what it is about ("the
+// selection", "the copied text").
 function askRow(lang, text, context, extra) {
   var row = { key: "translate:" + lang, title: "Translate to " + lang, subtitle: Selection.shown(text), icon: ICON, copy: "",
               remember: false, nodi: "askWith", actionLabel: "Translate",
-              ask: { question: "Translate to " + lang + ": " + (context === "selection" ? "the selection" : Selection.shown(text)),
+              ask: { question: "Translate to " + lang + ": " + (context === "selection" ? "the selection" : context === "copied" ? "the copied text" : Selection.shown(text)),
                      message: Selection.message("Translate the text below to " + lang + ".", text), context: context } }
   for (var k in extra) row[k] = extra[k]
   return row
@@ -85,7 +86,9 @@ var provider = {
       var lang = named || to
       var text = named ? (space === -1 ? "" : rest.slice(space).trim()) : rest
       if (text) return [askRow(lang, text, "", { score: 98 })]
-      if (sel.text) return [askRow(lang, sel.text, "selection", { score: 98 })]
+      if (sel.text) return [askRow(lang, sel.text, Selection.about(sel).context, { score: 98 })]
+      // Nothing selected: the clipboard's text, which the row shows.
+      if (sel.clipboard) return [askRow(lang, sel.clipboard, "copied", { score: 98 })]
       return [{ title: "Translate to " + lang, subtitle: "Then the text, or select some first", score: 40, copy: "", remember: false,
                 hint: "tr <language> <text>" }]
     }

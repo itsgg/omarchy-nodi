@@ -266,27 +266,65 @@ Item {
   // the next). Text selected with the mouse in the bar's own field becomes
   // the primary selection too (Qt writes it on a mouse release), so the
   // field's own text is never taken for one.
+  // Text copied with Ctrl+C counts too, by the same two minutes: on
+  // Wayland a copy sets the clipboard, not the selection (his report
+  // 2026-10-06). Of a fresh selection and a fresh copy, the newer leads,
+  // the copy on a tie. The read is Sources.SELECTION_READ.
   property string selection: ""
   property bool selectionFresh: false
+  property string selectionSource: "selection"   // or "clipboard"
   property string lastSelection: ""
   property real selectionSeenAt: 0
+  property string lastCopied: ""
+  property real copiedSeenAt: 0
 
-  function readSelection() {
-    selectionReader.run(["wl-paste", "--primary", "--no-newline", "--type", "text"])
+  function readSelection() { selectionReader.run(Sources.selectionArgv()) }
+
+  // A copy the bar makes itself is no copy of his to act on: seen, and
+  // stale (Fable 2026-10-06: "Copied: 96" led the next open).
+  function markOwnCopy(text) {
+    root.lastCopied = Sources.clean(text)
+    root.copiedSeenAt = 0
   }
 
   Reader {
     id: selectionReader
     timeoutMs: 1000
-    maxBytes: 65536
+    maxBytes: 140000
     onFinished: function(text, ok) {
-      var got = ok ? Sources.selection(text) : ""
-      if (got === input.text) got = ""
+      // A read that failed or was cut off knows nothing: this open has no
+      // text, and what was seen before stays seen (Fable 2026-10-06: it
+      // made an old copy look new at the next read).
       var had = root.selection !== ""
-      if (got !== root.lastSelection) root.selectionSeenAt = Date.now()
-      root.selectionFresh = got !== "" && Date.now() - root.selectionSeenAt < root.keepQueryMs
-      root.selection = got
-      root.lastSelection = got
+      if (!ok) {
+        root.selection = ""
+        root.selectionFresh = false
+        // Rows made from an earlier read go too (Fable 2026-10-06).
+        if (root.opened && had) root.recompute()
+        return
+      }
+      var both = Sources.selections(text)
+      var now = Date.now()
+      // Seen as read; the field's own text is then no text to act on, but
+      // still seen, so it does not come back as new (Fable 2026-10-06).
+      if (both.primary !== root.lastSelection) root.selectionSeenAt = now
+      if (both.clipboard !== root.lastCopied) root.copiedSeenAt = now
+      root.lastSelection = both.primary
+      root.lastCopied = both.clipboard
+      var got = both.primary === input.text ? "" : both.primary
+      var copied = both.clipboard === input.text ? "" : both.clipboard
+      var fresh = got !== "" && now - root.selectionSeenAt < root.keepQueryMs
+      var copiedFresh = copied !== "" && now - root.copiedSeenAt < root.keepQueryMs
+      // The newer of a fresh selection and a fresh copy, the copy on a tie
+      // (both first seen at this read): a copy is deliberate, a primary
+      // selection often a double-click's (Fable 2026-10-06: the copy he
+      // reported lost to a stale word). Then a stale selection, which
+      // `rewrite`, `case` and `tr <language>` still take.
+      var copyFirst = copiedFresh && (!fresh || root.copiedSeenAt >= root.selectionSeenAt)
+      root.selectionSource = copyFirst ? "clipboard" : "selection"
+      root.selection = root.selectionSource === "clipboard" ? copied : got
+      root.selectionFresh = fresh || copiedFresh
+      got = root.selection
       // The open began with none: any selection redraws (`tr ta`, `case `),
       // as does one gone since an open while the bar was up, and a fresh
       // one's first row is chosen while he is still at the top, a kept
@@ -424,7 +462,7 @@ Item {
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
       window: root.cameFrom,
-      selection: { text: root.selection, fresh: root.selectionFresh },
+      selection: { text: root.selection, fresh: root.selectionFresh, source: root.selectionSource, clipboard: root.lastCopied },
       undo: undoer.entries,
       desktop: desktop
     }
@@ -516,6 +554,7 @@ Item {
     // the Undoer runs it and says so itself.
     var argv = Run.command(run, root.appAction, undoable && run.kind === "exec" ? "" : (name || (snap && snap.title) || ""))
     if (!argv) return
+    if (run.kind === "copy") root.markOwnCopy(run.text)
     var query = Match.normalise(input.text)
     // What was typed and shown, before the bar empties (lib/PickLog.js);
     // a pick's choice ranks nothing.
@@ -616,6 +655,7 @@ Item {
     }
     if (a.nodi === "link") {
       root.savePrefs(Prefs.withLink(root.prefs, row.key, snap) || root.prefs)
+      root.markOwnCopy(Hotkey.deeplink(root.pluginId, row.key))
       Quickshell.execDetached(Run.command(Run.copy(Hotkey.deeplink(root.pluginId, row.key))))
       root.finish()
       return
@@ -824,6 +864,7 @@ Item {
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     if (remember) root.remember(k, "", s)
     if (s.toggle) { root.toggleStates = Toggles.flipped(root.toggleStates, s.toggle); toggleReprobe.restart() }
+    if (s.run.kind === "copy") root.markOwnCopy(s.run.text)
     return "ok"
   }
 
