@@ -52,6 +52,7 @@ text already typed:
 | `github.com/itsgg`, `localhost:3000`, `bm work` | Open a site as it is typed; your browser's bookmarks, three of them in any search |
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
 | `ask why is the sky blue`, or Tab | A quick answer from Claude; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
+| `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
 | `?` | Help, with every example answered live |
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
@@ -221,7 +222,8 @@ if it fails, the last line it wrote to stderr says why.
 
 Other settings: `fallbacks` (what a query nothing answers offers),
 `ask.model` (the Claude model for `ask` and app descriptions, `haiku` by
-default), and
+default), `ask.actions` (`false` keeps Claude to answers, without the bar's
+rows), and
 `providers` (what Nodi searches, in order). A list you set replaces the default one, so start from
 `config.default.json`; only `keywords` merge.
 
@@ -265,8 +267,10 @@ not read) or the command is misused, and 3 when Nodi cannot be reached
 - It goes online for exchange rates (open.er-api.com, once a day, or every
   ten minutes while that fails), for `prs` (through `gh`), and for Claude,
   through Claude Code's `claude` command, under `ask` and, if turned on, to describe
-  apps. That Claude session has no tools, no MCP servers and none of your
-  Claude settings, and saves nothing.
+  apps. That Claude session has none of Claude Code's own tools, no MCP
+  servers and none of your Claude settings, and saves nothing. Its only
+  tools are the bar's: a search of the rows, and a run of one, which
+  shows in the bar with its command and runs only on your Enter.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`.
   Among the cache is how long its last 300 opens took (`opens.json`, read
   by `make opens`), with nothing of what was typed, and the last 1000 rows

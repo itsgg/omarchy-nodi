@@ -16,12 +16,27 @@ Item {
   property string model: "haiku"
   property string workDir: ""
   property int idleMs: 30 * 60 * 1000
+  // The bar's rows as the session's only tools (lib/AskStream.js, ROADMAP
+  // 44): `searcher(query)` returns rows as data, `checker(key)` says why a
+  // key cannot run ("" when it can), `runner(key)` runs one and says what
+  // happened. A run waits in `proposal` for allow() or deny(), and only the
+  // key he allowed runs, once.
+  property bool acts: false
+  property var searcher: null
+  property var checker: null
+  property var runner: null
+  // The program run in Claude's place: a test's stand-in; "claude" else.
+  // The command is always AskStream.argv (tools/hygiene.mjs).
+  property string program: ""
 
   // What the bar shows.
   property string question: ""
   property string answer: ""
-  property string phase: "idle"      // idle | waiting | streaming | done | error
+  property string phase: "idle"      // idle | waiting | streaming | proposing | done | error
   property string error: ""
+  property var proposal: null        // { id, key, input } while a run waits for him
+  property string allowed: ""        // the key he allowed, until it runs
+  property bool inited: false        // the session has taken the bar's server
 
   property bool used: false          // this session has been asked something
   property bool started: false
@@ -30,7 +45,9 @@ Item {
 
   function warm() {
     if (!proc.running) {
-      proc.command = AskStream.argv(ask.model)
+      ask.inited = false
+      proc.environment = { NODI_ASK_PROGRAM: ask.program || "claude" }
+      proc.command = AskStream.argv(ask.model, ask.acts)
       proc.running = true
       startGuard.restart()
     }
@@ -39,10 +56,11 @@ Item {
 
   // One question at a time: a second one while the first is answered would
   // take the rest of the first answer as its own (Fable 2026-10-02).
-  function busy() { return ask.phase === "waiting" || ask.phase === "streaming" }
+  function busy() { return ask.phase === "waiting" || ask.phase === "streaming" || ask.phase === "proposing" }
 
   function send(q) {
     if (ask.busy()) return false
+    ask.allowed = ""
     ask.question = String(q)
     ask.answer = ""
     ask.error = ""
@@ -50,7 +68,7 @@ Item {
     ask.used = true
     // A session being recycled is still running until it exits: the
     // question waits for the fresh one (agy 2026-10-03).
-    if (proc.running && ask.started && !ask.recycling) proc.write(AskStream.message(ask.question))
+    if (proc.running && ask.started && !ask.recycling && (ask.inited || !ask.acts)) proc.write(AskStream.message(ask.question))
     else { ask.pending = ask.question; if (!ask.recycling) ask.warm() }
     idle.restart()
     return true
@@ -65,13 +83,85 @@ Item {
     ask.answer = ""
     ask.error = ""
     ask.phase = "idle"
+    ask.allowed = ""
+    // A run he never answered is refused, so the session is not left asking.
+    if (ask.proposal) ask.deny()
     if (proc.running) { ask.recycling = true; proc.signal(15) }
   }
 
+  // His answer to a run Claude proposed: Enter allows, Escape refuses.
+  function allow() {
+    var p = ask.proposal
+    if (!p) return
+    ask.proposal = null
+    ask.allowed = p.key
+    ask.phase = "streaming"
+    proc.write(AskStream.reply(p.id, { behavior: "allow", updatedInput: p.input }))
+  }
+
+  function deny() {
+    var p = ask.proposal
+    if (!p) return
+    ask.proposal = null
+    if (ask.phase === "proposing") ask.phase = "streaming"
+    proc.write(AskStream.reply(p.id, { behavior: "deny", message: "He refused it in the bar." }))
+  }
+
+  // The session asks the bar: a tool's permission, or a message for the
+  // bar's own server.
+  function control(ev) {
+    var r = ev.request
+    if (r.subtype === "can_use_tool") {
+      var decided = AskStream.permission(r)
+      if (decided) { proc.write(AskStream.reply(ev.id, decided)); return }
+      var key = String((r.input && r.input.key) || "")
+      // One run waits at a time, and only a row the bar can run is shown:
+      // a second request would leave the first unanswered, a made-up key
+      // an Enter that does nothing (Fable 2026-10-06).
+      var why = ask.proposal ? "One run at a time: he has not answered the last one." : ask.checker ? ask.checker(key) : ""
+      if (why) { proc.write(AskStream.reply(ev.id, { behavior: "deny", message: why })); return }
+      ask.proposal = { id: ev.id, key: key, input: r.input || {} }
+      ask.phase = "proposing"
+      return
+    }
+    if (r.subtype === "mcp_message") {
+      var handlers = {
+        search: function(q) { return ask.searcher ? ask.searcher(q) : [] },
+        // The key he allowed and no other, once: the permission asked
+        // before is the only gate otherwise (Fable 2026-10-06).
+        run: function(k) {
+          if (!k || k !== ask.allowed) return "Not run: he has not allowed " + (k || "that") + "; ask with run first."
+          ask.allowed = ""
+          return ask.runner ? ask.runner(k) : "The bar cannot run rows here."
+        }
+      }
+      proc.write(AskStream.reply(ev.id, { mcp_response: AskStream.mcp(r.message, handlers) }))
+      return
+    }
+    proc.write(AskStream.reply(ev.id, {}))
+  }
+
+  // The session failed while he waited: the question ends with why, and a
+  // run it proposed goes with it.
+  function fail(why) {
+    ask.pending = ""
+    ask.proposal = null
+    ask.allowed = ""
+    // The reason first: the bar redraws on the phase.
+    ask.error = why
+    ask.phase = "error"
+  }
+
   function handle(ev) {
-    if (ev.kind === "text") { ask.answer += ev.text; ask.phase = "streaming" }
+    if (ev.kind === "control") { ask.control(ev); return }
+    if (ev.kind === "controlDone" && ev.id === "nodi-init") {
+      ask.inited = true
+      if (ask.pending) { proc.write(AskStream.message(ask.pending)); ask.pending = "" }
+      return
+    }
+    if (ev.kind === "text") { ask.answer += ev.text; if (ask.phase !== "proposing") ask.phase = "streaming" }
     else if (ev.kind === "done") {
-      if (ev.error) { ask.phase = "error"; ask.error = ev.error }
+      if (ev.error) { ask.error = ev.error; ask.phase = "error" }
       else { if (!ask.answer) ask.answer = ev.text; ask.phase = "done" }
     }
   }
@@ -86,6 +176,9 @@ Item {
     onStarted: {
       startGuard.stop()
       ask.started = true
+      // With the bar's tools, its server first; the question waits for the
+      // session to take it (lib/AskStream.js initialize).
+      if (ask.acts) { proc.write(AskStream.initialize()); return }
       if (ask.pending) { proc.write(AskStream.message(ask.pending)); ask.pending = "" }
     }
     // A program that cannot start sends neither `started` nor `exited`, only
@@ -95,14 +188,16 @@ Item {
       if (proc.running || ask.started) return
       startGuard.stop()
       ask.pending = ""
-      if (ask.busy()) { ask.phase = "error"; ask.error = "Claude could not start" }
+      if (ask.busy()) ask.fail("Claude could not start")
     }
     onExited: function(exitCode) {
       ask.started = false
       // A recycled session's exit is expected, and a question asked since
       // waits in `pending` for the fresh one.
       if (ask.recycling) { ask.recycling = false; ask.warm(); return }
-      if (ask.phase === "waiting" || ask.phase === "streaming") { ask.phase = "error"; ask.error = "Claude stopped (exit " + exitCode + ")" }
+      // While a run waits for him too: Enter would write to a dead session
+      // (Fable 2026-10-06).
+      if (ask.busy()) ask.fail("Claude stopped (exit " + exitCode + ")")
     }
   }
 
@@ -114,7 +209,7 @@ Item {
     onTriggered: {
       if (ask.started) return
       ask.pending = ""
-      if (ask.busy()) { ask.phase = "error"; ask.error = "Claude did not start" }
+      if (ask.busy()) ask.fail("Claude did not start")
       proc.running = false
     }
   }
@@ -122,7 +217,7 @@ Item {
   Timer {
     id: idle
     interval: ask.idleMs
-    onTriggered: if (proc.running && ask.phase !== "waiting" && ask.phase !== "streaming") proc.signal(15)
+    onTriggered: if (proc.running && !ask.busy()) proc.signal(15)
   }
 
   Component.onDestruction: if (proc.running) proc.signal(15)
