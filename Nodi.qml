@@ -55,6 +55,9 @@ Item {
   property int paletteIndex: 0
   property var paletteActions: []   // what Ctrl+K shows: paletteAll, filtered by its field
   property var paletteAll: []
+  // A script filter's steps (providers/filters.js): { keyword, trail: [{
+  // pick, info, data, retv, label, at }] }, the newest last; null when none.
+  property var filterStep: null
   property string paletteArmed: ""
 
   readonly property string home: Quickshell.env("HOME")
@@ -351,6 +354,9 @@ Item {
     root.opened = false
     root.ctrlHeld = false     // a Ctrl+digit closes the bar before Ctrl is let go
     root.closePalette()
+    root.endSteps()
+    // Nothing of a step is kept past the open (providers/filters.js).
+    requests.forget("filter-step")
     trayMenus.active = false
     root.aliasRow = null
     root.endWord()
@@ -459,6 +465,8 @@ Item {
       request: requests.request,
       pluginId: root.pluginId,
       tray: trayMenus.entries,
+      filterStep: root.filterStep,
+      session: root.closedAt,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active },
@@ -492,6 +500,13 @@ Item {
       // a search for Claude does not count (Fable 2026-10-06).
       desktopTimer.seen = JSON.stringify(svc.desktop)
       root.mode = Engine.mode(input.text, root.config)
+      // A step names where it is: "Wi-Fi > Home".
+      if (root.filterStep && root.mode && root.filterStep.trail.length)
+        root.mode = { label: root.mode.label + " > " + root.filterStep.trail[root.filterStep.trail.length - 1].label, icon: root.mode.icon, hint: root.mode.hint }
+      // A step that printed nothing has done its work: the bar goes, as
+      // rofi does when its script prints nothing.
+      if (root.opened && root.results.length === 1 && root.results[0].nodi === "filterDone")
+        Qt.callLater(function() { if (root.opened) root.finish() })
     }
     root.selectedIndex = NodiKeys.reselect(before, root.rows, input.text)
     root.shownQuery = input.text
@@ -1007,6 +1022,12 @@ Item {
     } else if (row.nodi === "answer") {
       var spec = Answers.spec(input.text, root.config.answers, root.cameFrom)
       if (spec) answerSession.start(spec)
+    } else if (row.nodi === "filterNext" && row.next) {
+      root.stepInto(row.next)
+      return
+    } else if (row.nodi === "filterDone") {
+      root.finish()
+      return
     } else if (row.nodi === "tray") {
       // As a click in the tray's own menu; the bar goes first, as for a run.
       if (trayMenus.trigger(row.key)) root.finish()
@@ -1019,6 +1040,39 @@ Item {
       return
     }
     root.recompute()
+  }
+
+  // ---------------------------------------------------------------- steps
+
+  // A script filter one step on (providers/filters.js): the field back to
+  // its keyword, for the step's rows to be found by what is typed.
+  function stepInto(next) {
+    var trail = root.filterStep && root.filterStep.keyword === next.keyword ? root.filterStep.trail.slice() : []
+    trail.push({ pick: next.pick, info: next.info, data: next.data, retv: next.retv, label: next.label || next.pick, at: Date.now(), window: root.cameFrom })
+    root.filterStep = { keyword: next.keyword, trail: trail }
+    root.setKeyword(next.keyword)
+  }
+
+  // Escape: a step back, and from the first step, out of the steps.
+  function stepBack() {
+    if (!root.filterStep) return
+    var trail = root.filterStep.trail.slice(0, -1)
+    var keyword = root.filterStep.keyword
+    root.filterStep = trail.length ? { keyword: keyword, trail: trail } : null
+    root.setKeyword(keyword)
+  }
+
+  function setKeyword(keyword) {
+    var text = keyword + " "
+    if (input.text !== text) input.text = text
+    else root.recompute()
+    input.cursorPosition = text.length
+  }
+
+  // The steps given up. A step taken again is another (its `at`); a rofi
+  // script's first run stays this open's, read once (Sonnet 2026-10-06).
+  function endSteps() {
+    root.filterStep = null
   }
 
   // ---------------------------------------------------------------- nodi pick
@@ -1066,6 +1120,8 @@ Item {
     if (/^\s*ask\s/i.test(input.text)) askSession.warm()
     root.armedKey = ""
     root.closePalette()
+    // Steps belong to their keyword: a query without it ends them.
+    if (root.filterStep && !Engine.startsWithKeyword(input.text, root.filterStep.keyword)) root.endSteps()
     root.selectedIndex = 0
     root.recompute()
   }
@@ -1125,6 +1181,7 @@ Item {
       prompting: !!root.aliasRow || !!root.wordAsk,
       typed: root.typedSinceOpen,
       pick: !!root.pickSession,
+      stepping: !!root.filterStep,
       answering: root.answerShown && answerSession.running,
       proposing: askSession.phase === "proposing",
       rows: root.rows.length,
@@ -1192,6 +1249,7 @@ Item {
     case "refuse": askSession.deny(); break
     case "edit": root.edit(act.how); break
     case "recall": root.recall(); break
+    case "stepBack": root.stepBack(); break
     case "cancelPrompt":
       if (root.wordAsk) { root.endWord(); break }
       root.aliasRow = null; input.text = ""; root.recompute(); break

@@ -216,6 +216,20 @@ while its rows show (half a second to a minute), for rows that change as
 you watch; give such a row an `id`, or a change of its title makes it
 another row, which loses a second Enter it waited for.
 
+A row whose action is `{"next": "value"}` takes its filter a step on:
+Enter runs the program again, once, with `NODI_PICK` the value,
+`NODI_INFO` the row's `info` (never shown), `NODI_DATA` what the run
+before printed as a line `{"data": "..."}`, `NODI_STEP` how many steps in,
+and no query or argument; what you type then finds among its rows, and
+Esc steps back. A step that prints no row has done its work, and the bar
+closes. A step never runs twice by itself, since it may do what it says;
+taken again, it runs again. `"format": "rofi"` runs a rofi script as rofi
+does: first with no argument and `ROFI_RETV=0`, then, on Enter, with the
+entry as its argument, `ROFI_RETV=1` (2 for what you typed, offered as a
+row unless the script says `no-custom`), `ROFI_INFO` and `ROFI_DATA`. Its
+entries' `icon`, `meta`, `info`, `display` and `nonselectable` are read,
+and its `message` shows under the field.
+
 A row or action with `"undoable": true` and an `exec` action is run by
 Nodi itself, which reads what it prints. If its last line is
 `{"undo": {"exec": ["my-notes", "restore", "meeting"], "title": "Restore the meeting note"}}`,

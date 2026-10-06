@@ -78,6 +78,11 @@ Item {
     }
     var source = Requests.sourceOf(requests.providers, name)
     if (!source) return
+    if (requests.forgotten[tag.key]) {
+      delete requests.forgotten[tag.key]
+      delete requests.cache[tag.key]
+      return
+    }
     var before = requests.cache[tag.key]
     var after = Requests.settled(before, source, text, ok, tag.param, Date.now())
     // The same rows again: held as they were, so what is worked out of
@@ -94,6 +99,18 @@ Item {
     var key = Requests.keyOf(name, param)
     var entry = source ? Requests.seeded(source, text, param, at) : null
     if (entry && !(requests.cache[key] && requests.cache[key].pending)) { requests.put(key, entry); requests.arrived(key) }
+  }
+
+  // Every entry of a source forgotten (a script filter's steps, when the
+  // bar closes); a read on its way is dropped as it lands, not kept for
+  // ever (Sonnet 2026-10-06).
+  property var forgotten: ({})
+  function forget(name) {
+    for (var k in requests.cache) {
+      if (k.indexOf(name + ":") !== 0) continue
+      if (requests.cache[k].pending) requests.forgotten[k] = true
+      else delete requests.cache[k]
+    }
   }
 
   // Whether a key's source keeps its entries (`keep`, lib/Requests.js prune).

@@ -18,7 +18,7 @@ const cfg = Object.assign({}, config, { filters: [notes] });
 // What the bar would read for a query: the provider's own argv run for real,
 // its own parse on the output.
 function read(p, param) {
-  const src = F.provider.sources.filter;
+  const src = F.provider.sources[p.step ? "filter-step" : p.list ? "filter-list" : "filter"];
   const argv = src.argv(param);
   let out = "", ok = true;
   try { out = execFileSync(argv[0], argv.slice(1), { env: { PATH: "/usr/bin:/bin" } }).toString(); } catch (e) { ok = false; out = String(e.stdout || ""); }
@@ -212,4 +212,80 @@ test("at root: three at most, by initials too, and a failed refresh keeps its ro
   assert.deepEqual(titles("n weekly", { state: "error", error: "boom" }), ["Notes could not answer"], "nothing kept: the error");
   const twice = [listed, Object.assign({}, listed, { title: "Other" })];
   assert.deepEqual(titles("weekly", { state: "ready", value: rows }, twice), ["Weekly report"], "a keyword is its first filter's");
+});
+
+// Steps (ROADMAP 57): a rofi script, and a filter of Nodi's own lines, taken
+// a step at a time as Nodi.qml's stepInto keeps them.
+const ROFI = join(root, "tests/js/fixtures/filters/rofi.sh");
+const STEPS = join(root, "tests/js/fixtures/filters/steps.sh");
+const rofi = { keyword: "r", title: "Rofi", command: [ROFI], format: "rofi" };
+const stepper = { keyword: "s", title: "Steps", command: [STEPS] };
+const runIn = (f, q, trail) => Engine.run(q, Object.assign({}, config, { filters: [f] }),
+  services({ filter: read, session: 1, filterStep: trail ? { keyword: f.keyword, trail } : null }));
+const at = (pick, info, data, retv, label) => ({ pick, info, data, retv, label: label || pick, at: 5 });
+
+test("rofi's lines: entries and their options, the mode's data, message and no-custom", () => {
+  const v = F.parseRofi("\0message\x1fPick\n\0data\x1fd1\nHome\0icon\x1fnet\x1finfo\x1fwlan0\x1fmeta\x1fhouse wifi\nCafe\n---\0nonselectable\x1ftrue\n\0no-custom\x1ftrue\n",
+                        { keyword: "w", title: "Wi-Fi" });
+  assert.deepEqual([v.message, v.data, v.noCustom, v.rows.length], ["Pick", "d1", true, 3]);
+  const [home, cafe, sep] = v.rows;
+  assert.deepEqual([home.title, home.image, home.match], ["Home", "net", "house wifi"]);
+  assert.deepEqual(plain(home.next), { keyword: "w", pick: "Home", info: "wlan0", data: "d1", retv: 1 });
+  assert.equal(cafe.next.pick, "Cafe");
+  assert.equal(sep.next, null, "nonselectable: shown, never picked");
+  assert.equal(F.parseRofi("Odd\0icon\x1f../x\n", { keyword: "w" }).rows[0].image, "", "an icon is a name or an absolute path");
+});
+
+test("a rofi script runs first with nothing, a pick runs it with the entry, and nothing printed is done", () => {
+  const first = runIn(rofi, "r ");
+  assert.deepEqual(plain(first.map(r => r.title)), ["Alpha", "Beta", "---"]);
+  assert.deepEqual([first[0].nodi, first[0].hint, first[0].remember], ["filterNext", "Pick one", false], "the message under the field");
+  assert.deepEqual(plain(first[0].next), { keyword: "r", pick: "Alpha", info: "a1", data: "start", retv: 1, label: "Alpha" });
+  assert.equal(first[2].nodi, "", "the separator does nothing");
+  const Rows = load("lib/Rows.js");
+  const withActs = Rows.normalize(Object.assign({}, F.provider.match("s ", { settings: [stepper], request: () => ({ state: "ready", value: { rows: F.parseLines('{"title": "Folder", "action": {"next": "f"}, "actions": [{"title": "Open it", "action": {"open": "/tmp"}}]}', { keyword: "s" }).rows, data: "" } }), filterStep: { keyword: "s", trail: [at("x", "", "", 1)] } })[0]), { id: "filters", name: "Steps" }, 0, 0);
+  assert.ok(plain(Rows.actionsFor(withActs, {}).map(a => a.label)).includes("Open it"), "Ctrl+K keeps a step row's own actions (Sonnet 2026-10-06)");
+  assert.deepEqual(plain(runIn(rofi, "r first").map(r => r.title)), ["Alpha", "Use \"first\""], "by its meta; what was typed, as a row");
+  const custom = runIn(rofi, "r first").at(-1);
+  assert.deepEqual([custom.next.pick, custom.next.retv], ["first", 2]);
+  assert.deepEqual(plain(runIn(rofi, "r ", [at("Alpha", "a1", "start", 1)]).map(r => r.title)), ["info=a1 data=start", "Alpha one", "Alpha two"],
+                   "the entry as its argument, ROFI_RETV=1, ROFI_INFO and ROFI_DATA");
+  assert.deepEqual(plain(runIn(rofi, "r ", [at("first", "", "start", 2)]).map(r => r.title)), ["typed first"], "ROFI_RETV=2");
+  const done = runIn(rofi, "r ", [at("Alpha", "a1", "start", 1), at("Alpha one", "", "", 1)]);
+  assert.deepEqual(plain(done.map(r => r.nodi)), ["filterDone"], "nothing printed after a pick: done");
+});
+
+test("Nodi's own lines step on with next: NODI_PICK, NODI_INFO, NODI_DATA, NODI_STEP, and no argument", () => {
+  const first = runIn(stepper, "s ");
+  assert.equal(first.length, 1, "the data line is no row");
+  assert.deepEqual(plain(first[0].next), { keyword: "s", pick: "a", info: "i-a", data: "D", retv: 1, label: "Folder A" });
+  assert.equal(first[0].run, null, "Enter steps, it runs nothing");
+  const second = runIn(stepper, "s ", [at("a", "i-a", "D", 1, "Folder A")]);
+  assert.deepEqual(plain(second.map(r => r.title)), ["File in a [i-a/D/1/0]"]);
+  assert.deepEqual(plain(runIn(stepper, "s zz", [at("a", "i-a", "D", 1)]).map(r => r.title)), ["Nothing from Steps"], "typed for: found among the step's rows");
+  assert.deepEqual(plain(runIn(stepper, "s ", [at("a", "i-a", "D", 1), at("file", "", "", 1)]).map(r => r.nodi)), ["filterDone"]);
+  const asked = [];
+  Engine.run("s ", Object.assign({}, config, { filters: [stepper] }), services({ filter: read, asked, filterStep: { keyword: "s", trail: [at("a", "", "", 1)] } }));
+  assert.ok(asked.every(k => k.startsWith("filter-step:")), "a step reads only its own run");
+  // The key never moves under a step: the window is the one it was taken in.
+  const keys = [];
+  for (const window of [{ address: "0x1", pid: "" }, { address: "0x1", pid: "42" }])
+    Engine.run("s ", Object.assign({}, config, { filters: [stepper] }), services({ filter: read, asked: keys, window, filterStep: { keyword: "s", trail: [at("a", "", "", 1)] } }));
+  assert.equal(new Set(keys).size, 1, "a window refreshed while the bar is open is no second run (Sonnet 2026-10-06)");
+  const rkeys = [];
+  for (const window of [null, { address: "0x9" }]) Engine.run("r ", Object.assign({}, config, { filters: [rofi] }), services({ filter: read, asked: rkeys, window, session: 7 }));
+  assert.equal(new Set(rkeys).size, 1, "a rofi script's first run is keyed by the open, never the window");
+  const src = F.provider.sources["filter-step"];
+  assert.ok(src.keep && src.concurrent && !src.supersede && src.maxAgeMs === Number.MAX_VALUE && src.retryMs === Number.MAX_VALUE,
+            "a step runs once, never ended by another read, never read again");
+});
+
+test("a step belongs to its keyword, and Escape steps back", () => {
+  assert.equal(Engine.startsWithKeyword("  s meet", "s"), true);
+  assert.equal(Engine.startsWithKeyword("S ", "s"), true);
+  assert.equal(Engine.startsWithKeyword("s", "s"), false, "the keyword alone is no filter");
+  assert.equal(Engine.startsWithKeyword("sx ", "s"), false);
+  const Keys = load("lib/Keys.js");
+  assert.deepEqual(plain(Keys.decide({ name: "Escape" }, { stepping: true })), { do: "stepBack" });
+  assert.deepEqual(plain(Keys.decide({ name: "Escape" }, { stepping: true, prompting: true })), { do: "cancelPrompt" }, "a prompt first");
 });
