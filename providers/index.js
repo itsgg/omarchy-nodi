@@ -32,6 +32,7 @@
 .import "desktops.js" as Desktops
 .import "agents.js" as Agents
 .import "calendar.js" as Calendar
+.import "chooser.js" as Chooser
 .import "packages.js" as Packages
 .import "dictionary.js" as Dictionary
 .import "notes.js" as Notes
@@ -71,6 +72,7 @@ var all = [
   Desktops.provider,
   Agents.provider,
   Calendar.provider,
+  Chooser.provider,
   Packages.provider,
   Dictionary.provider,
   Notes.provider,
