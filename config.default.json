@@ -15,9 +15,9 @@
   "filters": [],
   "answers": [],
   "keywords": [
-    { "keyword": "g", "title": "Search Google", "open": "https://www.google.com/search?q={q}" },
-    { "keyword": "yt", "title": "Search YouTube", "open": "https://www.youtube.com/results?search_query={q}" },
+    { "keyword": "g", "title": "Search Google", "open": "https://www.google.com/search?q={q}", "suggest": true },
+    { "keyword": "yt", "title": "Search YouTube", "open": "https://www.youtube.com/results?search_query={q}", "suggest": true },
     { "keyword": "gh", "title": "Search GitHub", "open": "https://github.com/search?q={q}" },
-    { "keyword": "wiki", "title": "Wikipedia", "open": "https://en.wikipedia.org/w/index.php?search={q}" }
+    { "keyword": "wiki", "title": "Wikipedia", "open": "https://en.wikipedia.org/w/index.php?search={q}", "suggest": true }
   ]
 }
