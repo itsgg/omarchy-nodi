@@ -31,6 +31,8 @@
 .import "plugins.js" as Plugins
 .import "desktops.js" as Desktops
 .import "agents.js" as Agents
+.import "packages.js" as Packages
+.import "dictionary.js" as Dictionary
 .import "tray.js" as Tray
 .import "here.js" as Here
 
@@ -66,6 +68,8 @@ var all = [
   Plugins.provider,
   Desktops.provider,
   Agents.provider,
+  Packages.provider,
+  Dictionary.provider,
   Tray.provider,
   Here.provider,
   Omarchy.provider,
