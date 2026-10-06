@@ -534,6 +534,10 @@ baseline query loses rank.
     `min`/`max`, in Nodi's attribute syntax. A sum is left out: it would
     bring the calculator into the placeholder code.
 63. **Search suggestions** after a search keyword. L 14.
+    Done 2026-10-06: a keyword with `"suggest": true` (the built-in g, yt
+    and wiki) offers, from the second letter, up to five searches
+    DuckDuckGo's autocomplete suggests, under what is typed, which stays
+    first; each keystroke ends the read before it.
 64. **Files**: names in root search, contents under `in`, type filters.
     L 16, Q 12.
 65. **Packages and a dictionary.** L 20.

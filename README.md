@@ -93,7 +93,7 @@ that does not parse changes nothing, and a notification says why.
   "time": { "home": "Asia/Kolkata", "zones": ["UTC", "America/New_York"] },
   // Merged with the default keywords; "disabled": true removes one.
   "keywords": [
-    { "keyword": "g", "title": "Search DuckDuckGo", "open": "https://duckduckgo.com/?q={q}" },
+    { "keyword": "g", "title": "Search DuckDuckGo", "open": "https://duckduckgo.com/?q={q}", "suggest": true },
     { "keyword": "say", "title": "Notify", "run": "notify-send \"$1\"" },
     { "keyword": "map", "title": "Directions",
       "open": "https://www.google.com/maps/dir/{argument name=\"from\"}/{argument name=\"to\"}" }
@@ -112,7 +112,11 @@ that does not parse changes nothing, and a notification says why.
 }
 ```
 
-With that, `g omarchy` searches DuckDuckGo, `say hello` posts a
+With that, `g omarchy` searches DuckDuckGo, with DuckDuckGo's
+suggestions for what you type under it (`"suggest": true`, which the
+built-in `g`, `yt` and `wiki` have; a keyword of yours by the same word
+replaces the built-in one whole, so it says `"suggest": true` itself),
+`say hello` posts a
 notification, `map home office` gives directions, `sig` pastes a
 signature and `mt Ravi 4pm` a filled-in sentence (Enter pastes it where
 you were, Ctrl+Enter copies it). Placeholders, in `open` and in snippets:
@@ -333,6 +337,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   that says nothing, or a program closed, is not.
 - `nodi mcp` runs only when an agent starts it, and runs a row only by
   `run`, which the agent's own permissions gate, or by your Enter.
+- It sends what you type after `g`, `yt` or `wiki`, from the second letter,
+  to DuckDuckGo's autocomplete (duckduckgo.com/ac) for suggestions; a
+  keyword of yours does so only with `"suggest": true`.
 - It goes online for exchange rates (open.er-api.com, once a day, or every
   ten minutes while that fails), for `prs` (through `gh`), and for Claude,
   through Claude Code's `claude` command, under `ask` and, if turned on, to describe

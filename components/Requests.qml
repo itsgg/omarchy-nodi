@@ -119,10 +119,16 @@ Item {
     return !!(source && source.keep)
   }
 
+  // Whether a key's source is `transient` (lib/Requests.js prune).
+  function transient(key) {
+    var source = Requests.sourceOf(requests.providers, key.slice(0, key.indexOf(":")))
+    return !!(source && source.transient)
+  }
+
   function put(key, entry) {
     if (entry) requests.cache[key] = entry
     else delete requests.cache[key]
-    var old = Requests.prune(requests.cache, 64, requests.keeps)
+    var old = Requests.prune(requests.cache, 64, requests.keeps, requests.transient)
     for (var i = 0; i < old.length; i++) delete requests.cache[old[i]]
   }
 }

@@ -16,6 +16,11 @@
 // not know every place bash evaluates text (arithmetic, backticks; codex
 // 2026-10-02 and 2026-10-05): a `run` still holding {q} says to write "$1"
 // and runs nothing. Nothing runs until Enter.
+//
+// A search with "suggest": true (ROADMAP 63, L 14) also offers, from the
+// second letter, up to five searches DuckDuckGo's autocomplete suggests
+// for what is typed, under what is typed, which stays first; each keystroke
+// ends the read before it.
 // Ported from omarchy-commandbar (Saikomantisu, MIT).
 
 // A `run` takes what is typed when it reads its arguments: $1, ${1}, $@ or
@@ -90,10 +95,53 @@ function list(settings) {
 
 function escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
 
+var SUGGESTIONS = 5
+
+// DuckDuckGo's autocomplete answer, [query, [suggestion, ...]], as the
+// suggestions, trimmed and once each in any case (Sonnet 2026-10-06: a
+// repeat was two rows of one key); anything else is none.
+function suggestionsOf(text) {
+  var v
+  try { v = JSON.parse(String(text || "")) } catch (e) { return null }
+  if (!Array.isArray(v) || !Array.isArray(v[1])) return null
+  var seen = Object.create(null)
+  var out = []
+  for (var i = 0; i < v[1].length && out.length < 10; i++) {
+    var s = typeof v[1][i] === "string" ? v[1][i].replace(/\s+/g, " ").trim().slice(0, 200) : ""
+    if (!s || seen[s.toLowerCase()]) continue
+    seen[s.toLowerCase()] = true
+    out.push(s)
+  }
+  return out
+}
+
+// The last suggestions that landed, which stand while the next are read,
+// those that still begin with what is typed: the rows do not blink away
+// at each keystroke (Sonnet 2026-10-06).
+var lastSaid = { q: "", list: [] }
+
 var provider = {
   id: "keywords",
   name: "Keywords",
   icon: "󰆍",
+  sources: {
+    suggest: {
+      argv: function(q) { return ["/usr/bin/curl", "-sS", "--max-time", "3", "https://duckduckgo.com/ac/?type=list&q=" + encodeURIComponent(String(q))] },
+      parse: function(text, ok) {
+        if (!ok) throw "DuckDuckGo did not answer"
+        var list = suggestionsOf(text)
+        if (!list) throw "DuckDuckGo's answer did not read"
+        return list
+      },
+      maxAgeMs: 10 * 60 * 1000,
+      retryMs: 30 * 1000,
+      timeoutMs: 4000,
+      maxBytes: 65536,
+      supersede: true,
+      // One entry a query typed: these go first when the cache is full.
+      transient: true
+    }
+  },
   // A keyword that takes a query, then a space, puts the bar in that mode.
   modes: function(settings) {
     return list(settings).filter(takesQuery).map(function(cmd) {
@@ -177,6 +225,20 @@ var provider = {
           // A search names a moment, not a thing: not remembered (Fable 2026-10-02).
           out.push({ title: title + ": " + rest, subtitle: describe(run, cmd), score: 98, icon: icon, copy: rest, run: run, remember: false,
                      hint: pattern(cmd) })
+          if (cmd.suggest === true && fallsBack(cmd) && rest.length >= 2 && ctx.request) {
+            var got = ctx.request("suggest", rest)
+            var typed = rest.replace(/\s+/g, " ").trim().toLowerCase()
+            if (Array.isArray(got.value)) lastSaid = { q: typed, list: got.value }
+            var said = Array.isArray(got.value) ? got.value
+              : lastSaid.list.filter(function(x) { return x.toLowerCase().indexOf(typed) === 0 })
+            var shown = 0
+            for (var s = 0; s < said.length && shown < SUGGESTIONS; s++) {
+              if (said[s].toLowerCase() === typed) continue
+              out.push({ key: "keywords:" + cmd.keyword + ":suggest:" + said[s], title: title + ": " + said[s], subtitle: "Suggested by DuckDuckGo",
+                         score: 97 - shown * 0.01, icon: icon, copy: said[s], run: build(cmd, said[s], ctx), remember: false, hint: pattern(cmd) })
+              shown++
+            }
+          }
         }
       } else if (!rest) {
         if (clipboardFor(cmd, ctx) === undefined) {
