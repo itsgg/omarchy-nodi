@@ -171,6 +171,11 @@ const scenes = [
     const actions = palette(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() });
     return { paletteOpen: true, paletteActions: actions, paletteIndex: 1, paletteRow: row };
   }),
+  scene("50-palette-moved", "firefox", {}, rows => {
+    const row = rows[0];
+    const actions = palette(row, { activeWorkspace: 1, knows: () => true, prefs: Prefs.empty() });
+    return { paletteOpen: true, paletteActions: actions, paletteIndex: 1, paletteRow: row, after: [{ paletteIndex: 4 }] };
+  }),
   // The chosen action past the fold: clear of the fade, the next one peeking.
   scene("39-palette-deep", "firefox", {}, rows => {
     const row = rows[0];
@@ -224,6 +229,11 @@ const scenes = [
   scene("38-long-list-selected", "omarchy ", {}, () => ({ selectedIndex: 8 })),
   scene("15-run", "> htop"),
   scene("16-second-row", "term", {}, () => ({ selectedIndex: 1 })),
+  // The selection moved by a key after the rows came (item 71: what a
+  // screen reader is told of each).
+  scene("48-moved", "lock", {}, () => ({ after: [{ selectedIndex: 1 }] })),
+  // A key moving among the fallbacks, and inside Ctrl+K (item 71).
+  scene("49-fallback-moved", "zzqx", {}, () => ({ after: [{ selectedIndex: 2 }] })),
   scene("17-keybindings", "keys "),
   scene("19-ask-answer", "ask how do I list open ports", { ask: { phase: "done", question: "how do I list open ports", model: "haiku",
     answer: "Use ss, which ships with iproute2:\n\nss -tulpn\n\n-t and -u are TCP and UDP, -l listening sockets, -p the process holding each, -n numbers instead of names. Run it with sudo to see other users' processes." } },

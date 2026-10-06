@@ -1,10 +1,10 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test rank rank-update opens picks replay lint compile qstest shots textsize themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test rank rank-update opens picks replay lint compile qstest shots textsize a11y a11y-update themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 
-check: test rank lint compile qstest shots textsize hygiene manifest validate
+check: test rank lint compile qstest shots textsize a11y hygiene manifest validate
 	@echo "all checks passed"
 
 test:
@@ -64,6 +64,19 @@ shots:
 # (item 70).
 textsize:
 	@NODI_BASE_SIZE=20 NODI_SCREEN=1536x960 tools/render.sh shots/text-20
+
+# What a screen reader is told (item 71): the card on a private X server,
+# D-Bus and accessibility bus, never the session's, walked with AT-SPI; the
+# tree and the announcements of eight scenes against tests/a11y/expected.txt.
+# `make a11y-update` accepts a change, its diff going in the commit.
+A11Y_SCENES := 01-home,48-moved,13-nothing,49-fallback-moved,25-no-match,11-confirm,12-palette,50-palette-moved
+a11y:
+	@NODI_A11Y=$(A11Y_SCENES) tools/render.sh shots/a11y
+	@diff -u tests/a11y/expected.txt shots/a11y/a11y.txt && echo "a11y: as expected"
+
+a11y-update:
+	@NODI_A11Y=$(A11Y_SCENES) tools/render.sh shots/a11y
+	@mkdir -p tests/a11y && cp shots/a11y/a11y.txt tests/a11y/expected.txt && echo "a11y: tests/a11y/expected.txt updated"
 
 # The shots again in other Omarchy themes, light ones and a rounded one
 # among them, into shots/themes/: what a look change does beyond this one.

@@ -602,6 +602,14 @@ baseline query loses rank.
 71. **A combobox to a screen reader**, the selection announced. X 3. Its
     tests run under their own runtime directory, never on his session's
     accessibility bus.
+    Done 2026-10-06: the field a search edit named Nodi whose description
+    is the selected row, the results and Ctrl+K's actions lists of list
+    items with the selection marked, and announcements, polite and the
+    last of a burst: the count and first row after typing, the row a move
+    selects with its place, No match with the first fallback, an armed
+    row's second Enter, Ctrl+K's actions, an answer as it ends. `make
+    a11y` (in check) walks six scenes with AT-SPI on a private X server,
+    D-Bus and accessibility bus under their own runtime directory.
 72. **A selection cue that reads**: a 2 px bar in the text colour where
     the accent was swapped away and the theme sets no selected border,
     and always under higher contrast (his call). X 8.

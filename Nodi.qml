@@ -25,6 +25,7 @@ import "lib/Pick.js" as Pick
 import "lib/Pane.js" as Pane
 import "lib/Opens.js" as Opens
 import "lib/PickLog.js" as PickLog
+import "lib/Markdown.js" as Markdown
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -194,6 +195,7 @@ Item {
     root.aliasRow = null
     root.endCapture()
     root.opened = true
+    card.hearAfresh()
     root.selectedIndex = 0
     root.shownQuery = null
     root.armedKey = ""
@@ -1647,6 +1649,25 @@ Item {
     var row = root.askRows[p.key]
     return row ? { key: p.key, title: row.title, subtitle: row.subtitle, run: row.run, risk: row.risk, confirmWord: row.confirmWord }
                : { key: p.key, title: p.key, subtitle: "A row Claude did not find by searching", run: null, risk: "", confirmWord: "" }
+  }
+
+  // An answer said to a screen reader once it ends, its words without
+  // Markdown's marks (item 71).
+  Connections {
+    target: askSession
+    function onPhaseChanged() {
+      if (!root.asking) return
+      if (askSession.phase === "done" && root.askShown !== "") card.announce("Answer. " + Markdown.spoken(root.askShown, 600))
+      else if (askSession.phase === "error") card.announce("Ask failed. " + (askSession.error || ""))
+    }
+  }
+  Connections {
+    target: answerSession
+    function onPhaseChanged() {
+      if (!root.answerShown) return
+      if (answerSession.phase === "done") card.announce(answerSession.title + ". " + Markdown.spoken(answerSession.text, 600))
+      else if (answerSession.phase === "error") card.announce(answerSession.title + " failed. " + (answerSession.error || ""))
+    }
   }
 
   // The answer the card shows, while the query is the question it answers.

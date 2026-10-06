@@ -19,6 +19,12 @@ Item {
 
   width: ListView.view ? ListView.view.width : 0
   height: nodi.rowSize(modelData)
+  // A list item to a screen reader, as the card's spoken() says it (item 71).
+  Accessible.role: Accessible.ListItem
+  Accessible.name: String(modelData.title || "")
+  Accessible.description: String(modelData.subtitle || "") + (armed ? (modelData.subtitle ? ", " : "") + "Enter again" : (modelData.badge ? (modelData.subtitle ? ", " : "") + modelData.badge : ""))
+  Accessible.selectable: true
+  Accessible.selected: selected
 
   // Nearer the rows it heads than the group above it.
   Text {

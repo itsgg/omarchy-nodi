@@ -38,6 +38,103 @@ BorderSurface {
   // not, and Shift+Down there moves the list as it did.
   readonly property bool paneScrolls: pane.visible && pane.hasText
 
+  // ---------- what a screen reader is told (item 71) ----------
+  // The field is a search edit named Nodi, its description the selected
+  // row; the results a list of rows, the selected one marked; and what
+  // changes is announced, politely, the last of a burst (150 ms) only,
+  // so a word typed is one announcement: the count and the first row
+  // after typing, the row the selection moves to and its place, No match
+  // with the first fallback, an armed row's second Enter, and Ctrl+K's
+  // actions. Qt's AT-SPI bridge (Qt 6.8 and on) sends an announcement as
+  // object:announcement; the bridge starts only when a screen reader asks.
+  function spoken(r) {
+    if (!r) return ""
+    return String(r.title || "") + (r.subtitle ? ", " + r.subtitle : "") + (r.badge ? ", " + r.badge : "")
+  }
+  readonly property string selectedSpoken: nodi.paletteOpen
+    ? (nodi.paletteActions && nodi.paletteActions[nodi.paletteIndex] ? String(nodi.paletteActions[nodi.paletteIndex].label || "") : "")
+    : card.spoken(nodi.rows[nodi.selectedIndex])
+  property bool rowsMoved: false
+  property string lastSaid: ""
+  // What the rows were when last announced: a recompute that hands the
+  // same rows again (a timer, a read landing) says nothing (Sonnet
+  // 2026-10-06: each one said "N results" again).
+  property string rowsSaid: ""
+  property bool paletteFresh: false
+  function rowsKey(rows) {
+    var parts = [String(input.text)]
+    for (var i = 0; i < rows.length; i++) parts.push(String(rows[i].key) + "\u0001" + card.spoken(rows[i]))
+    return parts.join("\u0002")
+  }
+  // A new open is heard afresh, the same rows as last time included.
+  function hearAfresh() {
+    card.lastSaid = ""
+    card.rowsSaid = ""
+  }
+  // Words to say as they are (an answer as it ends, Nodi.qml), once.
+  property string direct: ""
+  function announce(text) {
+    card.direct = String(text || "")
+    speaker.restart()
+  }
+  function speak(rowsChanged) {
+    if (rowsChanged) {
+      var k = card.rowsKey(nodi.rows || [])
+      if (k === card.rowsSaid) return
+      card.rowsSaid = k
+      card.rowsMoved = true
+    }
+    speaker.restart()
+  }
+  function utterance() {
+    var rows = nodi.rows || []
+    var n = rows.length
+    if (nodi.paletteOpen) {
+      var acts = nodi.paletteActions || []
+      var a = acts[nodi.paletteIndex]
+      if (a && a.confirm && nodi.paletteArmed === a.label) return "Enter again to " + a.label
+      var said = a ? a.label + ", " + (nodi.paletteIndex + 1) + " of " + acts.length : "None match"
+      // Whose actions, once as it opens; then the action alone, as keys
+      // move or words filter (Sonnet 2026-10-06).
+      return card.paletteFresh ? "Actions for " + (nodi.paletteRow ? nodi.paletteRow.title : "the row") + ". " + said : said
+    }
+    var r = rows[nodi.selectedIndex]
+    if (r && nodi.armedKey !== "" && nodi.armedKey === r.key) return "Enter again to " + r.title
+    if (n === 0) return input.text.trim() !== "" ? "No match" : ""
+    var place = card.spoken(r) + ", " + (nodi.selectedIndex + 1) + " of " + n
+    // Only fallbacks: No match, and the first of them; a key moving among
+    // them says each, as among rows (Sonnet 2026-10-06: they were silent).
+    if (rows[0].provider === "fallback") return card.rowsMoved ? "No match. " + card.spoken(r) : place
+    if (card.rowsMoved) return n + (n === 1 ? " result. " : " results. ") + card.spoken(r)
+    return place
+  }
+  Timer {
+    id: speaker
+    interval: 150
+    onTriggered: {
+      var direct = card.direct
+      var text = direct || card.utterance()
+      card.direct = ""
+      card.rowsMoved = false
+      card.paletteFresh = false
+      // The same words again are not said twice in a row, but for an
+      // answer, said as asked each time.
+      if (!text || (!direct && text === card.lastSaid)) return
+      card.lastSaid = text
+      list.Accessible.announce(text)
+    }
+  }
+  Connections {
+    target: card.nodi
+    function onRowsChanged() { card.speak(true) }
+    function onSelectedIndexChanged() { card.speak(false) }
+    function onArmedKeyChanged() { card.speak(false) }
+    function onPaletteOpenChanged() { card.paletteFresh = card.nodi.paletteOpen; card.speak(false) }
+    function onPaletteIndexChanged() { card.speak(false) }
+    function onPaletteActionsChanged() { card.speak(false) }
+    function onPaletteArmedChanged() { card.speak(false) }
+  }
+
   // What the card takes besides its results and pane: the insets, the
   // field, the argument line, the rule, a no-match note, the footer and the
   // gaps between what shows (a Column's spacing falls between visible
@@ -100,6 +197,11 @@ BorderSurface {
         clip: true
         focus: true
         onTextChanged: nodi.queryChanged()
+        Accessible.name: "Nodi"
+        Accessible.searchEdit: true
+        Accessible.description: card.selectedSpoken
+        // Hidden under Ctrl+K, and so from a screen reader too.
+        Accessible.ignored: !visible
 
         Text {
           anchors.fill: parent
@@ -138,6 +240,10 @@ BorderSurface {
         font.pixelSize: nodi.inputFont
         clip: true
         onTextChanged: nodi.paletteTyped(text)
+        Accessible.name: "Actions for " + (nodi.paletteRow ? nodi.paletteRow.title : "the row")
+        Accessible.searchEdit: true
+        Accessible.description: card.selectedSpoken
+        Accessible.ignored: !visible
 
         Text {
           anchors.fill: parent
@@ -302,6 +408,11 @@ BorderSurface {
           anchors.fill: parent
           model: nodi.rows
           clip: true
+          Accessible.role: Accessible.List
+          Accessible.name: "Results"
+          // Under Ctrl+K it stays, not showing, which a reader passes
+          // over: ignored, it handed its rows up to the window, and the
+          // walk found the selected one left there (2026-10-06).
           boundsBehavior: Flickable.StopAtBounds
           currentIndex: nodi.selectedIndex
 
