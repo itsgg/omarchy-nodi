@@ -613,6 +613,13 @@ baseline query loses rank.
 72. **A selection cue that reads**: a 2 px bar in the text colour where
     the accent was swapped away and the theme sets no selected border,
     and always under higher contrast (his call). X 8.
+    Done 2026-10-06: where the selected title is the colour of every other
+    (the accent failed on the fill, as in 8 of the stock themes, or the
+    theme's selected text is its text, as Kanagawa's) and the theme draws
+    no selected border, a
+    2 px bar in the text colour on the selected row's and action's left
+    edge (Contrast.needsMark); Dark Knight, Tokyo Night and the like draw
+    as before. Higher contrast turns it on everywhere once 73 reads it.
 73. **Motion and contrast preferences** from the portal and Hyprland. X 12.
 74. **Mouse**: right click opens Ctrl+K; the footer's keys click. X 14.
 75. **`?mine`**: every alias, hotkey, favourite and hidden row. X 13.

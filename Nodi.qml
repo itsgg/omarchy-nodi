@@ -120,6 +120,9 @@ Item {
   readonly property alias borderSpec: look.borderSpec
   readonly property alias selectedBorderSpec: look.selectedBorderSpec
   readonly property alias rowInsetLeft: look.rowInsetLeft
+  readonly property alias selectionBar: look.selectionBar
+  readonly property alias barWidth: look.barWidth
+  readonly property alias barInset: look.barInset
   readonly property alias rowInsetRight: look.rowInsetRight
   readonly property alias scrim: look.scrim
   readonly property alias selectedBackground: look.selectedBackground
