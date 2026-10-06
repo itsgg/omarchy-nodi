@@ -86,7 +86,7 @@ function row(s, typed, ctx, extra) {
   var name = s.name || s.keyword
   var parts = Placeholders.parse(s.text)
   var clip = null
-  if (Placeholders.clipboardNeedsNow(parts)) {
+  if (Placeholders.clipboardNeedsNow(parts, env(ctx, null).snippets)) {
     clip = clipboardNow(ctx)
     if (clip === undefined) return extend({ key: "snippet:" + (s.keyword || name), title: name, subtitle: "Reading the clipboard...",
                                             icon: s.icon || "󰅪", copy: "", remember: false, group: "Snippets" }, extra)
