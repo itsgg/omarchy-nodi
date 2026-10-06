@@ -1,6 +1,6 @@
 {
   "hotkey": "SUPER + PERIOD",
-  "providers": ["keywords", "snippets", "scripts", "filters", "answers", "undo", "ask", "selection", "translate", "shell", "math", "currency", "time", "units", "emoji", "processes", "clipboard", "files", "devtools", "system", "lists", "desktop", "notifications", "dev", "menu", "plugins", "omarchy", "windows", "apps", "keys"],
+  "providers": ["keywords", "snippets", "scripts", "filters", "answers", "undo", "ask", "selection", "translate", "shell", "math", "currency", "time", "units", "emoji", "processes", "clipboard", "files", "devtools", "system", "lists", "desktop", "notifications", "dev", "menu", "plugins", "tray", "omarchy", "windows", "apps", "keys"],
   "fallbacks": ["keywords", "find", "ask"],
   "ask": { "model": "haiku", "actions": true },
   "apps": { "describe": false },

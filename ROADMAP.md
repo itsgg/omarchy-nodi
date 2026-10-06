@@ -485,7 +485,10 @@ baseline query loses rank.
     hour, gives each enabled plugin of someone else's that opens (an
     overlay, a panel, a menu) a row by its name, which summons it with
     {}; Omarchy's own are left out, as its menu reaches them by name, and
-    some want a payload. The tray's menus are the second part.
+    some want a payload. Second part done 2026-10-06: each tray app's
+    menu, and its submenus one level down, read while the bar is open
+    (components/Tray.qml), its entries rows ("Dropbox: Pause syncing"),
+    a checked one marked ON; Enter is a click in that menu.
 59. **The window it was opened over**: screenshot it, read its text, a
     terminal in its directory, move, float, pin; capture results come back
     to the bar. X 5.
