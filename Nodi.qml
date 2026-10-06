@@ -108,7 +108,7 @@ Item {
 
   // How it looks and measures, from components/Look.qml.
   // Held wide under Ctrl+K too, so the actions do not narrow the card.
-  Look { id: look; screenWidth: panel.width; screenHeight: panel.height; wide: root.preview !== null || (root.paletteOpen && root.anyPreview) }
+  Look { id: look; screenWidth: panel.width; screenHeight: panel.height; chrome: card.chrome; wide: root.preview !== null || (root.paletteOpen && root.anyPreview) }
   readonly property alias background: look.background
   readonly property alias foreground: look.foreground
   readonly property alias secondary: look.secondary
@@ -2080,7 +2080,7 @@ Item {
       id: card
       nodi: root
       anchors.horizontalCenter: parent.horizontalCenter
-      y: Math.round(panel.height * 0.22)
+      y: look.cardTop
     }
   }
 }

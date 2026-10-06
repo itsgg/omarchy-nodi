@@ -64,9 +64,20 @@ QtObject {
   property bool wide: false
   property int cardWidth: Math.min(Style.space(wide ? 960 : 680), screenWidth - Style.gapsOut * 2)
   readonly property int listColumn: Style.space(430)
-  readonly property int paneMin: Style.space(280)
+  readonly property int paneMin: Math.min(Style.space(280), bodyMax)
   // An answer from Ask scrolls past this.
   readonly property int answerMax: Math.round(screenHeight * 0.35)
+
+  // The card's top, where Nodi.qml puts it, and what the card takes besides
+  // its results (Card.chrome): the results and Ctrl+K's actions take at
+  // most the rest of the screen under it, so the card stays on screen at
+  // every text size (item 70: at Omarchy's 20 on this laptop's 1536x960,
+  // eleven scenes ran off the bottom, Ctrl+K by 255 px). Never less than a
+  // tall row under its group's header, so the selected row can always be
+  // seen whole, on a screen too short for the rest (Sonnet 2026-10-06).
+  readonly property int cardTop: Math.round(screenHeight * 0.22)
+  property real chrome: 0
+  readonly property real bodyMax: Math.max(heroHeight + sectionHeight, screenHeight - cardTop - Style.gapsOut - chrome)
 
   function rowSize(row) {
     return (row.hero ? heroHeight : rowHeight) + (row.section ? sectionHeight : 0)
@@ -76,7 +87,7 @@ QtObject {
     var total = 0
     for (var i = 0; i < rows.length && (showingHelp || i < maxRows); i++) total += rowSize(rows[i])
     if (!showingHelp && rows.length > maxRows) total += rowPeek
-    return Math.min(total, screenHeight * 0.6)
+    return Math.min(total, screenHeight * 0.6, bodyMax)
   }
 
   // Ctrl+K's actions, held as the list is: seven, then a part of the next,
@@ -86,6 +97,7 @@ QtObject {
     var n = actions ? actions.length : 0
     var total = 0
     for (var i = 0; i < n && i < maxRows; i++) total += rowHeight + (actions[i].section ? sectionHeight : 0)
-    return total + (n > maxRows ? rowPeek : 0)
+    // Under the row's title, which heads the palette (ActionPalette.qml).
+    return Math.min(total + (n > maxRows ? rowPeek : 0), Math.max(rowHeight, bodyMax - sectionHeight))
   }
 }

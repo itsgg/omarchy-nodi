@@ -1,10 +1,10 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test rank rank-update opens picks replay lint compile qstest shots themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check test rank rank-update opens picks replay lint compile qstest shots textsize themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 
-check: test rank lint compile qstest shots hygiene manifest validate
+check: test rank lint compile qstest shots textsize hygiene manifest validate
 	@echo "all checks passed"
 
 test:
@@ -58,6 +58,12 @@ qstest:
 # when the card is created fails here.
 shots:
 	@tools/render.sh shots
+
+# Every scene at Omarchy's largest text size (20, its Display panel's top)
+# on this laptop's 1536x960: a card that would run off the screen fails
+# (item 70).
+textsize:
+	@NODI_BASE_SIZE=20 NODI_SCREEN=1536x960 tools/render.sh shots/text-20
 
 # The shots again in other Omarchy themes, light ones and a rounded one
 # among them, into shots/themes/: what a look change does beyond this one.
