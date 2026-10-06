@@ -437,6 +437,15 @@ baseline query loses rank.
     ordinary exit), is quiet. Apps keep LaunchFeedback.
 54. **Clipboard**: pins, type filters, images found by their text (OCR),
     paste in sequence, send to a device. L 4.
+    Done 2026-10-06: Ctrl+K pins an entry, kept with what it holds (text
+    up to 64 KB, an image by Omarchy's path) so it outlives the history,
+    first under `cb`; `cb img`, `url`, `color`, `text` show one kind; a
+    search with words reads each image's text once (tesseract, cached in
+    ~/.cache/nodi/ocr, about 3 s of it a read, one read for all images)
+    and finds it by that; "Paste the clipboard in
+    sequence" pastes the newest text, then each older one on a press
+    within 30 s, and takes a hotkey; "Send to a device" through
+    omarchy-menu-share (LocalSend).
 55. **URLs and bookmarks**: a typed domain opens; Chromium's bookmarks at
     root and under `bm`. L 5.
     Done 2026-10-05: a URL, a domain with a known ending, localhost or an
@@ -462,14 +471,14 @@ baseline query loses rank.
 60. **Windows**: the next window of this app, typed move and size for a
     floating window, saved desktops. L 10.
 61. **Agents' usage and sessions.** L 11.
-    Done 2026-10-05: `{cursor}` (Left keys after the paste, from its place
-    to the end), `{clipboard offset="N"}`, `{snippet name="..."}` (one
-    level, as written), `{random from=...}` or `min`/`max`, in Nodi's
-    attribute syntax. A sum is left out: it would bring the calculator
-    into the placeholder code.
 62. **Placeholders**: `{cursor}` (arrow keys after the paste, which
     answers item 19's "a paste cannot place the cursor"), `{clipboard:N}`,
     `{snippet:name}`, random, a sum. L 13.
+    Done 2026-10-05: `{cursor}` (Left keys after the paste, from its place
+    to the end), `{clipboard offset="N"}`, `{snippet name="..."}` (one
+    level, its own placeholders filled), `{random from=...}` or
+    `min`/`max`, in Nodi's attribute syntax. A sum is left out: it would
+    bring the calculator into the placeholder code.
 63. **Search suggestions** after a search keyword. L 14.
 64. **Files**: names in root search, contents under `in`, type filters.
     L 16, Q 12.

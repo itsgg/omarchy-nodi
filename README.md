@@ -47,6 +47,7 @@ text already typed:
 | `> htop` | A command, in a terminal |
 | `12*8 + 15%`, `5 km to mi`, `100 usd to eur`, `3pm to tokyo` | Answers |
 | `:fire`, `cb`, `f `, `notes.org`, `find report`, `~/Downloads/` | Emoji, clipboard, recent files (one by its whole name in any search), files, folders |
+| `cb img`, `cb url`, `cb invoice` | One kind of entry; an image by the words in it. Ctrl+K pins an entry first, kept after the history drops it, or sends it to a device; "paste in sequence" pastes the newest text, then each older one on each press |
 | `kill chromium`, `ports`, `services` | Processes, listening ports, user services |
 | `h github`, `prs`, `tmux`, `ssh `, `man ls` | Browser history, pull requests, tmux, SSH hosts, man pages |
 | `github.com/itsgg`, `localhost:3000`, `bm work` | Open a site as it is typed; your browser's bookmarks, three of them in any search |
@@ -310,7 +311,13 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   from (`wl-paste --primary`) and the clipboard's text (never a password
   manager's), keeps them until it closes, and sends one to Claude only
   when you pick one of Claude's rows on it.
-- It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`.
+- It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`,
+  which holds the text of each clipboard entry you pin. A search under
+  `cb` with words reads the text in each image of the history once, with
+  Omarchy's `tesseract` (about 2 s an image, a few seconds at a time
+  while that search is open), into `~/.cache/nodi/ocr/`; pasting in sequence
+  keeps the history's texts in `$XDG_RUNTIME_DIR/nodi-sequence`, yours
+  alone and gone at logout.
   Among the cache is how long its last 300 opens took (`opens.json`, read
   by `make opens`), with nothing of what was typed, and the last 1000 rows
   run from a query (`picks-log.json`, read by `make picks`): the queries
