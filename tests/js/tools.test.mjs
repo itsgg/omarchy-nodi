@@ -27,7 +27,7 @@ test("clipboard: pasted and copied by history index, never by text", () => {
   assert.deepEqual(plain(rows[2].run.argv), ["omarchy-clipboard-paste-file", "image/png", "/home/u/.local/state/omarchy/clipboard-images/a.png"]);
   assert.equal(top("clip github", { clipboard }).title, clipboard[0].text);
   assert.equal(top("cb image", { clipboard }).title, "Image, Friday 10:29");
-  assert.match(top("cb zzz", { clipboard }).title, /^Nothing in the history matches/);
+  assert.equal(top("cb zzz", { clipboard, ocr: { texts: {}, left: 0, at: 0 } }).title, "No entries in the history match \"zzz\"");
   assert.equal(top("cb", { clipboard: [] }).title, "The clipboard history is empty");
 });
 

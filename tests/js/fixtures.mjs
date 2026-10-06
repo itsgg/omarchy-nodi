@@ -84,6 +84,7 @@ export function requester(data, asked) {
       : name === "bookmarks" ? data.bookmarks
       : name === "prs" ? data.prs
       : name === "clipboard-text" ? data.clipboardText
+      : name === "ocr" ? data.ocr
       : name === "scripts" ? data.scripts
       : name === "script-output" ? (data.scriptOutput || {})[JSON.parse(param)[1]]
       : name === "filter" ? (typeof data.filter === "function" ? filtered(data.filter, param) : undefined) : undefined;

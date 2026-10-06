@@ -659,6 +659,7 @@ Item {
       return
     }
     var next = a.nodi === "favourite" ? Prefs.toggledFavourite(root.prefs, row.key, snap)
+      : a.nodi === "pinClip" ? Prefs.toggledPin(root.prefs, row.key, row.pin)
       : a.nodi === "hide" ? Prefs.hiddenRow(root.prefs, row.key, snap)
       : a.nodi === "unalias" ? Prefs.withoutAlias(root.prefs, a.alias)
       : a.nodi === "unhotkey" ? Prefs.withoutHotkey(root.prefs, row.key)
