@@ -174,7 +174,17 @@ test("the placeholders Alfred and Raycast have: cursor, an older clipboard entry
   assert.equal(fill('{clipboard} {clipboard offset="1"} {clipboard offset="2"} [{clipboard offset="9"}]', "", env).text, "now before older []");
   assert.equal(fill('{clipboard offset="1"}', "", env).clipboard, false, "an offset reads the history only, not the clipboard now");
   assert.equal(fill("{clipboard}", "", env).clipboard, true);
-  assert.equal(fill('Hi {snippet name="sig"}', "", { snippets: { sig: "Regards, {q}" } }).text, "Hi Regards, {q}", "one level, as written");
+  // Filled one level deep (the live check 2026-10-06: its {random} came through as written).
+  assert.equal(fill('Hi {snippet name="sig"}', "", { snippets: { sig: 'Regards, {random from="x"}' } }).text, "Hi Regards, x");
+  assert.equal(fill('[{snippet name="a"}]', "", { snippets: { a: 'A{snippet name="b"}', b: "B" } }).text, "[A]", "a snippet in it is empty: no recursion");
+  const inc = fill('{snippet name="s"}{cursor}!', "", { snippets: { s: "x{cursor}y" } });
+  assert.deepEqual([inc.text, inc.cursorBack], ["xy!", 1], "its cursor dropped, the outer one kept");
+  assert.equal(fill('{snippet name="s"}', "", { snippets: { s: '{argument name="who" default="you"}' } }).text, "you", "its arguments their defaults");
+  // Its {clipboard} is read for it (Fable 2026-10-06: it was never read).
+  const withClip = fill('Hi {snippet name="sig"}', "", { snippets: { sig: "Sent: {clipboard}" }, clipboard: "now" });
+  assert.deepEqual([withClip.text, withClip.clipboard], ["Hi Sent: now", true]);
+  assert.equal(P.clipboardNeedsNow(P.parse('{snippet name="sig"}'), { sig: "{clipboard}" }), true);
+  assert.equal(P.clipboardNeedsNow(P.parse('{snippet name="sig"}'), { sig: '{clipboard offset="1"}' }), false, "an older entry is history, always there");
   assert.equal(fill('{snippet name="none"}').text, "");
   const r = (n) => () => n;
   assert.equal(fill('{random from="a, b ,c"}', "", { random: r(0.5) }).text, "b");

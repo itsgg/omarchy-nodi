@@ -219,7 +219,10 @@ function typedUrl(text) {
 
 function bookmarkRows(q, ctx, all) {
   var got = ctx.request ? ctx.request("bookmarks") : { state: "pending" }
-  if (!got.value) return all ? [{ title: got.state === "error" ? "No bookmarks to read" : "Reading bookmarks...", subtitle: "Bookmarks", score: 40, copy: "", remember: false }] : []
+  // No Bookmarks file reads as none saved (the read prints {}); an error
+  // is one: a file that cannot be read or does not parse (Fable 2026-10-06).
+  if (!got.value) return all ? [{ title: got.state === "error" ? "Could not read the bookmarks" : "Reading bookmarks...",
+                                  subtitle: "Bookmarks", score: 40, copy: "", remember: false }] : []
   var hits = []
   for (var i = 0; i < got.value.length; i++) {
     var b = got.value[i]
@@ -234,7 +237,8 @@ function bookmarkRows(q, ctx, all) {
     return { key: "bookmark:" + h.b.url, title: h.b.title || host(h.b.url), subtitle: host(h.b.url) + (h.b.folder ? ", " + h.b.folder : ""),
              icon: "󰃀", tier: h.t, kind: "item", offset: -n * 0.001, copy: h.b.url, run: Run.open(h.b.url), actionLabel: "Open", group: "Bookmarks" }
   })
-  if (all && out.length === 0) return [{ title: q ? "No bookmark matches " + q : "No bookmarks", subtitle: "Bookmarks", score: 40, copy: "", remember: false }]
+  if (all && out.length === 0) return [{ title: q ? "No bookmark matches " + q : "No bookmarks saved", subtitle: q ? "Bookmarks" : "None in Chromium, Brave or Chrome",
+                                         score: 40, copy: "", remember: false }]
   return out
 }
 
@@ -492,7 +496,7 @@ var provider = {
       argv: function() {
         return ["/usr/bin/bash", "-c",
           'for f in "$HOME/.config/chromium/Default/Bookmarks" "$HOME/.config/BraveSoftware/Brave-Browser/Default/Bookmarks" "$HOME/.config/google-chrome/Default/Bookmarks"; do '
-          + '[ -f "$f" ] && exec cat -- "$f"; done; exit 1']
+          + '[ -f "$f" ] && exec cat -- "$f"; done; printf "{}"']
       },
       parse: parseBookmarks,
       maxAgeMs: 60 * 1000,

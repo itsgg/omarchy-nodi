@@ -106,7 +106,7 @@ the keyword (the last one takes the rest), `{clipboard}`, `{date}`,
 `{time}` (with `format="d MMM yyyy"` and `offset="+1d"`), `{uuid}`, an
 older clipboard entry `{clipboard offset="1"}` and `{random from="a,b,c"}`
 or `{random min="1" max="6"}`; in snippets also another snippet's text,
-`{snippet name="sig"}`; in both, `{selection}`, the text selected in the
+`{snippet name="sig"}` (its own placeholders filled too); in both, `{selection}`, the text selected in the
 window you came from; and in snippets `{cursor}`, where the cursor is left after the
 paste, by Left keys over the text after it. Those count places as
 Chromium, Electron and GTK do; a Qt app joins no Indic conjunct, so after

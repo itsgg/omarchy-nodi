@@ -241,5 +241,9 @@ test("bookmarks: the folders walked, under bm and three at root (ROADMAP 55)", (
   assert.equal(plain(run("bm zzz", { bookmarks }))[0].title, "No bookmark matches zzz");
   assert.ok(!plain(run("bar", { bookmarks })).some(r => r.key.startsWith("bookmark:")), "a folder's name matches no bookmark");
   assert.equal(plain(run("bm", {}))[0].title, "Reading bookmarks...");
+  // No Bookmarks file reads as {}: none saved, which is no error (the live check 2026-10-06).
+  const none = plain(run("bm ", { bookmarks: D.parseBookmarks("{}", true) }))[0];
+  assert.deepEqual([none.title, none.subtitle], ["No bookmarks saved", "None in Chromium, Brave or Chrome"]);
+  assert.equal(plain(run("bm ", { failed: { bookmarks: "not JSON" } }))[0].title, "Could not read the bookmarks", "a real failure says so");
 });
 
