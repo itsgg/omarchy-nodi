@@ -44,6 +44,7 @@ text already typed:
 | `theme tokyo`, `font jet`, `power profile` | Themes, fonts and power profiles |
 | `version`, `omarchy ` | Omarchy's own commands |
 | A plugin's name, `plugin` | Another plugin's panel, overlay or menu, opened as Omarchy's menu opens its own |
+| `usage`, `agents` | Claude Code's and Codex's limits, each one's share and when it resets (the empty bar shows one at 80% or more); their sessions running in a terminal (in tmux too), with what you last asked, Enter going to the terminal |
 | `window text`, `screenshot window`, `files`, `move 3` | The window you came from: its text, read and brought back here to act on; a screenshot of it alone; its folder in Files, when a shell runs in it; workspace 3 |
 | `region text`, `pick a colour` | A capture whose result comes back to the bar: the text of a region, a colour's hex |
 | `move 100 200`, `size 1280 720`, `next window` | A floating window's place and size, typed; the next window of the active app, round to the first (give it a hotkey) |
@@ -365,6 +366,12 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   once an hour, when a search first needs them. While it is open it reads
   each tray app's menu and its submenus one level down, which asks the
   app to fill them in, as opening its menu in the tray does.
+- It reads the usage records Omarchy's agents widget keeps
+  (`~/.local/state/omarchy/agents/usage`) at each open, and under `agents`
+  the process list, tmux's clients, and for a Claude Code session the
+  record it keeps of the process (`~/.claude/sessions`) and the end of
+  its own transcript in `~/.claude/projects`, for the last thing you
+  asked it.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 

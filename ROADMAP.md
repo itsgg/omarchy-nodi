@@ -516,6 +516,15 @@ baseline query loses rank.
     land so through uwsm-app and gtk-launch), reading the desktop when it
     runs; "forget desktop <name>".
 61. **Agents' usage and sessions.** L 11.
+    Done 2026-10-06: `usage` answers from the records Omarchy's agents
+    widget keeps, each limit's share and when it resets, and the empty bar
+    shows an agent's highest limit at 80% or more; `agents` lists the
+    Claude Code and Codex sessions running in a terminal (through tmux
+    too), the most recently busy first, with the last prompt from the
+    session's own transcript, Enter focusing the terminal. One with no
+    window, a single answer (-p, an SDK run), Codex's other subcommands
+    and Akshi's are left out. Waiting sessions first
+    needs a Notification hook outside Nodi, so it is not done.
 62. **Placeholders**: `{cursor}` (arrow keys after the paste, which
     answers item 19's "a paste cannot place the cursor"), `{clipboard:N}`,
     `{snippet:name}`, random, a sum. L 13.

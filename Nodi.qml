@@ -257,6 +257,7 @@ Item {
     root.refreshZones()
     root.readSelection()
     requests.request("omarchy-commands")
+    requests.request("agent-usage")
     trayMenus.active = true
     if (Date.now() - root.guardsAt > 60 * 1000) root.evaluateGuards()
   }
