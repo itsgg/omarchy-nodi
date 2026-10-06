@@ -28,6 +28,7 @@
 .import "keys.js" as Keys
 .import "windows.js" as Windows
 .import "apps.js" as Apps
+.import "plugins.js" as Plugins
 
 // Every provider Nodi knows. To add one: write providers/<name>.js exporting
 // `var provider = { id, name, icon, match(query, ctx) }`, import it above,
@@ -58,6 +59,7 @@ var all = [
   Notifications.provider,
   Dev.provider,
   Menu.provider,
+  Plugins.provider,
   Omarchy.provider,
   Keys.provider,
   Windows.provider,

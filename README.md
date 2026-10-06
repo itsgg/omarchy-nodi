@@ -43,6 +43,7 @@ text already typed:
 | `vol 60`, `bright off`, `remind 15 tea` | Volume, brightness and reminders |
 | `theme tokyo`, `font jet`, `power profile` | Themes, fonts and power profiles |
 | `version`, `omarchy ` | Omarchy's own commands |
+| A plugin's name, `plugin` | Another plugin's panel, overlay or menu, opened as Omarchy's menu opens its own |
 | `full screen`, `keys ` | Keybindings, by what they do |
 | `> htop` | A command, in a terminal |
 | `12*8 + 15%`, `5 km to mi`, `100 usd to eur`, `3pm to tokyo` | Answers |
@@ -340,6 +341,8 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   by `make opens`), with nothing of what was typed, and the last 1000 rows
   run from a query (`picks-log.json`, read by `make picks`): the queries
   typed, the row's key and its place, no titles. It binds its hotkey in the running Hyprland and edits no config file.
+- It asks the shell for its plugins (`omarchy-shell shell listPlugins`)
+  once an hour, when a search first needs them.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 
