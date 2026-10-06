@@ -13,6 +13,7 @@
 //   a screenshot    of it alone, where and as Omarchy saves one, copied
 //   its folder      in Files, when a shell runs in it (a terminal)
 //   move 3          to workspace 3
+//   move 100 200    a floating window's place; size 1280 720 its size
 //
 // And two captures that end in the bar, not only the clipboard: text from
 // a region (Omarchy's own capture), and a colour picked, which opens the
@@ -54,6 +55,20 @@ var CWD = 'c=$(pgrep -P "$1" | tail -n1); [ -n "$c" ] || exit 0'
   + "\n" + 'grep -Fqsx "$s" /etc/shells && [ -d "$d" ] && printf "%s" "$d"; exit 0'
 
 var MOVE = /^\s*move(?:\s+(?:it|this))?(?:\s+to)?(?:\s+workspace)?\s+([1-9]\d?)\s*$/i
+// "move 100 200", "move to 100,200": a floating window's place; "size 1280
+// 720", "resize 1280x720": its size, kept about its centre, as Hyprland
+// resizes a floating window (ROADMAP 60, L 10).
+var PLACE = /^\s*move(?:\s+(?:it|this))?(?:\s+to)?\s+(-?\d{1,5})\s*(?:,\s*|\s+|x)(-?\d{1,5})\s*$/i
+var SIZE = /^\s*(?:re)?size(?:\s+(?:it|this))?(?:\s+to)?\s+(\d{2,5})\s*(?:,\s*|\s+|x)(\d{2,5})\s*$/i
+
+// The next window of the active window's app, in the order the windows
+// sit (workspace, then top to bottom, left to right), round to the first:
+// asked when it runs, so it works from a hotkey too.
+var NEXT = 'a=$(hyprctl activewindow -j) || exit 1'
+  + "\n" + 'c=$(jq -r \'.class // empty\' <<< "$a"); me=$(jq -r \'.address // empty\' <<< "$a"); [ -n "$c" ] || exit 0'
+  + "\n" + 'n=$(hyprctl clients -j | jq -r --arg c "$c" --arg me "$me" \'[.[] | select(.class == $c and .mapped and (.hidden | not))] | sort_by(.workspace.id, .at[1], .at[0]) | map(.address) | if length < 2 then empty else .[((index($me) // -1) + 1) % length] end\')'
+  + "\n" + '[ -n "$n" ] || exit 0'
+  + "\n" + 'r=$(hyprctl dispatch "hl.dsp.focus({ window = \\"address:$n\\" })" 2>&1); [ "$r" = ok ] || { echo "${r:-hyprctl gave no answer}" >&2; exit 1; }'
 
 // A dispatch that says why it failed: hyprctl answers "ok", else the
 // error, and exits 0 either way.
@@ -93,12 +108,15 @@ var provider = {
       { title: "Text from a region", keywords: "ocr read text extract region capture screen", text: "Read with OCR, then shown here to act on",
         run: Run.shell(REGION, [id]), icon: "󰴑" },
       { title: "Pick a colour", keywords: "colour color picker pick eyedropper hex screen", text: "Its hex, copied and shown here",
-        run: Run.shell(COLOUR, [id]), icon: "󰈊" }
+        run: Run.shell(COLOUR, [id]), icon: "󰈊" },
+      { title: "Next window of this app", keywords: "next window cycle app switch same other", text: "The app's next window, round to the first; give it a hotkey",
+        run: Run.shell(NEXT), icon: "󰖲" }
     ]
   },
   help: [
     { id: "here", title: "This window", icon: ICON, about: "The window the bar opened over: its text, a screenshot, its folder, another workspace",
-      examples: [{ q: "window text", note: "Its text, read and shown here" }, { q: "screenshot window" }, { q: "move 3", note: "To workspace 3" }] }
+      examples: [{ q: "window text", note: "Its text, read and shown here" }, { q: "screenshot window" }, { q: "move 3", note: "To workspace 3" },
+                 { q: "move 100 200", note: "A floating window's place; size 1280 720 its size" }, { q: "next window", note: "The app's next one; give it a hotkey" }] }
   ],
   match: function(query, ctx) {
     var w = ctx.window || {}
@@ -106,6 +124,17 @@ var provider = {
     if (!w.address || q.length < 2) return []
     var app = appOf(w, ctx.apps)
     var out = []
+    var place = q.match(PLACE)
+    var size = place ? null : q.match(SIZE)
+    if ((place || size) && /^0x[0-9a-fA-F]+$/.test(w.address)) {
+      if (!w.floating)
+        return [{ key: "here:tiled", title: app + " is tiled", subtitle: "Float it first (Super + T): a place and a size are for a floating window",
+                  icon: ICON, tier: "exact", kind: "action", copy: "", remember: false }]
+      var x = Number((place || size)[1]), y = Number((place || size)[2])
+      var lua = (place ? "hl.dsp.window.move" : "hl.dsp.window.resize") + '({ window = "address:' + w.address + '", x = ' + x + ", y = " + y + ", relative = false })"
+      return [{ key: "here:" + (place ? "place" : "size"), title: place ? "Move " + app + " to " + x + ", " + y : "Resize " + app + " to " + x + " x " + y,
+                subtitle: String(w.title || ""), icon: ICON, run: Run.shell(DISPATCH, [lua]), tier: "exact", kind: "action", copy: "", remember: false }]
+    }
     var m = q.match(MOVE)
     if (m && /^0x[0-9a-fA-F]+$/.test(w.address)) {
       out.push({ key: "here:move:" + m[1], title: "Move " + app + " to workspace " + m[1], subtitle: String(w.title || ""), icon: ICON,

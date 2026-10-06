@@ -506,6 +506,15 @@ baseline query loses rank.
     (Super+Return opens a terminal where the active one is).
 60. **Windows**: the next window of this app, typed move and size for a
     floating window, saved desktops. L 10.
+    Done 2026-10-06: "Next window of this app" (a row a hotkey can take,
+    worked out when it runs: the active window's app, its windows in the
+    order they sit, round); "move 100 200" and "size 1280 720" for the
+    window the bar opened over when it floats, else a row saying to float
+    it; "save desktop <name>" keeps each app and its numbered workspace
+    in prefs.json, and "Open desktop <name>" starts each one with no
+    window open on its workspace through Hyprland's exec rule (seen to
+    land so through uwsm-app and gtk-launch), reading the desktop when it
+    runs; "forget desktop <name>".
 61. **Agents' usage and sessions.** L 11.
 62. **Placeholders**: `{cursor}` (arrow keys after the paste, which
     answers item 19's "a paste cannot place the cursor"), `{clipboard:N}`,

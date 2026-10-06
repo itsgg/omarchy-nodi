@@ -1028,6 +1028,15 @@ Item {
     } else if (row.nodi === "filterDone") {
       root.finish()
       return
+    } else if (row.nodi === "saveDesktop" && row.data) {
+      var saved = Prefs.withDesktop(root.prefs, row.data.name, row.data.apps, Date.now())
+      if (saved) root.savePrefs(saved)
+      Quickshell.execDetached(["notify-send", "-a", "Nodi", "Desktop \"" + row.data.name + "\" saved", row.subtitle])
+      root.finish()
+      return
+    } else if (row.nodi === "forgetDesktop" && row.data) {
+      root.savePrefs(Prefs.withoutDesktop(root.prefs, row.data.name))
+      input.text = ""
     } else if (row.nodi === "tray") {
       // As a click in the tray's own menu; the bar goes first, as for a run.
       if (trayMenus.trigger(row.key)) root.finish()

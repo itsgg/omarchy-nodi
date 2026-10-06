@@ -18,7 +18,7 @@ test("windows: mapped, visible ones, and the active workspace", () => {
     { address: "0xc", mapped: true, hidden: true, class: "y", title: "hidden", workspace: { name: "1" }, focusHistoryID: 3 }
   ];
   const r = plain(S.windowsFrom(clients, { id: 4 }));
-  assert.deepEqual(r, { list: [{ address: "0xa", cls: "firefox", title: "Docs", workspace: "2", focus: 1, pid: 0 }], activeWorkspace: 4 });
+  assert.deepEqual(r, { list: [{ address: "0xa", cls: "firefox", title: "Docs", workspace: "2", focus: 1, pid: 0, floating: false }], activeWorkspace: 4 });
   assert.deepEqual(plain(S.windowsFrom("garbage", "x")), { list: [], activeWorkspace: null });
   assert.equal(S.windowsFrom([], { id: -1337, name: "code" }).activeWorkspace, "name:code", "a named workspace, never its negative id");
   assert.equal(S.windowsFrom([], { id: -98, name: "special:scratch" }).activeWorkspace, "special:scratch");
@@ -36,16 +36,20 @@ test("the window you came from: Hyprland's active window, filled in from the lis
   const ipc = { address: "0x5b8f", class: "foot", title: "old title", pid: 5438, workspace: { id: 2, name: "2" } };
   // Quickshell gives the address without 0x.
   assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "vim notes.md", ipc, workspace: "2" }, [])),
-    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2", stableId: "", monitor: -1, width: 0 }, "the live title, not the record's");
+    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2", stableId: "", monitor: -1, width: 0, floating: false }, "the live title, not the record's");
   assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "", ipc: {}, workspace: "" }, list)),
-    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2", stableId: "", monitor: -1, width: 0 }, "an empty record is filled from the list");
+    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2", stableId: "", monitor: -1, width: 0, floating: false }, "an empty record is filled from the list");
   assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "t", ipc: null }, [])),
-    { address: "0x5b8f", class: "", title: "t", pid: "", workspace: "", stableId: "", monitor: -1, width: 0 }, "what is not known is empty");
-  const none = { address: "", class: "", title: "", pid: "", workspace: "", stableId: "", monitor: -1, width: 0 };
+    { address: "0x5b8f", class: "", title: "t", pid: "", workspace: "", stableId: "", monitor: -1, width: 0, floating: false }, "what is not known is empty");
+  const none = { address: "", class: "", title: "", pid: "", workspace: "", stableId: "", monitor: -1, width: 0, floating: false };
   const shot = S.windowContext({ address: "5b8f", title: "t", ipc: { stableId: "180000b1", size: [1512, 910] } }, []);
   assert.deepEqual([shot.stableId, shot.width], ["180000b1", 1512], "what grim -T captures it by, and its width (ROADMAP 43)");
   assert.equal(S.windowContext({ address: "5b8f", ipc: { monitor: 1 } }, []).monitor, 1, "its own monitor, for the capture's scale");
   assert.equal(S.windowContext({ address: "5b8f", ipc: { stableId: "18; rm -rf ~" } }, []).stableId, "", "a stable id is hex or nothing");
+  assert.equal(S.windowContext({ address: "5b8f", ipc: { floating: true } }, []).floating, true, "whether it floats (ROADMAP 60)");
+  assert.equal(S.windowContext({ address: "5b8f", ipc: {} }, [{ address: "0x5b8f", floating: true }]).floating, true, "from the list when the record lacks it");
+  assert.equal(S.windowContext({ address: "5b8f", ipc: { floating: false } }, [{ address: "0x5b8f", floating: true }]).floating, true,
+               "the list, read again while the bar is open, over the open's record (Sonnet 2026-10-06)");
   assert.deepEqual(plain(S.windowContext(null, list)), none, "no window had the focus");
   assert.deepEqual(plain(S.windowContext({ address: "0xzz;rm" }, list)), none, "an address that is not one");
   assert.equal(S.windowContext({ address: "1", title: "x".repeat(1000) }, []).title.length, 300);
@@ -150,7 +154,7 @@ test("windows from Quickshell's records, null and junk skipped (ROADMAP 32)", ()
   const recs = [{ address: "0xa", class: "foot", title: "~", workspace: { id: 2, name: "2" }, focusHistoryID: 1, pid: 42, mapped: true, hidden: false },
                 { address: "0xb", class: "x", title: "hid", workspace: { id: 1, name: "1" }, focusHistoryID: 0, mapped: true, hidden: true }, null, "junk"];
   const r = plain(S.windowsFrom(recs, { id: 2, name: "2" }));
-  assert.deepEqual(r, { list: [{ address: "0xa", cls: "foot", title: "~", workspace: "2", focus: 1, pid: 42 }], activeWorkspace: 2 });
+  assert.deepEqual(r, { list: [{ address: "0xa", cls: "foot", title: "~", workspace: "2", focus: 1, pid: 42, floating: false }], activeWorkspace: 2 });
   assert.equal(S.windowsFrom([], { id: -98, name: "special:scratch" }).activeWorkspace, "special:scratch");
   assert.deepEqual(plain(S.windowsFrom(null, null)), { list: [], activeWorkspace: null });
 });
