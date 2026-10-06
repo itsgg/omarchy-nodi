@@ -347,6 +347,12 @@ baseline query loses rank.
     selection highlighted when the bar closes, so the paste replaces it.
 48. **Translation streamed into the pane**: `tr <language> <text>`, and
     `<text> in <language>`. L 8.
+    Done 2026-10-06: `tr` takes a language by code or name (a code that
+    is an English word, "hi" or "no", only by name), else the one in
+    nodi.json, then the text, or the selection when none is typed; at
+    root, "<text> in <language>" by name only. Claude translates through
+    the held Ask session, as the selection's rows do; a keyword "tr" of
+    your own still comes first.
 49. **MCP servers for Ask, opt-in**: servers he names in nodi.json, passed
     with `--strict-mcp-config`, every call confirmed as Ask's proposed rows
     are; off by default, since the README says Ask's session has no MCP

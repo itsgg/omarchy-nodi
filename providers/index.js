@@ -7,6 +7,7 @@
 .import "undo.js" as Undo
 .import "ask.js" as Ask
 .import "selection.js" as Selection
+.import "translate.js" as Translate
 .import "shell.js" as Shell
 .import "math.js" as Calculator
 .import "currency.js" as Currency
@@ -40,6 +41,7 @@ var all = [
   Undo.provider,
   Ask.provider,
   Selection.provider,
+  Translate.provider,
   Shell.provider,
   Calculator.provider,
   Currency.provider,

@@ -54,6 +54,7 @@ text already typed:
 | `ask why is the sky blue`, or Tab | A quick answer from Claude; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
 | Select text, then open the bar; `fix`, `rewrite shorter`, `case ` | The selection fixed, rewritten, translated or its case changed, pasted over it; or searched |
+| `tr ta good morning`, `good morning in french` | A translation by Claude; Enter pastes it |
 | `?` | Help, with every example answered live |
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
@@ -82,8 +83,8 @@ that does not parse changes nothing, and a notification says why.
   "keywords": [
     { "keyword": "g", "title": "Search DuckDuckGo", "open": "https://duckduckgo.com/?q={q}" },
     { "keyword": "say", "title": "Notify", "run": "notify-send \"$1\"" },
-    { "keyword": "tr", "title": "Translate",
-      "open": "https://translate.google.com/?sl=auto&tl={argument name=\"to\"}&text={argument name=\"text\"}" }
+    { "keyword": "map", "title": "Directions",
+      "open": "https://www.google.com/maps/dir/{argument name=\"from\"}/{argument name=\"to\"}" }
   ],
   "snippets": [
     { "keyword": "sig", "name": "Signature", "text": "Regards,\nGanesh" },
@@ -97,7 +98,7 @@ that does not parse changes nothing, and a notification says why.
 ```
 
 With that, `g omarchy` searches DuckDuckGo, `say hello` posts a
-notification, `tr ta good morning` translates into Tamil, `sig` pastes a
+notification, `map home office` gives directions, `sig` pastes a
 signature and `mt Ravi 4pm` a filled-in sentence (Enter pastes it where
 you were, Ctrl+Enter copies it). Placeholders, in `open` and in snippets:
 `{q}` or `{argument name="..." default="..."}` for the words typed after
