@@ -24,7 +24,10 @@ test("calculator", () => {
   for (const [q, want] of [["2+3*4", "14"], ["2^10", "1,024"], ["15% of 200", "30"], ["200+10%", "220"], ["200 - 15%", "170"],
     ["sqrt(16)", "4"], ["2pi", "6.283185307"], ["3(4+1)", "15"], ["3x4", "12"], ["10 % 3", "1"], ["10 mod 4", "2"], ["2 ^ 10 % 3", "1"], ["2^3%5", "3"], ["0x10", "16"], ["0xff + 1", "256"], ["-10 % 3", "2"], ["10 % 3 * 2", "2"],
     ["0.1+0.2", "0.3"], ["1,000 * 3", "3,000"], ["max(1,5,3)", "5"], ["-2^2", "-4"], ["5!", "120"], ["1/0", "∞"], ["2e3+1", "2,001"]]) expectTop(q, want);
-  for (const q of ["hello", "42", "(1+2", ""]) expectTop(q, null);
+  for (const q of ["hello", "42", "(1+2"]) expectTop(q, null);
+  // The empty bar answers no sum: with no history it says what to try (ROADMAP 77).
+  assert.deepEqual(plain(run("", { history: {} }).map(r => r.key)),
+    ["starter:app", "starter:windows", "starter:clipboard", "starter:answers", "starter:actions"], "only starters on a first open");
 });
 
 test("currency", () => {
@@ -354,13 +357,14 @@ test("home: an empty bar shows the rows run most, then reminders", () => {
   const reminders = [{ unit: "r1", label: "Tea", remaining: "5m", atTime: "17:05", seconds: 300 }, { unit: "r2", label: "Stretch", remaining: "40m", atTime: "17:40", seconds: 2400 }];
   const rows = run("", { history, reminders, toggleStates: { wifi: { on: false, value: "0" } } });
   // Firefox 20 runs; Wi-Fi 6; Foot 3; Old 50 runs two hundred days ago,
-  // halved every 30 days to under one (ROADMAP 38: a count ages now).
+  // halved every 30 days to under one (ROADMAP 38: a count ages now). Six
+  // rows of history are a home of its own: no starters (ROADMAP 77).
   assert.deepEqual(plain(rows.map(r => r.title)), ["Firefox", "Wi-Fi", "Foot", "Old", "Tea", "Stretch"]);
   assert.equal(rows.find(r => r.title === "Wi-Fi").badge, "OFF", "toggles show their state now, not when they were run");
   assert.equal(rows[0].section, "Recent");
   assert.equal(rows[4].section, "Reminders");
   assert.deepEqual(plain(rows[4].run.argv), ["omarchy-reminder", "show"]);
-  assert.equal(run("", {}).length, 0, "nothing run yet, nothing shown");
+  assert.deepEqual(plain(run("", { history: {} }).map(r => r.provider)), Array(5).fill("starter"), "nothing run yet: only what to try (ROADMAP 77)");
 });
 
 test("a city is looked up as the table's own key, never an Object method", () => {

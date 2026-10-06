@@ -1,5 +1,5 @@
 SCENE 01-home
-  said '4 results. Firefox, Web Browser'
+  said '8 results. Firefox, Web Browser'
   [application] 'Qml Runtime'
     [text] 'Nodi' desc='Firefox, Web Browser'
     [list] 'Results'
@@ -7,6 +7,10 @@ SCENE 01-home
       [list item] 'Lock Screen' desc='System'
       [list item] 'Screenshot' desc='Trigger > Capture, keys PRINT'
       [list item] 'Bluetooth' desc='Toggle, ON'
+      [list item] 'Switch to a window' desc='w, then words of its title'
+      [list item] 'Find what you copied' desc='cb, then words in it'
+      [list item] 'Answers as you type' desc='Sums, units, money and time'
+      [list item] "A row's other actions" desc='Ctrl+K on any row: favourite, alias, hotkey, Ctrl K'
 SCENE 48-moved
   said '3 results. Lock Screen, System'
   said 'Stay Awake, Trigger > Toggle, OFF, 2 of 3'

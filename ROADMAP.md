@@ -655,6 +655,13 @@ baseline query loses rank.
     (tools/xkeys.py, by ctypes): U+0b85 composed, then committed as its
     character.
 77. **Starter rows on a first open.** X 11.
+    Done 2026-10-07: until the home has five rows of yours, it ends with
+    what to try, five rows that teach by doing (an app by its name, `w `,
+    `cb `, an answer as you type, Ctrl+K on a row), Enter filling each
+    in. Each goes once what it teaches was reached by any way: windows,
+    clips or an answer leading a list, Ctrl+K opened, an app in the
+    history; kept in the prefs (`tried`) once each, since a window, a clip
+    or a sum is never in the history. A first open was a bare field.
 78. **The window itself in the pane** for `w` rows. X 17.
     Done 2026-10-07: under `w` the selected window is drawn beside the
     list as it is now (components/WindowShot.qml, Quickshell's

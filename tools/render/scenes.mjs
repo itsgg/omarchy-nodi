@@ -150,6 +150,8 @@ const withCalendar = Object.assign({}, config, { calendar: { ics: "https://calen
 
 const scenes = [
   scene("01-home", "", { history }),
+  // A new install's first open (ROADMAP 77): what to try.
+  scene("55-first-open", "", { history: {}, apps: docsApps }),
   scene("45-calendar-home", "", { history, calendar }, null, withCalendar),
   scene("46-calendar-list", "cal ", { calendar }, () => ({ selectedIndex: 0 }), withCalendar),
   // Text copied just before the bar opened: one row naming it, its actions
