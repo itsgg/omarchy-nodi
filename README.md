@@ -61,6 +61,7 @@ text already typed:
 | `github.com/itsgg`, `localhost:3000`, `bm work` | Open a site as it is typed; your browser's bookmarks, three of them in any search |
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
 | `pkg zed`, `define serendipity` | Arch's packages and the AUR, installed in Omarchy's terminal; a word's senses from Wiktionary, English first and a few in the other languages it has |
+| `note call the bank`, `notes bank` | One dated line in `~/Documents/notes.md` (`"notes": { "file": ... }`); its lines found again, Enter opening the file (at the line, in a terminal editor) |
 | `ask why is the sky blue`, or Tab | A quick answer from Claude, a conversation for ten minutes, or about the selected text or the window you came from; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
 | Select or copy text, then open the bar; `fix`, `rewrite `, `case ` | It fixed, rewritten, translated or its case changed, pasted over the selection or at the cursor; or searched |

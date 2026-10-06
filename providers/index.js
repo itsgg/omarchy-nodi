@@ -33,6 +33,7 @@
 .import "agents.js" as Agents
 .import "packages.js" as Packages
 .import "dictionary.js" as Dictionary
+.import "notes.js" as Notes
 .import "tray.js" as Tray
 .import "here.js" as Here
 
@@ -70,6 +71,7 @@ var all = [
   Agents.provider,
   Packages.provider,
   Dictionary.provider,
+  Notes.provider,
   Tray.provider,
   Here.provider,
   Omarchy.provider,
