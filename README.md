@@ -44,6 +44,7 @@ text already typed:
 | `theme tokyo`, `font jet`, `power profile` | Themes, fonts and power profiles |
 | `version`, `omarchy ` | Omarchy's own commands |
 | A plugin's name, `plugin` | Another plugin's panel, overlay or menu, opened as Omarchy's menu opens its own |
+| `pause dropbox`, `tray` | An entry of a tray app's menu, chosen as a click in that menu |
 | `full screen`, `keys ` | Keybindings, by what they do |
 | `> htop` | A command, in a terminal |
 | `12*8 + 15%`, `5 km to mi`, `100 usd to eur`, `3pm to tokyo` | Answers |
@@ -342,7 +343,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   run from a query (`picks-log.json`, read by `make picks`): the queries
   typed, the row's key and its place, no titles. It binds its hotkey in the running Hyprland and edits no config file.
 - It asks the shell for its plugins (`omarchy-shell shell listPlugins`)
-  once an hour, when a search first needs them.
+  once an hour, when a search first needs them. While it is open it reads
+  each tray app's menu and its submenus one level down, which asks the
+  app to fill them in, as opening its menu in the tray does.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 

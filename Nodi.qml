@@ -254,6 +254,7 @@ Item {
     root.refreshZones()
     root.readSelection()
     requests.request("omarchy-commands")
+    trayMenus.active = true
     if (Date.now() - root.guardsAt > 60 * 1000) root.evaluateGuards()
   }
 
@@ -350,6 +351,7 @@ Item {
     root.opened = false
     root.ctrlHeld = false     // a Ctrl+digit closes the bar before Ctrl is let go
     root.closePalette()
+    trayMenus.active = false
     root.aliasRow = null
     root.endWord()
     root.endCapture()
@@ -456,6 +458,7 @@ Item {
       toggleStates: root.toggleStates, themes: root.themes, home: root.home, descriptions: root.appDescriptions,
       request: requests.request,
       pluginId: root.pluginId,
+      tray: trayMenus.entries,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active },
@@ -1004,6 +1007,10 @@ Item {
     } else if (row.nodi === "answer") {
       var spec = Answers.spec(input.text, root.config.answers, root.cameFrom)
       if (spec) answerSession.start(spec)
+    } else if (row.nodi === "tray") {
+      // As a click in the tray's own menu; the bar goes first, as for a run.
+      if (trayMenus.trigger(row.key)) root.finish()
+      return
     } else if (row.nodi === "pick" && root.pickSession) {
       var line = Pick.lineOf(row.key)
       if (line < 0) return
@@ -1602,6 +1609,13 @@ Item {
   // Media, audio devices, Bluetooth, Wi-Fi and the battery, as they are.
   Desktop { id: desktopState }
 
+  // The tray's menus while the bar is open (providers/tray.js, ROADMAP 58):
+  // opened with the other reads, a frame after the card shows.
+  Tray {
+    id: trayMenus
+    onChanged: if (root.opened) root.recompute()
+  }
+
   // While a desktop row is on screen it is read again every two seconds,
   // so a track paused or a device disconnected elsewhere shows (codex
   // 2026-10-04); a snapshot costs 0.04 ms, measured in Quickshell.
@@ -1735,6 +1749,8 @@ Item {
   function iconSource(icon) {
     var value = String(icon || "")
     if (value.charAt(0) === "/") return Rows.fileUrl(value)
+    // A tray item's picture, as Quickshell serves it.
+    if (/^image:\/\//.test(value)) return value
     var themed = value ? Quickshell.iconPath(value, true) : ""
     return themed || Quickshell.iconPath("application-x-executable", true)
   }
