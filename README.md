@@ -334,6 +334,7 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
 ```sh
 make check     # tests, ranking, lint, compile, tests in Quickshell, renders, hygiene, manifest, validate
 make rank      # how well it ranks, against tools/rank/baseline.json (make rank-update accepts a change)
+make replay    # your own picks, replayed through today's ranking (from the log make picks reads)
 make reload    # install, clear Quickshell's cache, restart the shell
 make shots     # the card drawn offscreen, as PNGs in shots/
 make bench     # how long a keystroke takes
