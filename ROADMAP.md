@@ -496,6 +496,14 @@ baseline query loses rank.
 59. **The window it was opened over**: screenshot it, read its text, a
     terminal in its directory, move, float, pin; capture results come back
     to the bar. X 5.
+    Done 2026-10-06: for the window the bar opened over, its text (read
+    from its own buffer with grim -T and tesseract, copied, the bar
+    opened again on it), a screenshot of it alone (saved and copied as
+    Omarchy saves one), its folder in Files when a shell runs in it, and
+    "move 3" to a workspace; "Text from a region" and "Pick a colour" end
+    in the bar, not only the clipboard. A terminal in its folder, float,
+    pin and full screen are Omarchy's own keybindings' rows already
+    (Super+Return opens a terminal where the active one is).
 60. **Windows**: the next window of this app, typed move and size for a
     floating window, saved desktops. L 10.
 61. **Agents' usage and sessions.** L 11.

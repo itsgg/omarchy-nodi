@@ -44,6 +44,8 @@ text already typed:
 | `theme tokyo`, `font jet`, `power profile` | Themes, fonts and power profiles |
 | `version`, `omarchy ` | Omarchy's own commands |
 | A plugin's name, `plugin` | Another plugin's panel, overlay or menu, opened as Omarchy's menu opens its own |
+| `window text`, `screenshot window`, `files`, `move 3` | The window you came from: its text, read and brought back here to act on; a screenshot of it alone; its folder in Files, when a shell runs in it; workspace 3 |
+| `region text`, `pick a colour` | A capture whose result comes back to the bar: the text of a region, a colour's hex |
 | `pause dropbox`, `tray` | An entry of a tray app's menu, chosen as a click in that menu |
 | `full screen`, `keys ` | Keybindings, by what they do |
 | `> htop` | A command, in a terminal |

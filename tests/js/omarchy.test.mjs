@@ -84,7 +84,7 @@ test("found by route, summary and group; run as Omarchy's menu runs them", () =>
   assert.equal(ocr.subtitle, "omarchy capture text");
   assert.deepEqual(plain(ocr.run), { kind: "exec", argv: ["omarchy-capture-text"] });
   assert.equal(top("omarchy capture text").title, ocr.title, "the omarchy prefix is optional");
-  assert.equal(top("ocr").subtitle, "omarchy capture text", "found by its summary");
+  assert.ok(run("ocr").some(r => r.subtitle === "omarchy capture text"), "found by its summary");
   const agent = top("agent");
   assert.equal(agent.subtitle, "omarchy agent [--inline] [--pick]");
   assert.deepEqual(plain(agent.run.argv), ["omarchy-agent"], "optional arguments are left off");
