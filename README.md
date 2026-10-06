@@ -84,7 +84,9 @@ press, and Ctrl+W, Ctrl+E, Ctrl+F and Ctrl+B edit as a shell does. A row you pic
 it after a pick or two, and sooner for the start of it: picked as
 "spotify", Spotify comes first at "s". Logging out, rebooting, clearing a history and
 quitting a process you did not name ask for a second Enter. Opened empty, Nodi shows your favourites, what you run most
-and your reminders.
+and your reminders. Until it has five rows of yours it also ends with
+what to try (an app by its name, `w `, `cb `, a sum, Ctrl+K), each gone
+once you have been there, through it or not; Enter fills one in.
 
 ## Configure
 
@@ -371,8 +373,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   manager's), keeps them until it closes, and sends one to Claude only
   when you pick one of Claude's rows on it.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`,
-  which holds the text of each clipboard entry you pin, and the desktops
-  you save (each app's desktop id, window class and workspace). A search under
+  which holds the text of each clipboard entry you pin, the desktops
+  you save (each app's desktop id, window class and workspace), and
+  which of the first opens' starters you have been through. A search under
   `cb` with words reads the text in each image of the history once, with
   Omarchy's `tesseract` (about 2 s an image, a few seconds at a time
   while that search is open), into `~/.cache/nodi/ocr/`; pasting in sequence

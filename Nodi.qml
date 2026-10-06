@@ -17,6 +17,7 @@ import "lib/Hotkey.js" as Hotkey
 import "lib/Keys.js" as NodiKeys
 import "lib/Config.js" as Config
 import "lib/Prefs.js" as Prefs
+import "lib/Starters.js" as Starters
 import "lib/History.js" as History
 import "lib/Match.js" as Match
 import "lib/tzcities.js" as Tz
@@ -617,6 +618,7 @@ Item {
       // a search for Claude does not count (Fable 2026-10-06).
       desktopTimer.seen = JSON.stringify(svc.desktop)
       root.mode = Engine.mode(root.queryNow(), root.config, root.results)
+      if (root.opened) root.noteReached(Starters.reachedBy(root.results[0]))
       // A step names where it is: "Wi-Fi > Home".
       if (root.filterStep && root.mode && root.filterStep.trail.length)
         root.mode = { label: root.mode.label + " > " + root.filterStep.trail[root.filterStep.trail.length - 1].label, icon: root.mode.icon, hint: root.mode.hint }
@@ -731,6 +733,9 @@ Item {
   function openPalette() {
     var acts = Rows.actionsFor(root.selectedRow, root.paletteContext())
     if (acts.length === 0) return false
+    // Noted as the palette closes: its starter must not go from under it,
+    // as a toggle's or a reminder's redraw would take it (Cursor 2026-10-07).
+    root.reachOnClose = "actions"
     root.paletteRow = root.selectedRow
     root.paletteAll = acts
     root.paletteActions = Rows.filterActions(acts, "")
@@ -749,7 +754,11 @@ Item {
     root.paletteAll = []
     root.paletteActions = []
     input.forceActiveFocus()
+    var reached = root.reachOnClose
+    root.reachOnClose = ""
+    if (root.noteReached(reached) && root.opened && root.queryNow().trim() === "") root.recompute()
   }
+  property string reachOnClose: ""
 
   // What is typed into Ctrl+K: the actions it matches, the first selected.
   function paletteTyped(text) {
@@ -875,6 +884,28 @@ Item {
       : null
     if (next) root.savePrefs(next)
     root.recompute()
+  }
+
+  // What a starter teaches was reached, by it or any other way: that
+  // starter goes (lib/Starters.js). Once the prefs are read, so a mark is
+  // never made on the empty prefs a load then replaces (one made before
+  // waits for them); and once a kind.
+  function noteReached(id) {
+    if (!id) return false
+    if (!root.prefsLoaded) {
+      if (root.reachQueued.indexOf(id) === -1) root.reachQueued = root.reachQueued.concat([id])
+      return false
+    }
+    var next = Prefs.withTried(root.prefs, id)
+    if (next) root.savePrefs(next)
+    return !!next
+  }
+  // Reached before the prefs were read: noted once they are.
+  property var reachQueued: []
+  function noteQueued() {
+    var q = root.reachQueued
+    root.reachQueued = []
+    for (var i = 0; i < q.length; i++) root.noteReached(q[i])
   }
 
   function savePrefs(next) {
@@ -1235,8 +1266,10 @@ Item {
     path: root.stateDir + "/prefs.json"
     printErrors: false
     atomicWrites: true
-    onLoaded: { root.prefs = Prefs.load(text()); root.prefsLoaded = true }
-    onLoadFailed: root.prefsLoaded = true
+    // Read after the bar opened: the home is drawn again from them, and
+    // what it shows is noted as reached then (Cursor 2026-10-07).
+    onLoaded: { root.prefs = Prefs.load(text()); root.prefsLoaded = true; root.noteQueued(); if (root.opened) root.recompute() }
+    onLoadFailed: { root.prefsLoaded = true; root.noteQueued(); if (root.opened) root.recompute() }
   }
 
   // ---------------------------------------------------------------- keys
