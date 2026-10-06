@@ -36,12 +36,16 @@ test("the window you came from: Hyprland's active window, filled in from the lis
   const ipc = { address: "0x5b8f", class: "foot", title: "old title", pid: 5438, workspace: { id: 2, name: "2" } };
   // Quickshell gives the address without 0x.
   assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "vim notes.md", ipc, workspace: "2" }, [])),
-    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2" }, "the live title, not the record's");
+    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2", stableId: "", monitor: -1, width: 0 }, "the live title, not the record's");
   assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "", ipc: {}, workspace: "" }, list)),
-    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2" }, "an empty record is filled from the list");
+    { address: "0x5b8f", class: "foot", title: "vim notes.md", pid: "5438", workspace: "2", stableId: "", monitor: -1, width: 0 }, "an empty record is filled from the list");
   assert.deepEqual(plain(S.windowContext({ address: "5b8f", title: "t", ipc: null }, [])),
-    { address: "0x5b8f", class: "", title: "t", pid: "", workspace: "" }, "what is not known is empty");
-  const none = { address: "", class: "", title: "", pid: "", workspace: "" };
+    { address: "0x5b8f", class: "", title: "t", pid: "", workspace: "", stableId: "", monitor: -1, width: 0 }, "what is not known is empty");
+  const none = { address: "", class: "", title: "", pid: "", workspace: "", stableId: "", monitor: -1, width: 0 };
+  const shot = S.windowContext({ address: "5b8f", title: "t", ipc: { stableId: "180000b1", size: [1512, 910] } }, []);
+  assert.deepEqual([shot.stableId, shot.width], ["180000b1", 1512], "what grim -T captures it by, and its width (ROADMAP 43)");
+  assert.equal(S.windowContext({ address: "5b8f", ipc: { monitor: 1 } }, []).monitor, 1, "its own monitor, for the capture's scale");
+  assert.equal(S.windowContext({ address: "5b8f", ipc: { stableId: "18; rm -rf ~" } }, []).stableId, "", "a stable id is hex or nothing");
   assert.deepEqual(plain(S.windowContext(null, list)), none, "no window had the focus");
   assert.deepEqual(plain(S.windowContext({ address: "0xzz;rm" }, list)), none, "an address that is not one");
   assert.equal(S.windowContext({ address: "1", title: "x".repeat(1000) }, []).title.length, 300);

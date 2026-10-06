@@ -51,7 +51,7 @@ text already typed:
 | `h github`, `prs`, `tmux`, `ssh `, `man ls` | Browser history, pull requests, tmux, SSH hosts, man pages |
 | `github.com/itsgg`, `localhost:3000`, `bm work` | Open a site as it is typed; your browser's bookmarks, three of them in any search |
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
-| `ask why is the sky blue`, or Tab | A quick answer from Claude; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
+| `ask why is the sky blue`, or Tab | A quick answer from Claude, a conversation for ten minutes, or about the selected text or the window you came from; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
 | Select or copy text, then open the bar; `fix`, `rewrite `, `case ` | It fixed, rewritten, translated or its case changed, pasted over the selection or at the cursor; or searched |
 | `tr ta good morning`, `good morning in french` | A translation by Claude; Enter pastes it |
@@ -294,9 +294,13 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   ten minutes while that fails), for `prs` (through `gh`), and for Claude,
   through Claude Code's `claude` command, under `ask` and, if turned on, to describe
   apps. That Claude session has none of Claude Code's own tools, no MCP
-  servers and none of your Claude settings, and saves nothing. Its only
+  servers and none of your Claude settings, and saves nothing; it keeps
+  the conversation in memory for ten minutes after an answer. Its only
   tools are the bar's: a search of the rows, and a run of one, which
-  shows in the bar with its command and runs only on your Enter.
+  shows in the bar with its command and runs only on your Enter. "Ask
+  about this window" sends Claude a picture of the window you came from
+  (`grim -T`, by its own buffer, so the bar is not in it), which stays in
+  the conversation, and its cost in every question, until it starts afresh.
 - Each time it opens it reads the text selected in the window you came
   from (`wl-paste --primary`) and the clipboard's text (never a password
   manager's), keeps them until it closes, and sends one to Claude only

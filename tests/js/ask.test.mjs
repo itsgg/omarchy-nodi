@@ -67,3 +67,45 @@ test("a proposed run: two rows, the exact command in the pane, Escape refuses", 
   assert.deepEqual([pane.title, pane.text, pane.subtitle], ["Reboot", "systemctl reboot", "Claude asks to run it: Enter runs it, Esc refuses"]);
   assert.deepEqual(plain(Keys.decide({ name: "Escape" }, { proposing: true })), { do: "refuse" });
 });
+
+test("Ask continues: about the selection, about the window, a new question (ROADMAP 43)", () => {
+  const idle = { ask: { phase: "idle", question: "", answer: "", model: "haiku" } };
+  let rows = plain(run("ask what is this", idle));
+  assert.deepEqual(rows.map(r => r.key), ["ask:new"], "nothing selected, no window: the plain question");
+  rows = plain(run("ask what is this", { ...idle, selection: { text: "E = mc^2", fresh: false },
+                                         window: { address: "0x1", class: "foot", title: "notes", stableId: "180000b1", width: 1512 } }));
+  assert.deepEqual(rows.map(r => r.key), ["ask:new", "ask:selection", "ask:window"]);
+  const sel = rows[1];
+  assert.deepEqual([sel.nodi, sel.ask.question, sel.ask.context], ["askWith", "what is this", "selection"]);
+  assert.equal(sel.ask.message, "what is this\n\nThe text it is about:\n<text>\nE = mc^2\n</text>");
+  const win = rows[2];
+  assert.deepEqual([win.nodi, win.ask.question, win.ask.context, win.subtitle], ["askWindow", "what is this", "window", "notes"]);
+  assert.match(win.ask.message, /^what is this\n\nThe picture is the window the question is about, titled "notes"\.$/);
+  const done = { ask: { phase: "done", question: "what is this", answer: "a formula", model: "haiku" } };
+  const fresh = plain(run("ask what is this", done)).find(r => r.key === "ask:fresh");
+  assert.deepEqual([fresh.title, fresh.nodi], ["New question", "askNew"]);
+  // A proposal waits on him whatever the field holds (Fable 2026-10-06).
+  const prop = { ask: { phase: "proposing", question: "lock my screen", answer: "", model: "haiku",
+                        proposal: { key: "menu:system.lock", title: "Lock", subtitle: "System", run: { kind: "exec", argv: ["x"] } } } };
+  const edited = plain(run("ask something else", prop));
+  assert.deepEqual(edited.map(r => r.key), ["ask:deny", "ask:allow"], "on another question, Refuse leads: a stray Enter says no");
+  assert.equal(edited[1].subtitle, "Claude asks to run it for: lock my screen");
+  assert.deepEqual(plain(run("ask lock my screen", prop)).map(r => r.key), ["ask:allow", "ask:deny"], "on its own question, Run leads");
+  assert.deepEqual(plain(run("ask ", prop)).map(r => r.key), ["ask:deny", "ask:allow"], "an empty question shows it too");
+  const copiedQ = plain(run("ask what is this", { ...idle, selection: { text: "x", fresh: true, source: "clipboard" } })).find(r => r.key === "ask:selection");
+  assert.deepEqual([copiedQ.title, copiedQ.ask.context], ["Ask about the copied text: what is this", "copied"]);
+  // Enter would do nothing: a row says why (Fable 2026-10-06).
+  assert.equal(plain(run("ask what time is it", { ask: { phase: "streaming", question: "lock my screen", answer: "", model: "haiku" } }))[0].title,
+               "Claude is still on: lock my screen");
+  assert.equal(plain(run("ask what is this", { ask: { phase: "idle", question: "", answer: "", model: "haiku", capturing: true } }))[0].title,
+               "Taking a picture of the window...");
+  const pic = { ask: { phase: "done", question: "what is this", answer: "a chart", model: "haiku", context: "window" } };
+  assert.equal(plain(run("ask what is this", pic)).find(r => r.key === "ask:again").subtitle, "what is this, with the same picture");
+});
+
+test("a question with a picture: the image block first, as the held session takes it (probed 2026-10-06)", () => {
+  const m = JSON.parse(A.message("what is this", { mediaType: "image/jpeg", data: "AAAA" }));
+  assert.deepEqual(m.message.content, [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: "AAAA" } },
+                                       { type: "text", text: "what is this" }]);
+  assert.equal(JSON.parse(A.message("plain")).message.content, "plain", "without one, as before");
+});

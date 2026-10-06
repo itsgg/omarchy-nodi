@@ -8,9 +8,12 @@
 #                              allows and one he refuses
 #   exit while proposing       asks for a run, then exits
 #   recycle while proposing    asks for a run, then waits
-#   recycle in the run         asks for a run, then calls it: the bar's run
-#                              ends the session, as an allowed run closes it
+#   the bar closes in the run  asks for a run, calls it (the bar's run closes
+#                              the bar), then asks for another, which must
+#                              be refused as the bar is closed
 #   say ok                     answers at once
+#   What is in the picture?    the picture must come first, as a block
+#   while the bar is closed    asks for a run, which must be refused
 #   Fix the spelling and ...   a question about the selection: the text
 #                              must come with it, each time it is asked
 import json, sys
@@ -36,7 +39,9 @@ want(m and m.get("type") == "control_request" and m["request"].get("subtype") ==
 send({"type": "control_response", "response": {"subtype": "success", "request_id": m["request_id"]}})
 u = read()
 want(u and u.get("type") == "user", "then the question: %r" % (u,))
-question = u["message"]["content"] if u else ""
+content = u["message"]["content"] if u else ""
+# A question with a picture comes as content blocks; its text is the question.
+question = content if isinstance(content, str) else " ".join(b.get("text", "") for b in content if b.get("type") == "text")
 send({"type": "system", "subtype": "init"})
 
 def request(rid, tool, inp):
@@ -66,10 +71,13 @@ if question == "exit while proposing":
 # These two wait to be stopped, as Claude Code would: only the recycle's
 # signal ends them, so a recycle that never sends it fails the test (Fable
 # 2026-10-06).
-if question == "recycle in the run":
+if question == "the bar closes in the run":
     r = ask("p1", "mcp__nodi__run", LOCK)
     call("c1", 1, "run", LOCK)
-    for _ in sys.stdin: pass
+    r = ask("p2", "mcp__nodi__run", LOCK)
+    want(behavior(r) == ("p2", "deny") and "closed" in r["response"]["response"]["message"], "the next run refused, the bar closed: %r" % (r,))
+    answer("ok" if not bad else "fail: " + "; ".join(bad))
+    sys.stdin.readline()
     sys.exit(0)
 
 if question == "recycle while proposing":
@@ -83,6 +91,20 @@ if question.startswith("Fix the spelling and grammar of the text below"):
         want("\n<text>\nteh\n</text>" in u["message"]["content"], "the selection sent with the question: %r" % (u,))
         answer("ok" if not bad else "fail: " + "; ".join(bad))
         u = read()
+    sys.exit(0)
+
+if question.startswith("What is in the picture?"):
+    want(isinstance(content, list) and content[0].get("type") == "image" and content[0]["source"] == {"type": "base64", "media_type": "image/jpeg", "data": "AAAA"}
+         and content[1].get("type") == "text", "the picture first, then the question: %r" % (content,))
+    answer("ok" if not bad else "fail: " + "; ".join(bad))
+    sys.stdin.readline()
+    sys.exit(0)
+
+if question == "while the bar is closed":
+    r = ask("p1", "mcp__nodi__run", LOCK)
+    want(behavior(r) == ("p1", "deny") and "closed" in r["response"]["response"]["message"], "refused while closed: %r" % (r,))
+    answer("ok" if not bad else "fail: " + "; ".join(bad))
+    sys.stdin.readline()
     sys.exit(0)
 
 if question == "say ok":

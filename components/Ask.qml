@@ -5,10 +5,11 @@ import "../lib/AskStream.js" as AskStream
 // A quick answer from Claude, held open so that asking costs the model's
 // time and not Claude Code's start (about 1.5 s against 10 measured here,
 // 2026-10-02). One session: started when the bar enters `ask `, so it warms
-// while the question is typed; after a bar session that asked something it
-// is replaced by a fresh one, so the next question starts with no context;
-// an idle one stops after half an hour. lib/AskStream.js reads its output
-// and holds the command.
+// while the question is typed. It is a conversation (ROADMAP 43): a
+// question asked within ten minutes of the last answer follows it, across
+// closes; later, or after "New question", a fresh session starts with no
+// context; an idle one stops after half an hour. lib/AskStream.js reads its
+// output and holds the command.
 Item {
   id: ask
   visible: false
@@ -16,6 +17,12 @@ Item {
   property string model: "haiku"
   property string workDir: ""
   property int idleMs: 30 * 60 * 1000
+  // How long after its last answer a question still follows it.
+  property int freshMs: 10 * 60 * 1000
+  property real lastAt: 0
+  // The bar is open (Nodi.qml binds it): a run Claude asks for can be shown
+  // to him. Closed, it is refused, so no proposal waits where he cannot see it.
+  property bool shown: true
   // The bar's rows as the session's only tools (lib/AskStream.js, ROADMAP
   // 44): `searcher(query)` returns rows as data, `checker(key)` says why a
   // key cannot run ("" when it can), `runner(key)` runs one and says what
@@ -35,6 +42,7 @@ Item {
   // what it is about (the selection's text); and what it is about.
   property string message: ""
   property string context: ""
+  property var image: null           // { mediaType, data } sent with the question
   property string answer: ""
   property string phase: "idle"      // idle | waiting | streaming | proposing | done | error
   property string error: ""
@@ -44,11 +52,18 @@ Item {
 
   property bool used: false          // this session has been asked something
   property bool started: false
-  property string pending: ""        // asked before the process had started
+  property string pending: ""        // the line to send once the session can take it
   property bool recycling: false
 
+  // Long after its last answer, the conversation is over: the next
+  // question starts a fresh session.
+  function stale() { return ask.used && ask.lastAt > 0 && Date.now() - ask.lastAt > ask.freshMs && !ask.busy() }
+
   function warm() {
-    if (!proc.running) {
+    // Afresh while he types, so the fresh session is up when he asks
+    // (Fable 2026-10-06: recycled at the send, it waited for a start).
+    if (ask.stale()) ask.recycle()
+    if (!proc.running && !ask.recycling) {
       ask.inited = false
       proc.environment = { NODI_ASK_PROGRAM: ask.program || "claude" }
       proc.command = AskStream.argv(ask.model, ask.acts)
@@ -64,11 +79,17 @@ Item {
 
   // `message` and `context` default to the question and none; asked again
   // without them, a question goes with what it was sent with before.
-  function send(q, message, context) {
+  function send(q, message, context, image) {
     if (ask.busy()) return false
+    // Asked again, a question goes with what it was sent with before, read
+    // before a fresh start forgets it (Fable 2026-10-06).
     var again = message === undefined && String(q) === ask.question
-    ask.message = message !== undefined ? String(message) : again ? ask.message : String(q)
-    ask.context = context !== undefined ? String(context) : again ? ask.context : ""
+    var kept = again ? { message: ask.message, context: ask.context, image: ask.image } : null
+    // Long after the last answer, a question starts a conversation afresh.
+    if (ask.stale()) ask.recycle()
+    ask.message = message !== undefined ? String(message) : kept ? kept.message : String(q)
+    ask.context = context !== undefined ? String(context) : kept ? kept.context : ""
+    ask.image = image !== undefined ? image : kept ? kept.image : null
     ask.allowed = ""
     ask.question = String(q)
     ask.answer = ""
@@ -77,20 +98,24 @@ Item {
     ask.used = true
     // A session being recycled is still running until it exits: the
     // question waits for the fresh one (agy 2026-10-03).
-    if (proc.running && ask.started && !ask.recycling && (ask.inited || !ask.acts)) proc.write(AskStream.message(ask.message))
-    else { ask.pending = ask.message; if (!ask.recycling) ask.warm() }
+    var line = AskStream.message(ask.message, ask.image)
+    if (proc.running && ask.started && !ask.recycling && (ask.inited || !ask.acts)) proc.write(line)
+    else { ask.pending = line; if (!ask.recycling) ask.warm() }
     idle.restart()
     return true
   }
 
-  // After a bar session that asked: a fresh session for the next question.
+  // A fresh session for the next question: "New question", or long after
+  // the last answer.
   function recycle() {
     if (!ask.used) return
     ask.used = false
+    ask.lastAt = 0
     ask.pending = ""
     ask.question = ""
     ask.message = ""
     ask.context = ""
+    ask.image = null
     ask.answer = ""
     ask.error = ""
     ask.phase = "idle"
@@ -98,6 +123,12 @@ Item {
     // A run he never answered is refused, so the session is not left asking.
     if (ask.proposal) ask.deny()
     if (proc.running) { ask.recycling = true; proc.signal(15) }
+  }
+
+  // The bar closed: a run waiting for him is refused, as one asked for
+  // while it stays closed will be; the conversation goes on.
+  function hidden() {
+    if (ask.proposal) ask.deny()
   }
 
   // His answer to a run Claude proposed: Enter allows, Escape refuses.
@@ -129,9 +160,10 @@ Item {
       // One run waits at a time, and only a row the bar can run is shown:
       // a second request would leave the first unanswered, a made-up key
       // an Enter that does nothing (Fable 2026-10-06).
-      var why = ask.proposal ? "One run at a time: he has not answered the last one." : ask.checker ? ask.checker(key) : ""
+      var why = !ask.shown ? "The bar is closed; he sees what you say when he asks again, and can run it then."
+              : ask.proposal ? "One run at a time: he has not answered the last one." : ask.checker ? ask.checker(key) : ""
       if (why) { proc.write(AskStream.reply(ev.id, { behavior: "deny", message: why })); return }
-      ask.proposal = { id: ev.id, key: key, input: r.input || {} }
+      ask.proposal = { id: ev.id, key: key, input: r.input || {}, at: Date.now() }
       ask.phase = "proposing"
       return
     }
@@ -167,11 +199,12 @@ Item {
     if (ev.kind === "control") { ask.control(ev); return }
     if (ev.kind === "controlDone" && ev.id === "nodi-init") {
       ask.inited = true
-      if (ask.pending) { proc.write(AskStream.message(ask.pending)); ask.pending = "" }
+      if (ask.pending) { proc.write(ask.pending); ask.pending = "" }
       return
     }
     if (ev.kind === "text") { ask.answer += ev.text; if (ask.phase !== "proposing") ask.phase = "streaming" }
     else if (ev.kind === "done") {
+      ask.lastAt = Date.now()
       if (ev.error) { ask.error = ev.error; ask.phase = "error" }
       else { if (!ask.answer) ask.answer = ev.text; ask.phase = "done" }
     }
@@ -190,7 +223,7 @@ Item {
       // With the bar's tools, its server first; the question waits for the
       // session to take it (lib/AskStream.js initialize).
       if (ask.acts) { proc.write(AskStream.initialize()); return }
-      if (ask.pending) { proc.write(AskStream.message(ask.pending)); ask.pending = "" }
+      if (ask.pending) { proc.write(ask.pending); ask.pending = "" }
     }
     // A program that cannot start sends neither `started` nor `exited`, only
     // `running` going false: the question fails then, not 20 s later (Fable
@@ -206,6 +239,10 @@ Item {
       // A recycled session's exit is expected, and a question asked since
       // waits in `pending` for the fresh one.
       if (ask.recycling) { ask.recycling = false; ask.warm(); return }
+      // Gone between questions: the conversation is over, its answer with
+      // it, as when it goes stale (Fable 2026-10-06: clearing only `used`
+      // left the rows of a session that was gone).
+      if (!ask.busy()) ask.recycle()
       // While a run waits for him too: Enter would write to a dead session
       // (Fable 2026-10-06).
       if (ask.busy()) ask.fail("Claude stopped (exit " + exitCode + ")")
