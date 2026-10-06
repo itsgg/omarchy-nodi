@@ -144,6 +144,11 @@ function answer(query, ctx) {
     if (b) {
       var how = (b[1] || "").toLowerCase()
       var text = b[2] === undefined ? "" : b[2]
+      // Typed alone, it takes text selected just before, else the
+      // clipboard's, which the rows show.
+      var sel = ctx.selection || {}
+      if (!text && sel.fresh && sel.text) text = String(sel.text)
+      if (!text && sel.clipboard) text = String(sel.clipboard)
       if (!text) return [{ title: "Base64", subtitle: "Encode or decode", icon: "󰅩", score: 85, copy: "", hint: "b64 <text>" }]
       var rows = []
       if (how !== "encode") {

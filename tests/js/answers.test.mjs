@@ -92,6 +92,13 @@ test("keywords: open, run, and quoting", () => {
   assert.equal(g.subtitle, "Opens google.com");
   assert.deepEqual(plain(g.run), { kind: "open", target: "https://www.google.com/search?q=foo%20bar" });
   assert.equal(top("g").title, "Search Google"); assert.equal(top("g").hint, "g <search>");
+  // Never a row that does nothing (his screenshot 2026-10-06): alone, it
+  // opens the site; with text selected just before, it searches that.
+  assert.deepEqual(plain(top("g ").run), { kind: "open", target: "https://www.google.com" });
+  const sel = run("g ", { selection: { text: "nodi launcher", fresh: true } });
+  assert.deepEqual([sel[0].title, sel[0].run.target], ["Search Google: nodi launcher", "https://www.google.com/search?q=nodi%20launcher"]);
+  assert.ok(!run("g ", { selection: { text: "old", fresh: false } }).some(r => /: old$/.test(r.title)), "not a stale selection");
+  assert.equal(plain(run("b64 ", { selection: { text: "hi", fresh: true } }))[0].copy, "aGk=", "b64 alone takes the selection");
   assert.equal(top("yt x").subtitle, "Opens youtube.com");
   assert.equal(top("g foo & bar").run.target, "https://www.google.com/search?q=foo%20%26%20bar");
 

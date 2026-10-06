@@ -155,8 +155,23 @@ var provider = {
         out.push({ title: title + "...", subtitle: "Reading the clipboard...", score: 95, icon: icon, copy: "", remember: false })
       } else if (takesQuery(cmd)) {
         if (missing.length > 0) {
+          // Typed alone, a search takes text selected just before (Raycast's
+          // selected text as its argument), and else Enter opens the site
+          // itself, as Alfred's web searches do: never a row that does
+          // nothing (his screenshot 2026-10-06, the same class).
+          var sel = ctx.selection || {}
+          if (!rest && sel.fresh && sel.text && fallsBack(cmd)) {
+            var line = String(sel.text).replace(/\s+/g, " ").trim()
+            out.push({ title: title + ": " + (line.length > 48 ? line.slice(0, 45) + "..." : line),
+                       subtitle: sel.source === "clipboard" ? "The copied text" : "The selected text", score: 96,
+                       icon: icon, copy: sel.text, run: build(cmd, sel.text, ctx), remember: false, hint: pattern(cmd) })
+          }
+          // Only a site its words do not change (not https://{q}.github.io/).
+          var origin = function(words) { var m = cmd.open ? String(build(cmd, words, ctx).target).match(/^(https?:\/\/[^\/?#]+)/i) : null; return m ? m[1] : "" }
+          var site = origin("") && origin("") === origin("nodi") ? [null, origin("")] : null
           // What it is as the label; the words it takes on the hint line.
-          out.push({ title: title, subtitle: describe(build(cmd, "", ctx), cmd), score: 95, icon: icon, copy: "", hint: pattern(cmd) })
+          out.push({ title: title, subtitle: describe(build(cmd, "", ctx), cmd), score: 95, icon: icon, copy: "", hint: pattern(cmd),
+                     run: site ? Run.open(site[1]) : null, actionLabel: site ? "Open the site" : "", remember: false })
         } else {
           var run = build(cmd, rest, ctx)
           // A search names a moment, not a thing: not remembered (Fable 2026-10-02).

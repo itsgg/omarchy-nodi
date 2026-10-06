@@ -363,6 +363,22 @@ baseline query loses rank.
     selection. Cases change locally. `{selection}` fills in keyword links
     and snippets. Not yet tried on screen: whether every app keeps the
     selection highlighted when the bar closes, so the paste replaces it.
+    Since, from his use: `rewrite ` alone offers ready rewrites (improve,
+    shorter, more formal, friendlier, simpler), where it showed a hint row
+    Enter did nothing on; text copied with Ctrl+C counts by the same two
+    minutes, the newer of a fresh selection and a fresh copy leading (the
+    copy on a tie), a copy's answer pasted at the cursor, and the bar's
+    own copies never offered back; a search keyword typed alone searches
+    that text, or opens the site when its words do not make the site;
+    `tr ` and `b64 ` alone take the clipboard's text, whatever its age,
+    when nothing is selected. A snippet that includes another fills it
+    one level deep. Checked live on his bar: the home rows, Fix and its
+    paste, the rewrite presets, a case paste, copied text, `tr`, `=` and
+    Tab, sites, snippets with {cursor}, {selection} and {random}, the
+    failed-command notice, Ctrl+W, Ctrl+R and the kept query. A sweep of every help example and fill-in, with and
+    without text, leaves only rows that need words and say so on their
+    hint line (a command keyword typed alone, `tr ` and `b64 ` with
+    nothing selected or copied).
 48. **Translation streamed into the pane**: `tr <language> <text>`, and
     `<text> in <language>`. L 8.
     Done 2026-10-06: `tr` takes a language by code or name (a code that

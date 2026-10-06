@@ -4,6 +4,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { load, plain } from "./load.mjs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { config, run, top } from "./fixtures.mjs";
 
 const Sources = load("lib/Sources.js");
@@ -32,7 +36,12 @@ test("Claude's rows carry the question the bar shows and the text, fenced", () =
   const rw = top("rewrite more formal", stale("hey whats up"));
   assert.deepEqual([rw.title, rw.nodi, rw.ask.question], ["Rewrite: more formal", "askWith", "Rewrite the selection: more formal"]);
   assert.match(rw.ask.message, /as asked: more formal\./);
-  assert.equal(top("rewrite ", stale("x")).hint, "rewrite <how>", "no instruction yet: it asks for one");
+  const presets = run("rewrite ", stale("x"));
+  assert.deepEqual(plain(presets.map(r => r.title)), ["Improve the writing", "Shorter", "More formal", "Friendlier", "Simpler"],
+                   "no instruction yet: ready rewrites, so Enter does one (his screenshot 2026-10-06)");
+  assert.ok(presets.every(r => r.nodi === "askWith" && r.ask.context === "selection"));
+  assert.equal(presets[0].ask.question, "Rewrite the selection: clearer and more natural, keeping its meaning");
+  assert.deepEqual(plain(run("rewrite sh", stale("x")).map(r => r.title)), ["Rewrite: sh", "Shorter"], "his words, then a preset he started");
   assert.notEqual(top("rewrite shorter", fresh("")).provider, "selection");
 });
 
@@ -85,12 +94,78 @@ test("{selection} in a keyword's link and a snippet", () => {
   assert.equal(Placeholders.fill("[{selection}]", "", {}).text, "[]", "nothing selected: empty");
 });
 
-test("wl-paste's output as a selection: line ends, control characters, spaces only", () => {
-  assert.equal(Sources.selection("abc\n"), "abc", "the newline the Reader ends its last line with (Fable 2026-10-06)");
-  assert.equal(Sources.selection("a\nb\n"), "a\nb");
-  assert.equal(Sources.selection("abc\r\n"), "abc", "a CRLF selection's end too (Fable 2026-10-06)");
-  assert.equal(Sources.selection("a\r\nb\rc"), "a\nb\nc");
-  assert.equal(Sources.selection("x\u0000y\u001b[31mz\tw"), "xy[31mz\tw");
-  assert.equal(Sources.selection("  \n\t "), "");
-  assert.equal(Sources.selection(undefined), "");
+test("a text to act on: line ends, control characters, spaces only", () => {
+  assert.equal(Sources.clean("a\r\nb\rc"), "a\nb\nc");
+  assert.equal(Sources.clean("x\u0000y\u001b[31mz\tw"), "xy[31mz\tw");
+  assert.equal(Sources.clean("  \n\t "), "");
+  assert.equal(Sources.clean(undefined), "");
+  assert.equal(Sources.clean("ends\n\n"), "ends\n\n", "its own line ends kept: the read no longer guesses at the Reader's");
+});
+
+// The read itself (Sources.SELECTION_READ), run by bash against a stand-in
+// wl-paste, its output taken as the Reader takes it (Fable 2026-10-06).
+test("the selection read: both texts exact, 64 KB in bytes, a password manager's copy never read", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-sel-"));
+  writeFileSync(join(dir, "wl-paste"), `#!/usr/bin/bash
+case "$*" in
+  *list-types*) printf '%s\n' $FAKE_TYPES ;;
+  *--primary*) [ -f "$FAKE_PRIMARY" ] && cat "$FAKE_PRIMARY" ;;
+  *) [ -f "$FAKE_CLIP" ] && cat "$FAKE_CLIP" ;;
+esac
+`, { mode: 0o755 });
+  const read = (primary, clip, types = "text/plain") => {
+    if (primary !== null) writeFileSync(join(dir, "p"), primary); else rmSync(join(dir, "p"), { force: true });
+    if (clip !== null) writeFileSync(join(dir, "c"), clip); else rmSync(join(dir, "c"), { force: true });
+    const out = execFileSync("/usr/bin/bash", ["-c", Sources.SELECTION_READ], { env: { PATH: dir + ":/usr/bin:/bin", LANG: "C.UTF-8",
+      FAKE_PRIMARY: join(dir, "p"), FAKE_CLIP: join(dir, "c"), FAKE_TYPES: types } }).toString();
+    // The Reader hands back each line with "\n", the last one too.
+    return plain(Sources.selections(out.endsWith("\n") ? out : out + "\n"));
+  };
+  try {
+    assert.deepEqual(read("sel", "copied"), { primary: "sel", clipboard: "copied" });
+    assert.deepEqual(read("x\n\n", "y\n"), { primary: "x\n\n", clipboard: "y\n" }, "trailing line ends kept, so the bar's own copy matches");
+    assert.deepEqual(read(null, null), { primary: "", clipboard: "" });
+    assert.deepEqual(read("s", "secret", "text/plain x-kde-passwordManagerHint"), { primary: "s", clipboard: "" }, "never a password manager's");
+    assert.equal(read("a".repeat(65536), null).primary.length, 65536, "64 KB kept");
+    assert.equal(read("a".repeat(65537), "c").primary, "", "a byte past: dropped");
+    assert.equal(read("a".repeat(65537), "c").clipboard, "c", "without the other");
+    assert.equal(read("a".repeat(65536) + "\ntail", null).primary, "", "cut at a newline: still dropped, not passed as whole");
+    assert.equal(read("த".repeat(22000), null).primary, "", "66000 bytes in 22000 letters: dropped");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("text copied with Ctrl+C stands in when nothing fresh is selected, named as copied, pasted at the cursor (his report 2026-10-06)", () => {
+  const copied = { selection: { text: "teh fox", fresh: true, source: "clipboard" } };
+  const rows = run("", copied);
+  assert.equal(rows[0].group, "Copied: teh fox");
+  assert.deepEqual([rows[0].ask.question, rows[0].ask.context], ["Fix the spelling and grammar of the copied text", "copied"]);
+  assert.equal(rows.find(r => r.key === "selection:search").title, "Search Google for the copied text");
+  const rw = plain(run("rewrite ", copied))[0];
+  assert.deepEqual([rw.ask.question, rw.ask.context], ["Rewrite the copied text: clearer and more natural, keeping its meaning", "copied"]);
+  const tr = plain(run("tr tamil", copied))[0];
+  assert.deepEqual([tr.ask.question, tr.ask.context], ["Translate to Tamil: the copied text", "copied"]);
+  const done = { ask: { phase: "done", question: "Fix the spelling and grammar of the copied text", answer: "the fox", model: "haiku", context: "copied" } };
+  assert.equal(plain(run("ask Fix the spelling and grammar of the copied text", done))[0].title, "Paste the answer", "not over a selection: there is none");
+  assert.equal(plain(run("g ", copied))[0].subtitle, "The copied text");
+});
+
+test("one read gives the selection and the clipboard, split at a U+001E line", () => {
+  assert.deepEqual(plain(Sources.selections("sel\n\u001e\ncopied\n\u001e\n")), { primary: "sel", clipboard: "copied" });
+  assert.deepEqual(plain(Sources.selections("\n\u001e\ncopied\n\u001e\n")), { primary: "", clipboard: "copied" });
+  assert.deepEqual(plain(Sources.selections("sel\n\u001e\n")), { primary: "", clipboard: "" }, "cut off: nothing");
+});
+
+test("typed alone with nothing selected, tr and b64 take the clipboard's text, shown on the row (Fable 2026-10-06)", () => {
+  const clip = { selection: { text: "", fresh: false, source: "selection", clipboard: "bonjour" } };
+  const tr = plain(run("tr ", clip))[0];
+  assert.deepEqual([tr.title, tr.subtitle, tr.ask.question, tr.ask.context], ["Translate to English", "bonjour", "Translate to English: the copied text", "copied"]);
+  assert.equal(plain(run("b64 ", clip))[0].copy, "Ym9uam91cg==");
+  assert.equal(plain(run("tr ", { selection: { text: "", fresh: false, clipboard: "" } }))[0].hint, "tr <language> <text>", "nothing anywhere: the hint");
+});
+
+test("a keyword whose words make the site opens no site of its own", () => {
+  const cfg = { ...config, keywords: [{ keyword: "pages", title: "Pages", open: "https://{q}.github.io/" },
+                                      { keyword: "port", title: "Local port", open: "http://localhost:{q}/" }] };
+  assert.equal(top("pages ", {}, cfg).run, null);
+  assert.equal(top("port ", {}, cfg).run, null);
 });

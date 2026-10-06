@@ -53,7 +53,7 @@ text already typed:
 | `uuid`, `b64 hello`, `epoch`, `#ff5722` | Small developer tools |
 | `ask why is the sky blue`, or Tab | A quick answer from Claude; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
-| Select text, then open the bar; `fix`, `rewrite shorter`, `case ` | The selection fixed, rewritten, translated or its case changed, pasted over it; or searched |
+| Select or copy text, then open the bar; `fix`, `rewrite `, `case ` | It fixed, rewritten, translated or its case changed, pasted over the selection or at the cursor; or searched |
 | `tr ta good morning`, `good morning in french` | A translation by Claude; Enter pastes it |
 | `?` | Help, with every example answered live |
 
@@ -298,8 +298,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   tools are the bar's: a search of the rows, and a run of one, which
   shows in the bar with its command and runs only on your Enter.
 - Each time it opens it reads the text selected in the window you came
-  from (`wl-paste --primary`), keeps it until it closes, and sends it to
-  Claude only when you pick one of Claude's rows on it.
+  from (`wl-paste --primary`) and the clipboard's text (never a password
+  manager's), keeps them until it closes, and sends one to Claude only
+  when you pick one of Claude's rows on it.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`.
   Among the cache is how long its last 300 opens took (`opens.json`, read
   by `make opens`), with nothing of what was typed, and the last 1000 rows
