@@ -53,7 +53,8 @@ function build(cmd, q, ctx) {
   if (cmd.open) {
     var history = ctx && Array.isArray(ctx.clipboard) ? ctx.clipboard.filter(function(c) { return c && c.type === "text" }).map(function(c) { return String(c.text) }) : []
     var filled = Placeholders.fill(cmd.open, q, { now: ctx && ctx.now ? ctx.now() : new Date(), clipboard: clipboardFor(cmd, ctx) || "",
-                                                  clipboardHistory: history, encode: encodeURIComponent })
+                                                  clipboardHistory: history, encode: encodeURIComponent,
+                                                  selection: ctx && ctx.selection ? ctx.selection.text : "" })
     return Run.open(filled.text)
   }
   if (cmd.run && !outdated(cmd)) return Run.shell(cmd.run, [String(q)])

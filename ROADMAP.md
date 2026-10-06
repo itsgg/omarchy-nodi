@@ -103,10 +103,11 @@ opening Audacity.
 19. **Snippets and quicklinks** with placeholders (`{argument}`,
     `{clipboard}`, `{date}`), picked then pasted the way Omarchy pastes
     emoji. Research 7, integrations 11. `lib/Placeholders.js` serves both
-    snippets (`providers/snippets.js`) and keyword links; `{cursor}` and
-    `{selection}` are left out, since a paste cannot place the cursor and
-    Wayland gives no selection to a bar that has focus. `nodi settings`
-    opens nodi.json.
+    snippets (`providers/snippets.js`) and keyword links. `{cursor}` and
+    `{selection}` were left out then, on the belief that a paste cannot
+    place the cursor and that Wayland gives no selection to a bar that has
+    focus; both were wrong (items 61 and 47). `nodi settings` opens
+    nodi.json.
 20. **Script commands** from a directory, Raycast's header understood
     (silent, compact, full output, inline, arguments). Research 8.
     `providers/scripts.js`; a source's age may now depend on its parameter,
@@ -332,6 +333,18 @@ baseline query loses rank.
     case, search), the result pasted over it. Item 19's "Wayland gives no
     selection to a bar that has focus" was wrong: data-control serves the
     primary selection to an unfocused client (X 6, measured). L 2.
+    Done 2026-10-06: the primary selection is read once an open, after the
+    first frame; while it is fresh (two minutes from when it was first
+    seen), five rows lead the empty bar (fix spelling and grammar,
+    rewrite, translate to the language in nodi.json, change case, the
+    first search keyword), and the same come by name ("fix", "uppercase",
+    "summarize"), since a primary selection is nearly always there;
+    `rewrite` and `case` take any selection.
+    Claude's rows go to the held Ask session with the text fenced, the
+    field showing the question; Enter on the answer pastes it over the
+    selection. Cases change locally. `{selection}` fills in keyword links
+    and snippets. Not yet tried on screen: whether every app keeps the
+    selection highlighted when the bar closes, so the paste replaces it.
 48. **Translation streamed into the pane**: `tr <language> <text>`, and
     `<text> in <language>`. L 8.
 49. **MCP servers for Ask, opt-in**: servers he names in nodi.json, passed

@@ -70,7 +70,8 @@ function env(ctx, clip) {
     if (all[i].keyword) snippets[all[i].keyword] = all[i].text
     if (all[i].name) snippets[all[i].name] = all[i].text
   }
-  return { now: ctx.now ? ctx.now() : new Date(), clipboard: clip, clipboardHistory: history, snippets: snippets }
+  return { now: ctx.now ? ctx.now() : new Date(), clipboard: clip, clipboardHistory: history, snippets: snippets,
+           selection: ctx.selection ? ctx.selection.text : "" }
 }
 
 // Pasted, then the cursor moved back to where {cursor} was: one Left key

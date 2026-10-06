@@ -6,6 +6,7 @@
 .import "answers.js" as Answers
 .import "undo.js" as Undo
 .import "ask.js" as Ask
+.import "selection.js" as Selection
 .import "shell.js" as Shell
 .import "math.js" as Calculator
 .import "currency.js" as Currency
@@ -38,6 +39,7 @@ var all = [
   Answers.provider,
   Undo.provider,
   Ask.provider,
+  Selection.provider,
   Shell.provider,
   Calculator.provider,
   Currency.provider,

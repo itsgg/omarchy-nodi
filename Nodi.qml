@@ -177,6 +177,10 @@ Item {
       input.text = ""
     }
     root.recallAt = -1
+    // The selection is this open's, read after its first frame: until then
+    // there is none, so the last open's rows never lead this one (Fable
+    // 2026-10-06).
+    if (starting) { root.selection = ""; root.selectionFresh = false }
     launchFeedback.opened()
     root.noteWindow()
     root.opens++
@@ -246,11 +250,53 @@ Item {
     root.refreshThemes()
     root.refreshReminders()
     root.refreshZones()
+    root.readSelection()
     requests.request("omarchy-commands")
     if (Date.now() - root.guardsAt > 60 * 1000) root.evaluateGuards()
   }
 
   Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
+
+  // The text selected in the window you came from, read once an open
+  // (providers/selection.js, ROADMAP 47): Wayland's primary selection,
+  // which data-control gives a client without the focus. Fresh for two
+  // minutes from when it was first seen, as a kept query is: reopened over
+  // the same text its rows are still there, and a selection made long ago
+  // leads nothing (Fable 2026-10-06: fresh for one open only hid them on
+  // the next). Text selected with the mouse in the bar's own field becomes
+  // the primary selection too (Qt writes it on a mouse release), so the
+  // field's own text is never taken for one.
+  property string selection: ""
+  property bool selectionFresh: false
+  property string lastSelection: ""
+  property real selectionSeenAt: 0
+
+  function readSelection() {
+    selectionReader.run(["wl-paste", "--primary", "--no-newline", "--type", "text"])
+  }
+
+  Reader {
+    id: selectionReader
+    timeoutMs: 1000
+    maxBytes: 65536
+    onFinished: function(text, ok) {
+      var got = ok ? Sources.selection(text) : ""
+      if (got === input.text) got = ""
+      var had = root.selection !== ""
+      if (got !== root.lastSelection) root.selectionSeenAt = Date.now()
+      root.selectionFresh = got !== "" && Date.now() - root.selectionSeenAt < root.keepQueryMs
+      root.selection = got
+      root.lastSelection = got
+      // The open began with none: any selection redraws (`tr ta`, `case `),
+      // as does one gone since an open while the bar was up, and a fresh
+      // one's first row is chosen while he is still at the top, a kept
+      // query's too (Fable 2026-10-06).
+      if (!root.opened || (got === "" && !had)) return
+      var top = root.selectionFresh && root.selectedIndex === 0
+      root.recompute()
+      if (top) root.selectedIndex = 0
+    }
+  }
 
   readonly property int keepQueryMs: 120000
   property real closedAt: 0
@@ -267,6 +313,11 @@ Item {
     root.aliasRow = null
     root.endWord()
     root.endCapture()
+    // A question sent with its text (the selection's) is not kept as the
+    // query: asked again after the recycle, Claude would get the bare
+    // sentence (Fable 2026-10-06).
+    if (askSession.used && askSession.message !== askSession.question
+        && input.text.replace(/^\s*ask\s+/i, "").trim() === askSession.question) input.text = ""
     askSession.recycle()
     // Nobody sees an answer once the bar is closed: it stops, and the next
     // open asks afresh.
@@ -369,10 +420,11 @@ Item {
       request: requests.request,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model,
-             proposal: root.proposed() },
+             proposal: root.proposed(), context: askSession.context },
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
       window: root.cameFrom,
+      selection: { text: root.selection, fresh: root.selectionFresh },
       undo: undoer.entries,
       desktop: desktop
     }
@@ -678,6 +730,14 @@ Item {
       askSession.allow()
     } else if (row.nodi === "askDeny") {
       askSession.deny()
+    } else if (row.nodi === "askWith" && row.ask) {
+      // Claude on a text (the selection, a translation): asked as Ask asks,
+      // the field showing the question, so the answer and its paste are Ask's.
+      if (askSession.busy()) return
+      root.askRows = ({})
+      askSession.send(row.ask.question, row.ask.message, row.ask.context)
+      input.text = "ask " + row.ask.question
+      input.cursorPosition = input.text.length
     } else if (row.nodi === "ask") {
       var q = input.text.replace(/^\s*ask\s+/i, "").trim()
       if (q && !askSession.busy()) { root.askRows = ({}); askSession.send(q) }

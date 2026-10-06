@@ -31,6 +31,10 @@ Item {
 
   // What the bar shows.
   property string question: ""
+  // What the session was sent for it: the question, or the question with
+  // what it is about (the selection's text); and what it is about.
+  property string message: ""
+  property string context: ""
   property string answer: ""
   property string phase: "idle"      // idle | waiting | streaming | proposing | done | error
   property string error: ""
@@ -58,8 +62,13 @@ Item {
   // take the rest of the first answer as its own (Fable 2026-10-02).
   function busy() { return ask.phase === "waiting" || ask.phase === "streaming" || ask.phase === "proposing" }
 
-  function send(q) {
+  // `message` and `context` default to the question and none; asked again
+  // without them, a question goes with what it was sent with before.
+  function send(q, message, context) {
     if (ask.busy()) return false
+    var again = message === undefined && String(q) === ask.question
+    ask.message = message !== undefined ? String(message) : again ? ask.message : String(q)
+    ask.context = context !== undefined ? String(context) : again ? ask.context : ""
     ask.allowed = ""
     ask.question = String(q)
     ask.answer = ""
@@ -68,8 +77,8 @@ Item {
     ask.used = true
     // A session being recycled is still running until it exits: the
     // question waits for the fresh one (agy 2026-10-03).
-    if (proc.running && ask.started && !ask.recycling && (ask.inited || !ask.acts)) proc.write(AskStream.message(ask.question))
-    else { ask.pending = ask.question; if (!ask.recycling) ask.warm() }
+    if (proc.running && ask.started && !ask.recycling && (ask.inited || !ask.acts)) proc.write(AskStream.message(ask.message))
+    else { ask.pending = ask.message; if (!ask.recycling) ask.warm() }
     idle.restart()
     return true
   }
@@ -80,6 +89,8 @@ Item {
     ask.used = false
     ask.pending = ""
     ask.question = ""
+    ask.message = ""
+    ask.context = ""
     ask.answer = ""
     ask.error = ""
     ask.phase = "idle"
