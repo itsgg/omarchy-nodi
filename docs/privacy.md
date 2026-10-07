@@ -57,7 +57,10 @@ Everything Nodi reads, writes, starts and sends, and when.
   by `make opens`), with nothing of what was typed, and the last 1000 rows
   run from a query (`picks-log.json`, read by `make picks`): the queries
   typed, the row's key and its place, and the keys of the first eight
-  rows shown (a file's key holds its path), no titles. It binds its hotkey in the running Hyprland and edits no config file.
+  rows shown (a file's key holds its path), no titles; and the rows whose
+  keys it has shown after a run (`taught.json`: the row's key, its keys,
+  how many times and when). It binds its hotkey in the running Hyprland
+  and edits no config file.
 - At each open it reads the desktop's contrast and motion preferences
   (the portal's `org.freedesktop.appearance`, `gdbus`) and whether
   Hyprland animates (`hyprctl getoption animations:enabled`).

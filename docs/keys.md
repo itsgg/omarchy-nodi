@@ -23,6 +23,13 @@ What each key does in the bar, as the Keys topic (`?shortcuts`) shows it:
 | Esc | Close; a step back where there is one |
 <!-- /nodi:generated -->
 
+Run a row from the bar that has keys of its own (an Omarchy menu
+action's binding, a binding found under `keys `, a hotkey you gave the
+row) and Omarchy's on-screen display shows them as the bar closes, as it
+shows the volume: the first three times for each row, then never.
+`"teach": false` in `nodi.json` turns it off, and `make picks` says
+whether a taught row is picked from a typed query less since.
+
 In the field, Ctrl+W, Ctrl+E, Ctrl+F and Ctrl+B edit as a shell does,
 and Ctrl+A selects all. Holding Ctrl shows the digit that runs each of
 the first nine rows.

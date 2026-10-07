@@ -25,6 +25,8 @@ test("the records parse into keys, a name, a dispatcher and its argument", () =>
 test("found by what they do, the keys beside them, run as the keys run them", () => {
   const fs = keyRows("full screen")[0];
   assert.equal(fs.title, "Full screen"); assert.equal(fs.badge, "SUPER + F");
+  assert.equal(fs.keys, "SUPER + F", "a binding that runs has its keys to teach");
+  assert.equal(keyRows("universal copy")[0].keys, "", "one that only copies its keys teaches none");
   assert.deepEqual(plain(fs.run), { kind: "exec", argv: ["hyprctl", "dispatch", 'hl.dsp.window.fullscreen({ mode = "fullscreen" })'] });
   const term = keyRows("terminal")[0];
   assert.deepEqual(plain(term.run), { kind: "exec", argv: ["hyprctl", "dispatch", 'hl.dsp.exec_cmd("omarchy-launch-terminal")'] });
@@ -58,6 +60,8 @@ test("a binding the menu runs is left to the menu row, which shows its keys", ()
   const rows = run("screenshot", { menu });
   assert.equal(rows[0].provider, "menu");
   assert.match(rows[0].subtitle, /, keys PRINT$/);
+  assert.equal(rows[0].keys, "PRINT", "its keys, to show when it is run from the bar (lib/Teach.js)");
+  assert.equal(run("theme", { menu }).find(r => r.provider === "menu").keys, "", "a menu row with no binding has none");
   assert.ok(!rows.some(r => r.provider === "keys" && r.title === "Screenshot"));
   assert.ok(run("keys screenshot", { menu }).some(r => r.provider === "keys" && r.title === "Screenshot"), "keys lists it still");
   // Only the exact command: a menu that runs one omarchy-shell call leaves

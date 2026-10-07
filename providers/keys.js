@@ -68,6 +68,9 @@ function rowFor(b, tier, listed) {
     subtitle: !run ? "Keys only" : b.dispatcher === "exec" ? String(b.arg || "") || "Keybinding"
             : /lua/.test(String(b.dispatcher)) ? "Hyprland" : (String(b.dispatcher) + " " + String(b.arg || "")).trim(),
     badge: b.chord,
+    // Run from here, its keys are shown as it runs (lib/Teach.js); one
+    // with no command only copies them.
+    keys: run ? b.chord : "",
     icon: "󰌌",
     tier: tier,
     kind: "command",

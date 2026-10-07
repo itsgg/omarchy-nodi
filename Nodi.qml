@@ -14,6 +14,7 @@ import "lib/Sources.js" as Sources
 import "lib/AskTools.js" as AskTools
 import "lib/Acp.js" as Acp
 import "lib/Agents.js" as Agents
+import "lib/Teach.js" as Teach
 import "lib/Hotkey.js" as Hotkey
 // Not "Keys": that name is QtQuick's attached Keys (Keys.onPressed below).
 import "lib/Keys.js" as NodiKeys
@@ -680,11 +681,35 @@ Item {
         return
       }
       root.armedKey = ""
-      root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)
+      // A run that did not start teaches nothing.
+      if (root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)) root.teach(row)
       return
     }
     if (row.complete && !row.copy) { root.complete(row); return }
     if (row.copy) root.execute(Run.copy(row.copy), "", row.remember ? row.key : "", null)
+  }
+
+  // The keys for what he just ran by hand, the first few times, in
+  // Omarchy's on-screen display as the bar closes (lib/Teach.js, ROADMAP
+  // 86); only from Enter or a click here, never from the row's own hotkey
+  // or an agent's run.
+  property var taught: ({})
+  property bool taughtLoaded: false
+  function teach(row) {
+    if (root.config.teach === false || !root.taughtLoaded || !root.cacheReady) return
+    var keys = Teach.keysFor(row, root.boundRows)
+    if (!Teach.due(root.taught, row.key, keys)) return
+    root.taught = Teach.noted(root.taught, row.key, keys, Date.now())
+    taughtFile.setText(Teach.serialize(root.taught))
+    Quickshell.execDetached(["omarchy-osd"].concat(Teach.osdArgs(keys)))
+  }
+  FileView {
+    id: taughtFile
+    path: root.cacheDir + "/taught.json"
+    printErrors: false
+    atomicWrites: true
+    onLoaded: { root.taught = Teach.parse(text()); root.taughtLoaded = true }
+    onLoadFailed: root.taughtLoaded = true
   }
 
   // A desktop action's command, by its place; a run that names the action's
@@ -705,7 +730,7 @@ Item {
     // A paste goes to the window the bar opened over, focused first.
     var argv = Run.command(run, root.appAction, undoable && run.kind === "exec" ? "" : (name || (snap && snap.title) || ""),
                            root.cameFrom ? root.cameFrom.address : "")
-    if (!argv) return
+    if (!argv) return false
     if (run.kind === "copy") root.markOwnCopy(run.text)
     var query = Match.normalise(root.queryNow())
     // What was typed and shown, before the bar empties (lib/PickLog.js);
@@ -720,6 +745,7 @@ Item {
       root.toggleStates = Toggles.flipped(root.toggleStates, toggleId)
       toggleReprobe.restart()
     }
+    return true
   }
 
   // ---------------------------------------------------------------- Ctrl+K
