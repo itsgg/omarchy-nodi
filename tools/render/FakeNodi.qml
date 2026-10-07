@@ -49,7 +49,8 @@ QtObject {
   readonly property bool anyPreview: rows.some(Pane.hasPane)
   readonly property var preview: readPreview(Pane.choose({
     paletteOpen: paletteOpen,
-    ask: answerShown !== "" ? { question: typed.replace(/^\s*ask\s+/i, ""), agent: "Claude", model: "haiku", text: answerShown } : null,
+    ask: askPane ? Object.assign({ question: typed.replace(/^\s*ask\s+/i, ""), agent: "Claude", model: "haiku", text: answerShown }, askPane)
+       : answerShown !== "" ? { question: typed.replace(/^\s*ask\s+/i, ""), agent: "Claude", model: "haiku", text: answerShown } : null,
     answer: streamed, word: wordAsk,
     palette: paletteOpen ? { row: paletteRow, action: paletteActions[paletteIndex] || null, actions: paletteActions,
                              armed: !!paletteArmed && !!paletteActions[paletteIndex] && paletteArmed === paletteActions[paletteIndex].label } : null,
@@ -66,6 +67,8 @@ QtObject {
   }
   readonly property int answerMax: look.answerMax
   property string answerShown: ""
+  // An answer on its way, as Nodi.qml hands Pane.js one: { busy, status, error }.
+  property var askPane: null
   // A streamed answer's { question, title, text }, as Nodi.qml hands Pane.js one.
   property var streamed: null
   // A confirm word being asked: { title, word, run, risk }.

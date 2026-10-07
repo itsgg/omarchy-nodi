@@ -62,6 +62,15 @@ Item {
   readonly property string instructions: AskTools.instructions(ask.acts, ask.named)
   readonly property var serverNames: ask.acts ? (ask.toolServer ? [AskTools.SERVER] : []).concat(Object.keys(ask.mcp || {})) : []
   readonly property var spec: Agents.spec(ask.agent, ask.dataDir, ask.model, ask.instructions, ask.serverNames)
+  // What the bar says while it waits for words (providers/ask.js, the
+  // pane): what the start is doing, else what the agent is doing.
+  readonly property string status: ask.setup ? ask.setup
+    : ask.signingIn ? "Signing in to " + ask.agentName
+    : ask.recycling || ask.stage !== "ready" ? "Starting " + ask.agentName
+    : ask.activity === "thinking" ? "Thinking"
+    : ask.activity ? ask.activity
+    : "Asking " + ask.agentName
+
   // What the bar calls the agent: Omarchy's name for it, else what it
   // calls itself (a stand-in), else the name it was asked by.
   property string agentTitle: ""
@@ -88,7 +97,7 @@ Item {
   // the bar's run tool showed ("row"), or a sign-in ("auth").
   property var proposal: null
   property string allowed: ""        // the row he allowed, until it runs
-  property string activity: ""       // the tool the agent is using, by its title
+  property string activity: ""       // what the agent is doing: "thinking", or a tool, in words (AskTools.doing)
   property string setup: ""          // what the start does first: an adapter installing
   property bool signingIn: false     // an authenticate he allowed, not yet answered
 
@@ -346,6 +355,15 @@ Item {
   function agentAnswers(kind, m) {
     var why = m.error ? m.error.message || ("error " + m.error.code) : ""
     if (kind === "init") {
+      // An adapter that installed is up: its install is over (Fable
+      // 2026-10-07: the status said "Installing" for the whole session),
+      // and the rest of the start has its own time again, as after a
+      // sign-in (Fable's second pass: a long install then failed the start).
+      if (ask.setup) {
+        ask.setup = ""
+        upGuard.since = Date.now()
+        upGuard.restart()
+      }
       if (why) { ask.fail(ask.agentName + " did not start: " + why); return }
       ask.caps = Acp.capabilities(m.result)
       if (ask.caps.version !== Acp.VERSION) { ask.fail(ask.agentName + " speaks ACP " + ask.caps.version + "; Nodi speaks " + Acp.VERSION); return }
@@ -449,6 +467,11 @@ Item {
     if (ask.recycling || p.sessionId !== ask.sessionId) { refuse(); return }
     var call = Acp.mergeCall(ask.calls[tc.toolCallId], tc)
     var input = call.rawInput === undefined || call.rawInput === null ? {} : call.rawInput
+    // Kept with what the request carries, its input often first here.
+    if (tc.toolCallId !== undefined) {
+      ask.calls[String(tc.toolCallId)] = call
+      ask.activity = AskTools.doing(call)
+    }
     var own = AskTools.barTool(call)
     if (own === "search") { proc.write(Acp.result(m.id, Acp.choose(p.options, true))); return }
     if (!ask.shown || ask.proposal) { refuse(); return }
@@ -481,7 +504,7 @@ Item {
       var c = Acp.mergeCall(ask.calls[id], u.call)
       ask.calls[id] = c
       ask.afterTool = true
-      ask.activity = c.status === "completed" || c.status === "failed" ? "" : Acp.title(c)
+      ask.activity = c.status === "completed" || c.status === "failed" ? "" : AskTools.doing(c)
     }
   }
 
@@ -548,8 +571,10 @@ Item {
     stderr: SplitParser {
       onRead: function(line) {
         var l = String(line)
+        // Only before the agent's first answer: stderr and stdout are read
+        // apart, and an install is over once the agent answers.
         var inst = l.match(/^nodi: installing (.+)$/)
-        if (inst) ask.setup = "Installing " + inst[1] + ", once"
+        if (inst && ask.stage === "init") ask.setup = "Installing " + inst[1] + ", once"
         if (l.trim()) ask.errTail = (ask.errTail.split("\n").slice(-2).concat([l.slice(0, 300)])).join("\n")
       }
     }

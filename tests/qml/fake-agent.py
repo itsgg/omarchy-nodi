@@ -23,13 +23,22 @@
 #                              picture it does not take does not come
 #   sign in first              session/new needs a sign-in, which he gives
 # argv[1] names the session's agent ("claude", with _meta; "plain"
-# without); argv[2], "auth", makes session/new ask for a sign-in, and
-# "authhang" one that never finishes.
+# without); argv[2], "auth", makes session/new ask for a sign-in,
+# "authhang" one that never finishes, and "installing" says on stderr that
+# an adapter is installing, as the launch script does.
 import json, os, subprocess, sys
 
 KIND = sys.argv[1] if len(sys.argv) > 1 else "claude"
-AUTH = len(sys.argv) > 2 and sys.argv[2] in ("auth", "authhang")
-HANG = len(sys.argv) > 2 and sys.argv[2] == "authhang"
+MODE = sys.argv[2] if len(sys.argv) > 2 else ""
+AUTH = MODE in ("auth", "authhang")
+HANG = MODE == "authhang"
+# As Nodi's launch script says when it installs an adapter (lib/Agents.js).
+if MODE == "installing":
+    sys.stderr.write("nodi: installing fake@1\n"); sys.stderr.flush()
+    # An install takes its time before the adapter answers: longer than the
+    # test's start limit, so a start guard that kept counting from the
+    # process's start would fail it (AskActsTest.qml installed).
+    import time; time.sleep(3)
 
 def send(o):
     sys.stdout.write(json.dumps(o) + "\n"); sys.stdout.flush()
@@ -132,6 +141,8 @@ if AUTH:
     send({"jsonrpc": "2.0", "id": m["id"], "result": {}})
     m = read()
 want(m and m.get("method") == "session/new", "then session/new: %r" % (m,))
+if MODE == "installing":
+    time.sleep(2)
 p = m["params"]
 servers = {s["name"]: s for s in p.get("mcpServers", [])}
 nodi = servers.get("nodi")

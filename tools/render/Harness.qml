@@ -66,6 +66,7 @@ Window {
     fake.reads = s.reads || ({})
     fake.aliasRow = s.aliasRow || null
     fake.answerShown = s.answer || ""
+    fake.askPane = s.askPane || null
     fake.streamed = s.streamed || null
     fake.wordAsk = s.wordAsk || null
     card.input.text = s.query

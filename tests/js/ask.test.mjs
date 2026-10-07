@@ -37,6 +37,15 @@ test("the bar's own tools, as each agent names them; any other tool is not", () 
   assert.equal(own(null), "");
 });
 
+test("what a tool call is doing, in words, while he waits", () => {
+  assert.equal(A.doing({ title: "mcp__nodi__search", rawInput: { query: "lock  screen" } }), "Searching the bar for lock screen");
+  assert.equal(A.doing({ title: "nodi: search", rawInput: {} }), "Searching the bar");
+  assert.equal(A.doing({ title: "search (nodi MCP Server)", rawInput: { query: "x".repeat(80) } }), "Searching the bar for " + "x".repeat(57) + "...");
+  assert.equal(A.doing({ title: "mcp.nodi.run", rawInput: { key: "menu:system.lock" } }), "Running a row of the bar");
+  assert.equal(A.doing({ title: "ReadFile" }), "Using ReadFile");
+  assert.equal(A.doing({}), "Using a tool");
+});
+
 test("what the agent is told: the bar's rules, its tools only with actions, the servers only when named", () => {
   assert.equal(A.instructions(false, false), A.SYSTEM);
   assert.equal(A.instructions(true, false), A.SYSTEM + A.ACTS);
@@ -215,10 +224,14 @@ test("Ask continues: about the selection, about the window, a new question (ROAD
   const named = plain(run("ask why", { ask: { phase: "idle", question: "", answer: "", agent: "Claude", model: "haiku" } }))[0];
   assert.deepEqual([named.title, named.subtitle], ["Ask Claude: why", "Claude Haiku"]);
   const waiting = { phase: "waiting", question: "why", answer: "", agent: "Claude", model: "haiku" };
-  assert.equal(plain(run("ask why", { ask: waiting }))[0].title, "Asking Claude Haiku...");
-  assert.equal(plain(run("ask why", { ask: { ...waiting, setup: "Installing @agentclientprotocol/claude-agent-acp@0.86.0, once" } }))[0].title,
+  assert.equal(plain(run("ask why", { ask: waiting }))[0].title, "Asking Claude Haiku...", "no status yet: the agent and its model");
+  // What it waits on, as Ask says it (components/Ask.qml status).
+  assert.equal(plain(run("ask why", { ask: { ...waiting, status: "Installing @agentclientprotocol/claude-agent-acp@0.86.0, once" } }))[0].title,
                "Installing @agentclientprotocol/claude-agent-acp@0.86.0, once...", "an adapter installing says so");
-  assert.equal(plain(run("ask why", { ask: { ...waiting, activity: "mcp__nodi__search" } }))[0].title, "Claude: mcp__nodi__search...");
+  assert.equal(plain(run("ask why", { ask: { ...waiting, status: "Searching the bar for lock" } }))[0].title, "Searching the bar for lock...");
+  const midway = { ...waiting, phase: "streaming", answer: "Running", status: "Searching the bar", activity: "Searching the bar" };
+  assert.equal(plain(run("ask why", { ask: midway }))[0].title, "Searching the bar...", "a tool at work after the first words");
+  assert.equal(plain(run("ask why", { ask: { ...midway, activity: "" } }))[0].title, "Answering...");
   assert.equal(plain(run("ask what is this", { ask: { phase: "idle", question: "", answer: "", model: "haiku", capturing: true } }))[0].title,
                "Taking a picture of the window...");
   const pic = { ask: { phase: "done", question: "what is this", answer: "a chart", model: "haiku", context: "window" } };

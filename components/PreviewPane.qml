@@ -7,6 +7,9 @@ import "../lib/Ansi.js" as Ansi
 // when the row has one (his ruling 2026-10-04): a header, its labels, then
 // the text or the picture. A provider gives `preview` on a row:
 //   { title, subtitle, text, markdown, code, mono, follow, image, window, labels: [[label, value], ...] }
+// An answer on its way (lib/Pane.js) is `busy`, and says what it waits on
+// in `status` until its words come: Omarchy's own way of waiting
+// (Ui/MultiSelect.qml, the weather panel), a spinning 󰦖 and a dim line.
 // `markdown` is drawn as Markdown, its pictures and HTML taken out first
 // (lib/Markdown.js); `text` is drawn as it is; `code`, bat's coloured
 // text, in the theme's colours (lib/Ansi.js, `nodi.themeColours`); `window`, a
@@ -47,6 +50,7 @@ Rectangle {
   readonly property bool hasMarkdown: !hasImage && typeof p.markdown === "string" && p.markdown !== ""
   readonly property bool hasCode: !hasImage && !hasMarkdown && typeof p.code === "string" && p.code !== ""
   readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text)
+  readonly property bool hasStatus: !hasImage && !hasText && !!p.status
   // More text than the pane shows: the footer says how to scroll it.
   readonly property bool overflows: visible && body.visible && body.contentHeight > body.height + 1
 
@@ -79,17 +83,42 @@ Rectangle {
       font.bold: true
       elide: Text.ElideRight
     }
-    Text {
+    Row {
       width: parent.width
-      visible: text !== ""
-      textFormat: Text.PlainText
-      text: pane.p.subtitle || ""
-      // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
-      horizontalAlignment: Text.AlignLeft
-      color: nodi.secondary
-      font.family: nodi.fontFamily
-      font.pixelSize: Style.font.caption
-      elide: Text.ElideMiddle
+      visible: subtitle.text !== ""
+      spacing: Style.spacing.sm
+      // Turning while the answer is on its way, as Omarchy's own spinner
+      // turns (Ui/MultiSelect.qml: 󰦖, 800 ms a turn, linear); set upright
+      // again when it stops, which an animator does not do by itself.
+      Text {
+        id: spinner
+        visible: !!pane.p.busy
+        textFormat: Text.PlainText
+        text: "󰦖"
+        color: nodi.secondary
+        font.family: nodi.fontFamily
+        font.pixelSize: Style.font.caption
+        RotationAnimator on rotation {
+          running: spinner.visible && pane.visible
+          from: 0
+          to: 360
+          duration: 800
+          loops: Animation.Infinite
+          onRunningChanged: if (!running) spinner.rotation = 0
+        }
+      }
+      Text {
+        id: subtitle
+        width: parent.width - (spinner.visible ? spinner.width + parent.spacing : 0)
+        textFormat: Text.PlainText
+        text: pane.p.subtitle || ""
+        // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
+        horizontalAlignment: Text.AlignLeft
+        color: nodi.secondary
+        font.family: nodi.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideMiddle
+      }
     }
     Rectangle {
       width: parent.width
@@ -97,7 +126,7 @@ Rectangle {
       color: Util.alpha(nodi.foreground, 0.08)
       // Under a header only: with no title or subtitle there is nothing to
       // divide from.
-      visible: !!(pane.p.title || pane.p.subtitle) && ((pane.p.labels || []).length > 0 || pane.hasImage || pane.hasWindow || pane.hasText)
+      visible: !!(pane.p.title || pane.p.subtitle) && ((pane.p.labels || []).length > 0 || pane.hasImage || pane.hasWindow || pane.hasText || pane.hasStatus)
     }
     Repeater {
       model: pane.p.labels || []
@@ -133,6 +162,24 @@ Rectangle {
         }
       }
     }
+  }
+
+  // What an answer waits on, where its words will come.
+  Text {
+    visible: pane.hasStatus
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: head.bottom
+    anchors.margins: Style.spacing.popupPadding
+    textFormat: Text.PlainText
+    text: pane.p.status || ""
+    horizontalAlignment: Text.AlignLeft
+    color: nodi.secondary
+    font.family: nodi.fontFamily
+    font.pixelSize: Style.font.subtitle
+    wrapMode: Text.Wrap
+    maximumLineCount: 3
+    elide: Text.ElideRight
   }
 
   Image {

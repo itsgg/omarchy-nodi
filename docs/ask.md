@@ -45,8 +45,10 @@ default for the others.
 
 ## Asking
 
-`ask why is the sky blue`, then Enter: the answer comes beside the list
-as the agent writes it. Then Enter pastes it where you were, Ctrl+Enter
+`ask why is the sky blue`, then Enter: the answer's pane opens beside
+the list at once, saying what the agent is doing (starting, searching
+the bar, thinking) beside a turning 󰦖 until its words come, and the
+answer fills it as the agent writes it. Then Enter pastes it where you were, Ctrl+Enter
 copies it, "Continue in your agent" hands the question to Omarchy's
 default coding agent (`omarchy-agent-prompt`), and "Ask again" asks it
 again. Tab on a query nothing else fills in writes `ask ` before it, for
@@ -56,8 +58,7 @@ It is a conversation: a question asked within ten minutes of the last
 answer follows it, across closes of the bar; later, or after "New
 question", the agent starts afresh. The session starts as you type
 `ask `, so it is warm by the time you press Enter, and ends after thirty
-minutes with no question. While the agent thinks or uses a tool, the
-bar says so.
+minutes with no question.
 
 ### Signing in
 
