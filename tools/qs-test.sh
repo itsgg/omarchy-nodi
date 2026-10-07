@@ -74,4 +74,10 @@ sed -n "s#^.*NODI-TEST \(pass\|fail\) file://$root/#\1 #p" "$work/out"
 # NODI_TEST_LOG=1 shows what the tests printed besides their verdicts.
 [[ -z ${NODI_TEST_LOG:-} ]] || grep -v "NODI-TEST" "$work/out" | grep "NODI-" | sed 's/^.*\(NODI-\)/\1/'
 [[ -z ${NODI_TEST_ALL:-} ]] || cat "$work/out"
+# A binding loop fails the run too: Qt only warns, and goes on with the
+# property's last value (components/PaneRead.qml, 2026-10-07).
+if grep -q "Binding loop detected" "$work/out"; then
+  echo "qs-test: a binding loop:"; grep "Binding loop detected" "$work/out" | sed "s#^.*\(QML\)#\1#" | sort -u
+  exit 1
+fi
 ! grep -q "NODI-TEST fail" "$work/out"
