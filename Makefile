@@ -148,10 +148,22 @@ install:
 	@echo "installed; enable with: omarchy plugin enable $(PLUGIN_ID)"
 
 # Quickshell caches compiled QML; clearing it and restarting the shell is the
-# reliable way to load a change.
-reload: install
+# reliable way to load a change. The shell is stopped before the copy, and
+# started once after: a running one reloads every plugin when a file of
+# this one changes (Omarchy's shell, after 150 ms without a change), and an
+# install of thirty files under load had it reload them again and again,
+# 68 changes seen (2026-10-07; the restart after it crashed, cause unknown).
+# Not while a locker holds the screen, as Omarchy's own restart refuses
+# then (a session locked with no locker it restarts and locks again). The
+# shell is down by the restart, so a failed one is tried once more and then
+# fails the make, never passed over (Fable 2026-10-07).
+reload:
+	@if omarchy-hyprland-session-locked && [ "$$(OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell lock status 2>/dev/null | jq -r '.secure or .requested' 2>/dev/null)" = true ]; then \
+	  echo "reload: the screen is locked; the shell is left running" >&2; exit 1; fi
+	@while timeout 5 quickshell kill -p "$${OMARCHY_PATH:-/usr/share/omarchy}/shell" --any-display >/dev/null 2>&1; do :; done
+	@$(MAKE) --no-print-directory install
 	@rm -rf "$(HOME)/.cache/quickshell/qmlcache"
-	@omarchy restart shell || true
+	@omarchy restart shell || omarchy restart shell
 
 # Whether the installed copy is this tree and the running shell has loaded
 # it; not in `check`, since installing is a step of its own.
