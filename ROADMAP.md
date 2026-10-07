@@ -706,6 +706,13 @@ baseline query loses rank.
 ## Phase L: release
 
 80. **Tags, a version in the manifest, a CHANGELOG.** E 8.
+    Done 2026-10-07: CHANGELOG.md says what each version brought, newest
+    first; manifest.json says 0.2.0, and tools/check-manifest.mjs (in
+    check and CI) fails when the two differ, so no bump goes without its
+    notes. Tags v0.1.0 (332b7e1, the first public commit) and v0.2.0.
+    `omarchy plugin update` follows main, not the tags: it shows the diff
+    and asks before pulling. The marketplace still waits for his word
+    (item 28).
 81. **`contrib/`**: filters and answers in the repository, off by default,
     never fetched. E 9.
     Done 2026-10-07: `"filters": [{ "contrib": "obsidian" }]` names one,
