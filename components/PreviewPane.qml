@@ -5,9 +5,11 @@ import "../lib/Markdown.js" as Markdown
 // The selected row's preview beside the list (ROADMAP item 26), shown only
 // when the row has one (his ruling 2026-10-04): a header, its labels, then
 // the text or the picture. A provider gives `preview` on a row:
-//   { title, subtitle, text, markdown, mono, follow, image, labels: [[label, value], ...] }
+//   { title, subtitle, text, markdown, mono, follow, image, window, labels: [[label, value], ...] }
 // `markdown` is drawn as Markdown, its pictures and HTML taken out first
-// (lib/Markdown.js); `text` is drawn as it is.
+// (lib/Markdown.js); `text` is drawn as it is; `window`, a window's
+// address, is that window as it is now (WindowShot.qml), inside the shell
+// only (`nodi.captures`): the offscreen renders show its header alone.
 // Kadhir's pane is the model: a hairline, 16 px inside.
 Rectangle {
   id: pane
@@ -38,6 +40,7 @@ Rectangle {
     body.scrolled = true
   }
   readonly property bool hasImage: !!p.image
+  readonly property bool hasWindow: !hasImage && !!p.window && !!nodi.captures
   readonly property bool hasMarkdown: !hasImage && typeof p.markdown === "string" && p.markdown !== ""
   readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text)
   // More text than the pane shows: the footer says how to scroll it.
@@ -90,7 +93,7 @@ Rectangle {
       color: Util.alpha(nodi.foreground, 0.08)
       // Under a header only: with no title or subtitle there is nothing to
       // divide from.
-      visible: !!(pane.p.title || pane.p.subtitle) && ((pane.p.labels || []).length > 0 || pane.hasImage || pane.hasText)
+      visible: !!(pane.p.title || pane.p.subtitle) && ((pane.p.labels || []).length > 0 || pane.hasImage || pane.hasWindow || pane.hasText)
     }
     Repeater {
       model: pane.p.labels || []
@@ -145,6 +148,21 @@ Rectangle {
     sourceSize.width: Style.space(1000)
     sourceSize.height: Style.space(600)
     source: pane.hasImage ? nodi.iconSource(pane.p.image) : ""
+  }
+
+  Loader {
+    id: windowShot
+    // While the bar is open: closing it only hides its window, and the
+    // capture went on taken each second (Cursor 2026-10-07).
+    active: pane.hasWindow && !!nodi.opened
+    visible: active
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.top: head.bottom
+    anchors.bottom: parent.bottom
+    anchors.margins: Style.spacing.popupPadding
+    source: "WindowShot.qml"
+    onLoaded: item.address = Qt.binding(function() { return String(pane.p.window || "") })
   }
 
   Flickable {

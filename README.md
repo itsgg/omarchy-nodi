@@ -37,7 +37,7 @@ text already typed:
 | Type | For |
 |---|---|
 | `chromium`, `lsd`, `chromium new window` | An app, by name or its letters, or one of its actions |
-| `w `, `w chromium` | An open window, or the ones of an app |
+| `w `, `w chromium` | An open window, or the ones of an app, the selected one shown beside the list as it is now (`"windows": { "preview": false }` turns that off) |
 | `screenshot`, `dns`, `restart shell`, `install zed` | Anything in Omarchy's menu, your own entries included |
 | `gaps`, `dnd`, `stay awake`, `wifi` | Toggles, with their state |
 | `vol 60`, `bright off`, `remind 15 tea` | Volume, brightness and reminders |
@@ -389,6 +389,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   once an hour, when a search first needs them. While it is open it reads
   each tray app's menu and its submenus one level down, which asks the
   app to fill them in, as opening its menu in the tray does.
+- Under `w` the pane shows the selected window, a picture Hyprland makes
+  of that window alone (its toplevel export, through Quickshell), taken
+  again each second while it shows and never saved.
 - It reads the usage records Omarchy's agents widget keeps
   (`~/.local/state/omarchy/agents/usage`) at each open, and under `agents`
   the process list, tmux's clients, and for a Claude Code session the

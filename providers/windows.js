@@ -57,7 +57,7 @@ function where(win) {
   return ws.indexOf("special") === 0 ? "scratchpad" : "workspace " + ws
 }
 
-function row(win, d, rank) {
+function row(win, d, rank, shown) {
   var r = {
     key: "window:" + win.address,
     remember: false,
@@ -68,6 +68,9 @@ function row(win, d, rank) {
     copy: "",
     run: Run.focus(win.address)
   }
+  // Under `w`, the window itself beside the list (ROADMAP 78,
+  // components/WindowShot.qml), unless "windows": { "preview": false }.
+  if (shown) r.preview = { title: r.title, subtitle: r.subtitle, window: win.address }
   for (var k in rank) r[k] = rank[k]
   return r
 }
@@ -114,7 +117,8 @@ var provider = {
       }
       picked.sort(function(a, b) { return a.w.focus - b.w.focus })
       if (picked.length === 0) return [{ title: q ? "No window matches \"" + q + "\"" : "No other windows open", subtitle: "Windows", score: 40, copy: "" }]
-      return picked.slice(0, LIMIT).map(function(p, n) { return row(p.w, p.d, { score: 97 - n * 0.01 }) })
+      var shown = !(ctx.settings && ctx.settings.preview === false)
+      return picked.slice(0, LIMIT).map(function(p, n) { return row(p.w, p.d, { score: 97 - n * 0.01 }, shown) })
     }
 
     if (!q || qw.length === 0) return []
