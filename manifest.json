@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.itsgg.nodi",
   "name": "Nodi",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "Ganesh Gunasegaran <me@itsgg.com>",
   "license": "MIT",
   "description": "A command bar for Omarchy: apps, windows, every Omarchy menu action and toggle with its live state, sums, units, currency, time, emoji, clipboard and files.",
