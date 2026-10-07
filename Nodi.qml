@@ -1925,28 +1925,27 @@ Item {
     { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question })
   // The pane beside the list (item 26), as lib/Pane.js chooses it.
   readonly property bool anyPreview: root.rows.some(Pane.hasPane)
-  readonly property var preview: root.readPreview(Pane.choose({
-    paletteOpen: root.paletteOpen,
-    ask: root.askShown !== "" ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: root.askShown } : null,
-    proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
-    agent: askSession.agentName,
-    answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
-    word: root.wordAsk,
-    // All the actions, not the ones typed for: the pane holds its width
-    // while Ctrl+K is filtered (Sonnet 2026-10-06).
-    palette: root.paletteOpen ? { row: root.paletteRow, action: root.paletteActions[root.paletteIndex] || null, actions: root.paletteAll,
-                                  armed: !!root.paletteArmed && !!root.paletteActions[root.paletteIndex] && root.paletteArmed === root.paletteActions[root.paletteIndex].label } : null,
-    row: root.selectedRow, armed: !!root.selectedRow && root.armedKey === root.selectedRow.key, anyPreview: root.anyPreview
-  }))
-
-  // A preview that names a read gets it now, for the selected row only; the
-  // read's arrival recomputes the rows, and this binding with them.
-  function readPreview(p) {
-    if (!p || !p.read) return p
-    return Rows.withRead(p, requests.request(p.read.source, p.read.param), function(ms) {
-      return Qt.formatDateTime(new Date(ms), "yyyy-MM-dd HH:mm")
+  // The pane beside the list, its read asked for outside any binding
+  // (components/PaneRead.qml).
+  PaneRead {
+    id: paneRead
+    store: requests
+    formatTime: function(ms) { return Qt.formatDateTime(new Date(ms), "yyyy-MM-dd HH:mm") }
+    chosen: Pane.choose({
+      paletteOpen: root.paletteOpen,
+      ask: root.askShown !== "" ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: root.askShown } : null,
+      proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
+      agent: askSession.agentName,
+      answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
+      word: root.wordAsk,
+      // All the actions, not the ones typed for: the pane holds its width
+      // while Ctrl+K is filtered (Sonnet 2026-10-06).
+      palette: root.paletteOpen ? { row: root.paletteRow, action: root.paletteActions[root.paletteIndex] || null, actions: root.paletteAll,
+                                    armed: !!root.paletteArmed && !!root.paletteActions[root.paletteIndex] && root.paletteArmed === root.paletteActions[root.paletteIndex].label } : null,
+      row: root.selectedRow, armed: !!root.selectedRow && root.armedKey === root.selectedRow.key, anyPreview: root.anyPreview
     })
   }
+  readonly property var preview: paneRead.preview
 
   // Media, audio devices, Bluetooth, Wi-Fi and the battery, as they are.
   Desktop { id: desktopState }
