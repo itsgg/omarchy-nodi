@@ -4,6 +4,7 @@
 .import "../lib/Match.js" as Match
 .import "../lib/Sources.js" as Sources
 .import "../lib/Score.js" as Score
+.import "../lib/Ansi.js" as Ansi
 
 // Files: the ones you opened recently, and any directory by its path.
 //
@@ -137,18 +138,84 @@ function parentOf(path) {
   return i <= 0 ? "/" : p.slice(0, i)
 }
 
-// What the preview pane shows of a file (item 26): its size and time,
-// its type, and for a text type its first 4 KB. The path is an argument.
-var FILE_HEAD = 'f=$1; [ -f "$f" ] || exit 1; stat -c "%s\t%Y" -- "$f"; m=$(file -b --mime-type -- "$f"); printf "%s\n" "$m"; '
-  + 'case "$m" in text/*|application/json|application/xml|application/javascript|application/x-shellscript|application/toml|inode/x-empty) head -c 4096 -- "$f";; esac; true'
+// What the preview pane shows of a file (items 26 and 82): its size and
+// time, its type, then what it holds, by a line naming the kind:
+//   ansi    its first 4 KB coloured by bat (Omarchy installs it), with the
+//           terminal's sixteen colours, which lib/Ansi.js makes the
+//           theme's; about 40 ms a file (28 to 55, measured 2026-10-07)
+//   text    the same uncoloured, where bat is missing
+//   image   a picture made of it, its path after a tab: a PDF's first page
+//           (pdftoppm, from poppler, which Evince needs) or a frame of a
+//           video (ffmpegthumbnailer, in Omarchy's base), as JPEG (a page
+//           took 130 ms against 620 as PNG); kept in ~/.cache/nodi/thumbs
+//           by path, size and time, so it is made once (19 ms after)
+//   list    a folder's entries, folders first, a line each (`ls -q`
+//           writes a newline or another control character in a name as
+//           ?; -b wrote a space as "\ ", Fable 2026-10-07), 200 at most
+//   none    nothing to show but the labels
+// The path is an argument; a link is read as what it points to. A picture
+// is written beside its name and moved in whole, so a read never finds
+// half of one; its maker has 4 s (5 if it will not stop), inside the
+// read's 6, so a slow one
+// costs the picture, never the labels; one a month unused goes (a use
+// touches it).
+var FILE_HEAD = 'f=$1'
+  + "\n" + 'if [ -d "$f" ]; then'
+  + "\n" + '  [ -r "$f" ] && [ -x "$f" ] || exit 1'
+  + "\n" + '  stat -L -c "%s\t%Y" -- "$f" || exit 1'
+  + "\n" + '  printf "inode/directory\nlist\n"'
+  + "\n" + '  ls -A -p -q --group-directories-first -- "$f" 2>/dev/null | head -n 200'
+  + "\n" + '  exit 0'
+  + "\n" + 'fi'
+  + "\n" + '[ -f "$f" ] || exit 1'
+  + "\n" + 'st=$(stat -L -c "%s\t%Y" -- "$f") || exit 1'
+  + "\n" + 'printf "%s\n" "$st"'
+  + "\n" + 'm=$(file -L -b --mime-type -- "$f")'
+  + "\n" + 'printf "%s\n" "$m"'
+  + "\n" + 'case "$m" in'
+  + "\n" + '  text/*|application/json|application/xml|application/javascript|application/x-shellscript|application/toml|application/x-yaml|application/sql|inode/x-empty)'
+  + "\n" + '    if command -v bat >/dev/null; then'
+  + "\n" + '      printf "ansi\n"'
+  + "\n" + '      head -c 4096 -- "$f" | bat --color=always --theme=ansi --style=plain --paging=never --file-name "$f" 2>/dev/null'
+  + "\n" + '    else'
+  + "\n" + '      printf "text\n"'
+  + "\n" + '      head -c 4096 -- "$f"'
+  + "\n" + '    fi;;'
+  + "\n" + '  application/pdf|video/*)'
+  + "\n" + '    d="$HOME/.cache/nodi/thumbs"'
+  + "\n" + '    mkdir -p -- "$d" || { printf "none\n"; exit 0; }'
+  + "\n" + '    k=$(printf "%s\t%s" "$f" "$st" | sha1sum | cut -c1-40)'
+  + "\n" + '    out="$d/$k.jpg"'
+  + "\n" + '    if [ -s "$out" ]; then touch -c -- "$out"; else'
+  + "\n" + '      tmp="$d/.$k.$$"'
+  + "\n" + '      case "$m" in'
+  + "\n" + '        application/pdf) command -v pdftoppm >/dev/null && timeout -k 1 4 pdftoppm -jpeg -jpegopt quality=85 -f 1 -l 1 -singlefile -scale-to 1000 "$f" "$tmp" >/dev/null 2>&1 && mv -f -- "$tmp.jpg" "$out";;'
+  + "\n" + '        *) command -v ffmpegthumbnailer >/dev/null && timeout -k 1 4 ffmpegthumbnailer -i "$f" -o "$tmp.jpg" -s 1000 -c jpeg -q 8 >/dev/null 2>&1 && mv -f -- "$tmp.jpg" "$out";;'
+  + "\n" + '      esac'
+  + "\n" + '      rm -f -- "$tmp.jpg"'
+  + "\n" + '      find "$d" -maxdepth 1 -name "*.jpg" -mtime +30 -delete 2>/dev/null'
+  + "\n" + '    fi'
+  + "\n" + '    if [ -s "$out" ]; then printf "image\t%s\n" "$out"; else printf "none\n"; fi;;'
+  + "\n" + '  *) printf "none\n";;'
+  + "\n" + 'esac'
+  + "\n" + 'true'
 
-// "12147\t1791079693", the type, then the text: { size, modified, type, text }.
+// "12147\t1791079693", the type, the kind, then what it holds:
+// { size, modified, type, kind, text, ansi, image, entries }.
 function parseHead(text, ok) {
   if (!ok) throw "cannot read the file"
   var lines = String(text || "").split("\n")
   var st = (lines[0] || "").split("\t")
   var type = lines[1] || ""
-  return { size: Number(st[0]) || 0, modified: Number(st[1]) || 0, type: type, text: lines.slice(2).join("\n").replace(/\n$/, "") }
+  var said = (lines[2] || "").split("\t")
+  var kind = said[0]
+  var rest = lines.slice(3).join("\n").replace(/\n$/, "")
+  var out = { size: Number(st[0]) || 0, modified: Number(st[1]) || 0, type: type, kind: kind }
+  if (kind === "ansi") { out.ansi = rest; out.text = Ansi.plain(rest) }
+  else if (kind === "text") out.text = rest
+  else if (kind === "image" && /^\/[^\n]+\.jpg$/.test(said[1] || "")) out.image = said[1]
+  else if (kind === "list") out.entries = rest === "" ? [] : rest.split("\n")
+  return out
 }
 
 function fileRow(path, name, isDir, score, home) {
@@ -161,8 +228,8 @@ function fileRow(path, name, isDir, score, home) {
     imageFill: true,
     // An image shows itself; another file its details and first lines,
     // read only while it is the selected row; a folder what it is.
-    preview: isDir ? { title: name, subtitle: tilde(path, home), labels: [["Kind", "Folder"]] }
-           : isImage(path) ? { title: name, subtitle: tilde(path, home), image: path }
+    // A folder its entries (ROADMAP 82).
+    preview: isImage(path) && !isDir ? { title: name, subtitle: tilde(path, home), image: path }
            : { title: name, subtitle: tilde(path, home), read: { source: "file-head", param: path } },
     score: score,
     copy: path,
@@ -324,8 +391,11 @@ var provider = {
       argv: function(path) { return String(path).charAt(0) === "/" ? ["/usr/bin/bash", "-c", FILE_HEAD, "nodi", String(path)] : null },
       parse: parseHead,
       maxAgeMs: 30 * 1000,
-      timeoutMs: 2000,
-      maxBytes: 8192
+      // A picture made the first time, once: a video's frame took 0.7 s.
+      timeoutMs: 6000,
+      // 4 KB coloured is about 6 KB (Rows.js, 18 KB of JavaScript);
+      // a read cut at its cap is no read at all.
+      maxBytes: 65536
     },
     // A name under home: fixed text, never a pattern; 60 at most. A name
     // holding a newline is left out, as in a folder listing: it would read

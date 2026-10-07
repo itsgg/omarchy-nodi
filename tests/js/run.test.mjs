@@ -110,14 +110,14 @@ test("a file's path as a URL keeps # and ? as part of the name", () => {
 test("a file's preview: its details and first lines once the read lands", () => {
   const Rows = load("lib/Rows.js");
   const F = load("providers/files.js");
-  const head = F.parseHead("12147\t1791079693\ntext/plain\n# Nodi\n\nA command bar.\n", true);
-  assert.deepEqual(JSON.parse(JSON.stringify(head)), { size: 12147, modified: 1791079693, type: "text/plain", text: "# Nodi\n\nA command bar." });
+  const head = F.parseHead("12147\t1791079693\ntext/plain\ntext\n# Nodi\n\nA command bar.\n", true);
+  assert.deepEqual(JSON.parse(JSON.stringify(head)), { size: 12147, modified: 1791079693, type: "text/plain", kind: "text", text: "# Nodi\n\nA command bar." });
   const p = { title: "README.md", subtitle: "~/x", read: { source: "file-head", param: "/x/README.md" } };
   assert.deepEqual(JSON.parse(JSON.stringify(Rows.withRead(p, { state: "pending" }))), { title: "README.md", subtitle: "~/x", labels: [] }, "the header while it reads");
   const done = Rows.withRead(p, { state: "ready", value: head }, () => "2026-10-04 07:31");
   assert.deepEqual(JSON.parse(JSON.stringify(done.labels)), [["Size", "11.9 KB"], ["Modified", "2026-10-04 07:31"], ["Type", "text/plain"]]);
   assert.equal(done.text, "# Nodi\n\nA command bar."); assert.equal(done.mono, true);
-  const bin = Rows.withRead(p, { state: "ready", value: F.parseHead("1195144\t1781065932\napplication/x-pie-executable\n", true) });
+  const bin = Rows.withRead(p, { state: "ready", value: F.parseHead("1195144\t1781065932\napplication/x-pie-executable\nnone\n", true) });
   assert.ok(!bin.text, "a binary file: its labels, no text");
   assert.throws(() => F.parseHead("", false));
 });

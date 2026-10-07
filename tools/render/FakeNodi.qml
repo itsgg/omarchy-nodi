@@ -1,6 +1,8 @@
 import QtQuick
 import "lib/Rows.js" as Rows
 import "lib/Pane.js" as Pane
+import "lib/Ansi.js" as Ansi
+import "qs/Commons/Theme.js" as Theme
 
 // A stand-in for Nodi's root, as Card.qml reads it: a scene's rows and
 // state, the bar's own Look (`look`), and its functions as no-ops that
@@ -53,6 +55,8 @@ QtObject {
                              armed: !!paletteArmed && !!paletteActions[paletteIndex] && paletteArmed === paletteActions[paletteIndex].label } : null,
     row: selectedRow, armed: !!selectedRow && armedKey === selectedRow.key, anyPreview: anyPreview
   }))
+  // The theme's sixteen colours, as Nodi.qml reads them.
+  readonly property var themeColours: Ansi.paletteFrom(Theme.theme.colorsToml)
   // A scene's `reads` stand in for the reader: path -> what file-head gives.
   property var reads: ({})
   function readPreview(p) {

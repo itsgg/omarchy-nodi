@@ -1,15 +1,18 @@
 import QtQuick
 import qs.Commons
 import "../lib/Markdown.js" as Markdown
+import "../lib/Ansi.js" as Ansi
 
 // The selected row's preview beside the list (ROADMAP item 26), shown only
 // when the row has one (his ruling 2026-10-04): a header, its labels, then
 // the text or the picture. A provider gives `preview` on a row:
-//   { title, subtitle, text, markdown, mono, follow, image, window, labels: [[label, value], ...] }
+//   { title, subtitle, text, markdown, code, mono, follow, image, window, labels: [[label, value], ...] }
 // `markdown` is drawn as Markdown, its pictures and HTML taken out first
-// (lib/Markdown.js); `text` is drawn as it is; `window`, a window's
-// address, is that window as it is now (WindowShot.qml), inside the shell
-// only (`nodi.captures`): the offscreen renders show its header alone.
+// (lib/Markdown.js); `text` is drawn as it is; `code`, bat's coloured
+// text, in the theme's colours (lib/Ansi.js, `nodi.themeColours`); `window`, a
+// window's address, is that window as it is now (WindowShot.qml), inside
+// the shell only (`nodi.captures`): the offscreen renders show its header
+// alone.
 // Kadhir's pane is the model: a hairline, 16 px inside.
 Rectangle {
   id: pane
@@ -42,6 +45,7 @@ Rectangle {
   readonly property bool hasImage: !!p.image
   readonly property bool hasWindow: !hasImage && !!p.window && !!nodi.captures
   readonly property bool hasMarkdown: !hasImage && typeof p.markdown === "string" && p.markdown !== ""
+  readonly property bool hasCode: !hasImage && !hasMarkdown && typeof p.code === "string" && p.code !== ""
   readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text)
   // More text than the pane shows: the footer says how to scroll it.
   readonly property bool overflows: visible && body.visible && body.contentHeight > body.height + 1
@@ -189,8 +193,8 @@ Rectangle {
       id: bodyText
       width: body.width
       wrapMode: Text.Wrap
-      textFormat: pane.hasMarkdown ? Text.MarkdownText : Text.PlainText
-      text: pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : (pane.p.text || "")
+      textFormat: pane.hasMarkdown ? Text.MarkdownText : pane.hasCode ? Text.RichText : Text.PlainText
+      text: pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
       horizontalAlignment: Text.AlignLeft
       color: nodi.foreground
       linkColor: nodi.foreground

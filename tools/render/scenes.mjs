@@ -284,6 +284,23 @@ const scenes = [
     { path: "/home/u/Documents/report.pdf", name: "report.pdf", dir: false, rank: 0 } ] } },
     () => ({ reads: { "/home/u/notes/report.md": { size: 2381, modified: 1791090000, type: "text/markdown",
       text: "# Weekly report\n\n- Search: the preview pane landed\n- Docs: the README covers it\n\nNumbers below are from the Friday run." } } })),
+  // A file's first lines coloured by its syntax (ROADMAP 82): bat's output
+  // for a short script, fixed here so the picture never depends on the
+  // machine's bat; the colours are the theme's (lib/Ansi.js).
+  scene("57-file-code", "find sizes", { found: { q: "sizes", list: [
+    { path: "/home/u/Code/sizes.js", name: "sizes.js", dir: false, rank: 0 } ] } },
+    () => ({ reads: { "/home/u/Code/sizes.js": { size: 412, modified: 1791090000, type: "text/javascript", kind: "ansi",
+      ansi: "\u001b[32m//\u001b[0m\u001b[32m Sum the sizes of what a folder holds, largest first.\u001b[0m\n\u001b[35mimport\u001b[0m { readdirSync, statSync } \u001b[35mfrom\u001b[0m \u001b[32m\"\u001b[0m\u001b[32mnode:fs\u001b[0m\u001b[32m\"\u001b[0m;\n\n\u001b[35mexport\u001b[0m \u001b[35mfunction\u001b[0m \u001b[34msizes\u001b[0m(\u001b[36mdir\u001b[0m, \u001b[36mlimit\u001b[0m \u001b[35m=\u001b[0m \u001b[33m10\u001b[0m) {\n  \u001b[35mconst\u001b[0m out \u001b[35m=\u001b[0m readdirSync(dir)\u001b[35m.\u001b[0mmap(\u001b[36mname\u001b[0m \u001b[35m=>\u001b[0m ({ name, \u001b[32mbytes\u001b[0m\u001b[33m:\u001b[0m statSync(dir \u001b[35m+\u001b[0m \u001b[32m\"\u001b[0m\u001b[32m/\u001b[0m\u001b[32m\"\u001b[0m \u001b[35m+\u001b[0m name)\u001b[35m.\u001b[0msize }));\n  out\u001b[35m.\u001b[0msort((\u001b[36ma\u001b[0m, \u001b[36mb\u001b[0m) \u001b[35m=>\u001b[0m b\u001b[35m.\u001b[0mbytes \u001b[35m-\u001b[0m a\u001b[35m.\u001b[0mbytes);\n  \u001b[35mreturn\u001b[0m out\u001b[35m.\u001b[0mslice(\u001b[33m0\u001b[0m, limit); \u001b[32m//\u001b[0m\u001b[32m the largest `limit`\u001b[0m\n}\n\n\u001b[35mconst\u001b[0m total \u001b[35m=\u001b[0m sizes(\u001b[32m\"\u001b[0m\u001b[32m.\u001b[0m\u001b[32m\"\u001b[0m)\u001b[35m.\u001b[0mreduce((\u001b[36mn\u001b[0m, \u001b[36mf\u001b[0m) \u001b[35m=>\u001b[0m n \u001b[35m+\u001b[0m f\u001b[35m.\u001b[0mbytes, \u001b[33m0\u001b[0m);\nconsole\u001b[35m.\u001b[0m\u001b[36mlog\u001b[0m(\u001b[35m`\u001b[0m\u001b[35m${\u001b[0mtotal\u001b[35m}\u001b[0m\u001b[32m \u001b[0m\u001b[32mb\u001b[0m\u001b[32my\u001b[0m\u001b[32mt\u001b[0m\u001b[32me\u001b[0m\u001b[32ms\u001b[0m\u001b[32m \u001b[0m\u001b[32mi\u001b[0m\u001b[32mn\u001b[0m\u001b[32m \u001b[0m\u001b[35m${\u001b[0mprocess\u001b[35m.\u001b[0m\u001b[36mcwd\u001b[0m()\u001b[35m}\u001b[0m\u001b[35m`\u001b[0m);\n" } } })),
+  // A PDF's first page, as the read makes it; a theme's preview stands in.
+  scene("58-file-pdf", "find guide", { found: { q: "guide", list: [
+    { path: "/home/u/Documents/guide.pdf", name: "guide.pdf", dir: false, rank: 0 } ] } },
+    () => ({ reads: { "/home/u/Documents/guide.pdf": { size: 901608, modified: 1791090000, type: "application/pdf", kind: "image",
+      image: "/usr/share/omarchy/themes/kanagawa/preview.png" } } })),
+  // A folder: what it holds, folders first.
+  scene("59-folder", "find projects", { found: { q: "projects", list: [
+    { path: "/home/u/Work/projects", name: "projects", dir: true, rank: 0 } ] } },
+    () => ({ reads: { "/home/u/Work/projects": { size: 4096, modified: 1791090000, type: "inode/directory", kind: "list",
+      entries: ["kalvi/", "nodi/", "notes/", "README.md", "plan.txt", "todo.md"] } } })),
   scene("28-mixed-list", "find report", { found: { q: "report", list: [
     { path: "/home/u/Documents/report.pdf", name: "report.pdf", dir: false, rank: 0 },
     { path: "/usr/share/omarchy/themes/kanagawa/preview.png", name: "report-cover.png", dir: false, rank: 1 },
