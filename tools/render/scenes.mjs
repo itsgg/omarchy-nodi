@@ -268,7 +268,7 @@ const scenes = [
   // A key moving among the fallbacks, and inside Ctrl+K (item 71).
   scene("49-fallback-moved", "zzqx", {}, () => ({ after: [{ selectedIndex: 2 }] })),
   scene("17-keybindings", "keys "),
-  scene("19-ask-answer", "ask how do I list open ports", { ask: { phase: "done", question: "how do I list open ports", model: "haiku",
+  scene("19-ask-answer", "ask how do I list open ports", { ask: { phase: "done", question: "how do I list open ports", agent: "Claude", model: "haiku",
     answer: "Use ss, which ships with iproute2:\n\nss -tulpn\n\n-t and -u are TCP and UDP, -l listening sockets, -p the process holding each, -n numbers instead of names. Run it with sudo to see other users' processes." } },
     rows => ({ answer: "Use ss, which ships with iproute2:\n\nss -tulpn\n\n-t and -u are TCP and UDP, -l listening sockets, -p the process holding each, -n numbers instead of names. Run it with sudo to see other users' processes." })),
   scene("20-snippets", "snip ", { clipboardText: "the build is green" }, null, snippets),

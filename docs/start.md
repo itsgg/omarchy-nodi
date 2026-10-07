@@ -64,8 +64,8 @@ is the same list on one page, and [Keys](keys.md) every key.
 - [Keys](keys.md) and [Actions](actions.md): what each key does, and
   what Ctrl+K offers.
 - [Settings](settings.md): `nodi.json`, keywords, snippets.
-- [Claude](claude.md): `ask`, and what it does with selected text
-  (these need Claude Code installed and signed in).
+- [Ask](ask.md): `ask`, and what it does with selected text, through
+  Claude, Codex, Gemini or an agent of your own.
 - [Extending it](extend.md): your own commands, script filters,
   answers, the extensions that come with it, and Nodi from a terminal.
 - [What it touches](privacy.md): what it reads, writes, starts and

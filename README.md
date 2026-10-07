@@ -13,13 +13,15 @@ Nodi (நொடி) is Tamil for an instant.
 - Sums, units, currency, time zones and dates as you type
 - Clipboard history, files with a preview of each, emoji
 - Favourites, aliases, hotkeys and window rules from Ctrl+K
-- Answers from Claude, and fixes or translations of the text you selected
+- Answers from Claude, Codex, Gemini or your own agent, over ACP, and
+  fixes or translations of the text you selected
 - Your own commands, script filters and answers
 
 ## Requirements
 
-Omarchy 4. [Claude Code](https://claude.com/claude-code), signed in, for
-`ask` and the actions on selected text.
+Omarchy 4. For `ask` and the actions on selected text, a coding agent,
+signed in: [Claude Code](https://claude.com/claude-code) and Node.js 22
+by default, or Codex or Gemini CLI ([Ask](docs/ask.md)).
 
 ## Install
 
@@ -39,7 +41,7 @@ Update with `omarchy plugin update io.github.itsgg.nodi`.
 | `12*8 + 15%`, `5 km to mi` | get an answer |
 | `cb invoice` | find a clipboard entry |
 | `find report` | find a file |
-| `ask why is the sky blue` | ask Claude |
+| `ask why is the sky blue` | ask your agent |
 | `?` | see everything it does |
 
 Enter runs the selected row, Ctrl+K shows its other actions, Esc closes.

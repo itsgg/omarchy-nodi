@@ -31,7 +31,11 @@ PATH=/usr/bin:/bin
 export PATH
 
 id=io.github.itsgg.nodi
-ipc=${OMARCHY_PATH:-/usr/share/omarchy}/bin/omarchy-shell
+# omarchy-shell refuses to run without OMARCHY_PATH, which an agent that
+# starts its MCP servers with a cleared environment (Codex) does not pass.
+OMARCHY_PATH=${OMARCHY_PATH:-/usr/share/omarchy}
+export OMARCHY_PATH
+ipc=$OMARCHY_PATH/bin/omarchy-shell
 
 usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -263,6 +267,52 @@ mcp() {
   done
 }
 
+# ---------------------------------------------------------------- nodi mcp --ask
+
+# Ask's own two tools (ROADMAP 84): the agent Ask holds starts this as its
+# stdio MCP server, and each message goes to the shell whole, where Ask
+# answers it (lib/AskTools.js mcp), so the tools and what may run are
+# defined once. NODI_ASK_SESSION names the session it serves: a server an
+# ended session left reaches nothing. A message the shell cannot take is
+# answered here, never left waiting.
+ask_relay() {
+  local line out mid why req
+  [ -n "${NODI_ASK_SESSION:-}" ] || fail "nodi mcp --ask is Ask's own: it needs NODI_ASK_SESSION"
+  # A search or a run can pass omarchy-shell's two seconds, and a call
+  # that ran would be said not to have reached the bar (Fable 2026-10-07).
+  OMARCHY_SHELL_IPC_TIMEOUT=${OMARCHY_SHELL_IPC_TIMEOUT:-10s}
+  export OMARCHY_SHELL_IPC_TIMEOUT
+  trap 'exit 0' TERM INT HUP
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "${line//[[:space:]]/}" ] || continue
+    # The shell's facade takes one argument (shell.qml call(id, method,
+    # arg); Fable 2026-10-07: two were refused, every message with them):
+    # the token and the line as one JSON object, which one IPC argument
+    # holds to 128 KB; past 64 KB it is refused here.
+    req=$(jq -cn --arg t "$NODI_ASK_SESSION" --arg l "$line" '{token: $t, line: $l}' 2>/dev/null) || req=""
+    if [ -z "$req" ] || [ "$(LC_ALL=C; echo ${#req})" -gt 65536 ]; then
+      mid=$(jq -c 'if type == "object" and has("id") and has("method") then .id else empty end' <<<"$line" 2>/dev/null)
+      [ -n "$mid" ] && mcp_error "$mid" -32602 "Too long: a message is 64 KB at most"
+      continue
+    fi
+    # "" for a notification; "ok" is the facade's word for nothing returned,
+    # "error" for a function that threw, "unknown" for no Nodi loaded.
+    if out=$("$ipc" shell call "$id" askMcp "$req" 2>/dev/null); then
+      case $out in
+        ""|ok) why="The bar gave no answer" ;;
+        error) why="Nodi failed to answer; the shell's log says why" ;;
+        unknown) why="The bar cannot be reached" ;;
+        *) printf '%s\n' "$out"; continue ;;
+      esac
+    else
+      why="The bar cannot be reached"
+    fi
+    # Only a notification goes unanswered.
+    mid=$(jq -c 'if type == "object" and has("id") and has("method") then .id else empty end' <<<"$line" 2>/dev/null)
+    [ -n "$mid" ] && mcp_error "$mid" -32603 "$why"
+  done
+}
+
 case ${1-} in
   "") out=$(ask summon "$id" '{}') || exit $?; [ "$out" = ok ] || fail "Nodi did not open ($out)" ;;
   -h|--help) usage ;;
@@ -273,6 +323,8 @@ case ${1-} in
     [ "$out" = ok ] || fail "$2: $out"
     ;;
   pick) shift; pick "$@" ;;
-  mcp) [ $# -eq 1 ] || fail "usage: nodi mcp"; mcp ;;
+  mcp)
+    if [ $# -eq 2 ] && [ "$2" = --ask ]; then ask_relay
+    else [ $# -eq 1 ] || fail "usage: nodi mcp"; mcp; fi ;;
   *) open_with "$*" ;;
 esac

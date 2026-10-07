@@ -2,7 +2,7 @@
 .import "../lib/Score.js" as Score
 .import "selection.js" as Selection
 
-// Translation by Claude (ROADMAP 48), streamed into the pane by the held
+// Translation by the agent Ask holds (ROADMAP 48), streamed into the pane by the held
 // Ask session as any question is; Enter on the answer pastes it,
 // Ctrl+Enter copies it.
 //
@@ -68,9 +68,9 @@ var provider = {
   name: "Translate",
   icon: ICON,
   modes: [{ pattern: /^\s*tr\s/i, label: "Translate", icon: ICON, exclusive: true, hint: "tr <language> <text>" }],
-  commands: [{ title: "Translate", keywords: "translate translation language tr", text: "Text to another language, by Claude", complete: "tr " }],
+  commands: [{ title: "Translate", keywords: "translate translation language tr", text: "Text to another language, by your agent", complete: "tr " }],
   help: [
-    { id: "translate", title: "Translate", icon: ICON, about: "Text to another language, by Claude; Enter pastes it",
+    { id: "translate", title: "Translate", icon: ICON, about: "Text to another language, by your agent; Enter pastes it",
       examples: [{ q: "tr ta good morning", note: "To Tamil, by its code or its name" }, { q: "good morning in french" },
                  { q: "tr tamil", note: "The text you selected" }] }
   ],

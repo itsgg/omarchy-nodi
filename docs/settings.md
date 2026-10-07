@@ -44,13 +44,13 @@ started).
 |---|---|
 | `"hotkey"` | The key that opens the bar, as `"SUPER + PERIOD"`; one something else holds is left alone, and a notification says so |
 | `"providers"` | What Nodi searches, in order; where two take the same word, the earlier wins |
-| `"fallbacks"` | What a query nothing answers offers: `"keywords"` (your searches, Google's first), `"find"` (files), `"ask"` (Claude) |
+| `"fallbacks"` | What a query nothing answers offers: `"keywords"` (your searches, Google's first), `"find"` (files), `"ask"` (your agent) |
 | `"keywords"` | Searches and commands by a word of yours (below); they merge with the defaults by keyword |
 | `"snippets"` | Text pasted by a word of yours (below) |
 | `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts` |
 | `"filters"` | [Script filters](extend.md#script-filters), and the ones that [come with Nodi](extend.md#extensions-that-come-with-nodi) |
 | `"answers"` | [Answers](extend.md#answers): a program's answer, streamed beside the list |
-| `"ask"` | [Claude](claude.md): `"model"` (`"haiku"` unless set; it also describes apps), `"actions"` (`false` keeps Claude to answers, without the bar's rows), `"mcpServers"` (servers its answers may use, each call on your Enter) |
+| `"ask"` | [Ask](ask.md): `"agent"` (`"claude"`, `"codex"`, `"gemini"`, or one of your own by its `"command"`; Omarchy's default agent unless set), `"model"` (the agent's own name for it; `haiku` for Claude unless set, which also describes apps), `"actions"` (`false` keeps the agent to answers, without the bar's rows), `"mcpServers"` (servers its answers may use, each call on your Enter) |
 | `"apps"` | `"describe"`: a few words from Claude for an app with no description of its own |
 | `"math"` | `"precision"`: significant digits in an answer (10) |
 | `"currency"` | `"home"`: your currency, what a bare amount converts to; `"favorites"`: the ones shown with it |
@@ -101,7 +101,7 @@ What `config.default.json` holds, as it holds it:
 | `"hotkey"` | `"SUPER + PERIOD"` |
 | `"providers"` | `a list of 39 (config.default.json)` |
 | `"fallbacks"` | `["keywords","find","ask"]` |
-| `"ask"` | `{"model":"haiku","actions":true}` |
+| `"ask"` | `{"agent":"","model":"","actions":true}` |
 | `"apps"` | `{"describe":false}` |
 | `"math"` | `{"precision":10}` |
 | `"currency"` | `{"home":"USD","favorites":["EUR","GBP"]}` |

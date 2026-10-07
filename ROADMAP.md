@@ -741,6 +741,39 @@ baseline query loses rank.
     middle dot. Hand-written pages were each checked against the code by
     a reviewer; the README is the overview, the rest moved here.
 
+84. **Ask over ACP: Claude, Codex, Gemini, or an agent of his own.** His
+    asks, 2026-10-07: "we have to support other coding agents as well,
+    should we consider zed's agent control protocol for it?", "Can't we
+    move claude to ACP as well? Given akshi is coming later?", and "web
+    research and do it properly".
+    Done 2026-10-07: Ask speaks ACP v1 (lib/Acp.js, schema v1.24.1) to
+    the agent lib/Agents.js starts, and the stream-json path is gone.
+    Claude runs through claude-agent-acp 0.86.0 on his own `claude`;
+    against the path it replaces, two questions cost the same input
+    tokens (1364 and 1412) and the first words came within 100 ms
+    (spike, 2026-10-07). Codex runs through codex-acp 2.1.1, read-only
+    with its shell, apps and web search off; Gemini with Nodi's system
+    settings, which register none of its built-in tools. An adapter
+    installs from npm once, pinned. The agent is nodi.json's, else
+    Omarchy's default agent, else Claude; one of his own goes by its
+    command (Akshi, when it lands). The bar's tools reach the agent as
+    `nodi mcp --ask`, which hands each message to Ask in the shell; a
+    run is the row he allowed through the agent's question, or else
+    shown in the bar for his Enter. Every other tool the agent asks
+    about shows in the bar, answered once, never "always"; a sign-in it
+    needs is asked there too. Left out, with reasons in lib/Agents.js:
+    Cursor (read /etc/hostname unasked in both its modes, live test),
+    Copilot, omp, Hermes, pi, OpenClaw, Crush, Muse. Tested by a
+    stand-in agent through bin/nodi's relay and a stand-in for the
+    shell's facade that takes its one argument, as the facade does
+    (tests/qml/AskActsTest.qml; the first version passed two, which the
+    facade refuses, found by Fable's review), and, with
+    NODI_TEST_AGENTS, the real agents (AgentsLiveTest.qml). An adapter
+    installs under a lock, its npm stopped with the start that began it.
+    Not run past their start here: Codex (his workspace is out of
+    credits) and Gemini (not signed in). Research in
+    ~/.local/share/nodi-research/acp2.
+
 ## Frontier, after the above
 
 Each an experiment with a measure before it stays: a model fallback over
@@ -752,7 +785,8 @@ L 21, Q 13, Q 14, X (frontier).
 
 ## Not doing
 
-A Raycast extension runtime (needs Node; Nodi is QML and JS with no npm),
+A Raycast extension runtime (needs Node inside the bar; Nodi's own code is
+QML and JS, and npm only installs an agent's ACP adapter, its own process),
 text expansion anywhere (needs uinput and setcap), a local embedding model
 (this laptop's prefill times), and Akshi rows until the Akshi rewrite lands.
 

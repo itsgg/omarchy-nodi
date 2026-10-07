@@ -187,7 +187,7 @@ What an action of yours said would take it back, for ten minutes after it ran.
 
 ### Ask
 
-A quick answer from Claude; Enter pastes it, Ctrl+Enter copies it.
+A quick answer from your coding agent; Enter pastes it, Ctrl+Enter copies it.
 
 - `ask `: Then a question, and Enter
 - `list open ports`: Tab, where there is nothing to fill in, asks it
@@ -197,13 +197,13 @@ A quick answer from Claude; Enter pastes it, Ctrl+Enter copies it.
 Text you selected before opening the bar: fixed, rewritten, translated, its case changed, searched; pasted over it.
 
 - `fix`: Fix its spelling and grammar
-- `rewrite shorter`: Claude rewrites it as asked
+- `rewrite shorter`: Rewritten as you ask
 - `case `: UPPER, lower, Title Case, snake_case...
 - `translate`
 
 ### Translate
 
-Text to another language, by Claude; Enter pastes it.
+Text to another language, by your agent; Enter pastes it.
 
 - `tr ta good morning`: To Tamil, by its code or its name
 - `good morning in french`

@@ -107,7 +107,8 @@ export function requester(data, asked) {
 }
 
 export function services(extra) {
-  const base = { rates, zones, now, emojis, processes, apps, windows: [], history, home: "/home/u" };
+  // Ask as the bar starts: Claude, idle (Nodi.qml services).
+  const base = { rates, zones, now, emojis, processes, apps, windows: [], history, home: "/home/u", ask: { phase: "idle", agent: "Claude", model: "haiku" } };
   const svc = Object.assign(base, extra || {});
   if (!svc.request) svc.request = requester(svc, svc.asked);
   return svc;

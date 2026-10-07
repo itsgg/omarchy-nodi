@@ -4,7 +4,7 @@ Nodi is a command bar for Omarchy: press its key, type, press Enter.
 
 | | |
 |---|---|
-| ![Themes, the selected one's picture beside the list](themes.png) | ![A quick answer from Claude](ask.png) |
+| ![Themes, the selected one's picture beside the list](themes.png) | ![A quick answer from an agent](ask.png) |
 | ![A file's details and first lines](files.png) | ![Clipboard history, the whole entry beside the list](clipboard.png) |
 
 1. [Getting started](start.md): install it, the first open, the loop.
@@ -12,7 +12,8 @@ Nodi is a command bar for Omarchy: press its key, type, press Enter.
 3. [Keys](keys.md): what each key does.
 4. [Actions](actions.md): Ctrl+K, and what you can set on a row.
 5. [Settings](settings.md): `nodi.json`, keywords and snippets.
-6. [Claude](claude.md): `ask`, and what it does with selected text.
+6. [Ask](ask.md): a coding agent's answers, and what it does with
+   selected text.
 7. [Extending it](extend.md): your own commands, script filters and
    answers, the extensions that come with it, and Nodi from a terminal
    or a coding agent.

@@ -49,7 +49,7 @@ QtObject {
   readonly property bool anyPreview: rows.some(Pane.hasPane)
   readonly property var preview: readPreview(Pane.choose({
     paletteOpen: paletteOpen,
-    ask: answerShown !== "" ? { question: typed.replace(/^\s*ask\s+/i, ""), model: "haiku", text: answerShown } : null,
+    ask: answerShown !== "" ? { question: typed.replace(/^\s*ask\s+/i, ""), agent: "Claude", model: "haiku", text: answerShown } : null,
     answer: streamed, word: wordAsk,
     palette: paletteOpen ? { row: paletteRow, action: paletteActions[paletteIndex] || null, actions: paletteActions,
                              armed: !!paletteArmed && !!paletteActions[paletteIndex] && paletteArmed === paletteActions[paletteIndex].label } : null,

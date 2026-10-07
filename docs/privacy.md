@@ -19,23 +19,28 @@ Everything Nodi reads, writes, starts and sends, and when.
   Wiktionary (en.wiktionary.org's REST API) for the word typed.
 - It goes online for exchange rates (open.er-api.com, once the service
   says its next rates are due, daily in practice, or every ten minutes
-  while that fails), for `prs` (through `gh`), and for Claude,
-  through Claude Code's `claude` command, under `ask` and, if turned on, to describe
-  apps. That Claude session has none of Claude Code's own tools, no MCP
-  servers but the ones you name under `"ask": { "mcpServers": ... }` (in
-  Claude Code's own format, each call shown in the bar for your Enter),
-  and none of your Claude settings, and saves nothing; a question within
-  ten minutes of an answer follows it, and the session, the conversation
-  with it, ends after thirty minutes with no question. Its only
-  tools are the bar's: a search of the rows, and a run of one, which
-  shows in the bar with its command and runs only on your Enter. "Ask
-  about this window" sends Claude a picture of the window you came from
-  (`grim -T`, by its own buffer, so the bar is not in it), which stays in
-  the conversation, and its cost in every question, until it starts afresh.
+  while that fails), for `prs` (through `gh`), to describe apps, if
+  turned on (through Claude Code's `claude` command), and under `ask`
+  through the coding agent Ask holds ([Ask](ask.md)), which goes online
+  itself. The first `ask ` typed with Claude or Codex installs that
+  agent's ACP adapter from npm, once, into `~/.local/share/nodi/agents`; for Gemini,
+  Nodi writes its settings for it to `~/.local/share/nodi/gemini-settings.json`.
+  The agent's session runs in `~/.cache/nodi/ask`, is offered no files
+  and no terminal of Nodi's, and has no MCP servers but the bar's and
+  the ones you name under `"ask": { "mcpServers": ... }`; what of the
+  agent's own tools and settings is turned off, [Ask](ask.md) says for
+  each. A question within ten minutes of an answer follows it, and the
+  session, the conversation with it, ends after thirty minutes with no
+  question. The bar's tools are a search of the rows, and a run of one,
+  which shows in the bar with its command and runs only on your Enter;
+  anything else the agent asks to use shows there too. "Ask about this
+  window" sends the agent a picture of the window you came from (`grim
+  -T`, by its own buffer, so the bar is not in it), which stays in the
+  conversation, and its cost in every question, until it starts afresh.
 - Each time it opens it reads the text selected in the window you came
   from (`wl-paste --primary`) and the clipboard's text (never a password
-  manager's), keeps them until it next opens, and sends one to Claude only
-  when you pick one of Claude's rows on it.
+  manager's), keeps them until it next opens, and sends one to the agent
+  only when you pick one of the agent's rows on it.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`,
   which holds what you set on rows (favourites, aliases, hotkeys, hidden
   rows and deeplinks, each with a copy of its row: its title and what it

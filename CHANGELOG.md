@@ -5,6 +5,21 @@ What changed in each version of Nodi, newest first. A version is a tag
 follows the main branch, not the tags: it shows the diff from the commit
 you have and asks before pulling. ROADMAP.md has each item's detail.
 
+## Unreleased
+
+Ask
+- Ask talks to its agent over the Agent Client Protocol: Claude, Codex or
+  Gemini, Omarchy's default agent unless `"ask": { "agent" }` names one,
+  or an agent of your own by its command. Claude runs through its ACP
+  adapter, which the first question installs with npm, so Ask with Claude
+  needs Node.js 22 or newer.
+- Anything the agent asks to use shows in the bar, one at a time, and is
+  allowed once; a sign-in the agent needs is asked there too.
+- `"ask": { "model" }` is the agent's own name for a model; unset, Claude
+  keeps Haiku and the others their default.
+- `nodi` reaches the shell from an MCP client that clears the
+  environment, as Codex does.
+
 ## 0.2.0 (2026-10-07)
 
 Searching

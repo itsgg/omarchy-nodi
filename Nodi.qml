@@ -11,7 +11,9 @@ import "lib/Jsonc.js" as Jsonc
 import "lib/Menu.js" as Menu
 import "lib/Toggles.js" as Toggles
 import "lib/Sources.js" as Sources
-import "lib/AskStream.js" as AskStream
+import "lib/AskTools.js" as AskTools
+import "lib/Acp.js" as Acp
+import "lib/Agents.js" as Agents
 import "lib/Hotkey.js" as Hotkey
 // Not "Keys": that name is QtQuick's attached Keys (Keys.onPressed below).
 import "lib/Keys.js" as NodiKeys
@@ -79,6 +81,8 @@ Item {
   readonly property string userConfigPath: home + "/.config/omarchy/extensions/nodi.json"
   readonly property string cacheDir: home + "/.cache/nodi"
   readonly property string stateDir: home + "/.local/state/nodi"
+  // What Nodi installs for itself: an agent's ACP adapter (lib/Agents.js).
+  readonly property string dataDir: home + "/.local/share/nodi"
   // The hotkey's Hyprland global shortcut, "appid:name" (lib/Hotkey.js plan).
   readonly property string toggleShortcut: pluginId + ":toggle"
 
@@ -583,7 +587,8 @@ Item {
       filterStep: root.filterStep,
       session: root.closedAt,
       prefs: root.prefs,
-      ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error, model: askSession.model,
+      ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error,
+             agent: askSession.agentName, model: askSession.modelName, setup: askSession.setup, activity: askSession.activity,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active },
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
@@ -1101,6 +1106,11 @@ Item {
   // that Enter is the row's second one, so a row that asks runs; one that
   // asks for a typed word still does not.
   function runProposed(key) { return root.runKey(key, true, true) }
+
+  // Ask's tool server (`nodi mcp --ask`): one message from the agent Ask
+  // holds, with its session's token, as the one argument the shell's
+  // facade passes (components/Ask.qml serveCall).
+  function askMcp(arg) { return askSession.serveCall(arg) }
 
   // A pick whose asker went away (`nodi mcp`'s client closed): ended, and
   // the bar with it, only if it is still the open one.
@@ -1761,15 +1771,31 @@ Item {
     onPhaseChanged: if (root.opened) root.recompute()
   }
 
-  // A quick answer from Claude, held open (components/Ask.qml).
+  // Omarchy's default coding agent (omarchy-default-agent), which Ask holds
+  // unless nodi.json names another (lib/Agents.js chosen).
+  property string omarchyAgent: ""
+  FileView {
+    path: root.home + "/.config/omarchy/defaults/agent"
+    printErrors: false
+    watchChanges: true
+    onLoaded: root.omarchyAgent = text().trim()
+    onLoadFailed: root.omarchyAgent = ""
+    onFileChanged: reload()
+  }
+
+  // A quick answer from a coding agent, held open over ACP (components/Ask.qml).
   Ask {
     id: askSession
-    model: String((root.config.ask && root.config.ask.model) || "haiku")
+    agent: Agents.chosen(root.config.ask && root.config.ask.agent, root.omarchyAgent)
+    model: String((root.config.ask && root.config.ask.model) || "")
     workDir: root.cacheDir + "/ask"
-    // The bar's rows as Claude's tools, unless nodi.json says
+    dataDir: root.dataDir
+    toolServer: root.pluginDir + "/bin/nodi"
+    version: String((root.manifest && root.manifest.version) || "")
+    // The bar's rows as the agent's tools, unless nodi.json says
     // "ask": { "actions": false } (ROADMAP 44).
     acts: !(root.config.ask && root.config.ask.actions === false)
-    mcp: AskStream.servers(root.config.ask && root.config.ask.mcpServers)
+    mcp: AskTools.servers(root.config.ask && root.config.ask.mcpServers)
     searcher: root.askSearch
     checker: root.askCheck
     runner: root.askRun
@@ -1854,17 +1880,21 @@ Item {
     return "Ran: " + row.title + ". The bar closed; anything more waits until he asks again."
   }
 
-  // The run waiting for his answer, as the bar shows it.
+  // What waits for his answer, as the bar shows it.
   function proposed() {
     var p = askSession.proposal
     if (!p) return null
-    // A named server's tool: what it is and what it is given (ROADMAP 49).
-    if (p.kind === "tool")
-      return { key: "tool:" + p.server + ":" + p.tool, title: p.server + ": " + p.tool, subtitle: AskStream.inputLine(p.input), run: null, risk: "",
+    if (p.kind === "auth")
+      return { key: "auth:" + askSession.agent, title: p.title, subtitle: p.subtitle || "The agent opens its own way of signing in", run: null,
+               risk: "", confirmWord: "", auth: true, input: {} }
+    // Any other tool the agent asks to use: what it is and what it is
+    // given (ROADMAP 49, 84).
+    if (p.kind === "permission" && !p.key)
+      return { key: "tool:" + p.title, title: p.title, subtitle: Acp.inputLine(p.input), run: null, risk: "",
                confirmWord: "", tool: true, input: p.input }
     var row = root.askRows[p.key]
     return row ? { key: p.key, title: row.title, subtitle: row.subtitle, run: row.run, risk: row.risk, confirmWord: row.confirmWord }
-               : { key: p.key, title: p.key, subtitle: "A row Claude did not find by searching", run: null, risk: "", confirmWord: "" }
+               : { key: p.key, title: p.key, subtitle: "A row the agent did not find by searching", run: null, risk: "", confirmWord: "" }
   }
 
   // An answer said to a screen reader once it ends, its words without
@@ -1897,8 +1927,9 @@ Item {
   readonly property bool anyPreview: root.rows.some(Pane.hasPane)
   readonly property var preview: root.readPreview(Pane.choose({
     paletteOpen: root.paletteOpen,
-    ask: root.askShown !== "" ? { question: askSession.question, model: askSession.model, text: root.askShown } : null,
+    ask: root.askShown !== "" ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: root.askShown } : null,
     proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
+    agent: askSession.agentName,
     answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
     word: root.wordAsk,
     // All the actions, not the ones typed for: the pane holds its width
@@ -2100,7 +2131,10 @@ Item {
     if (describer.busy || Date.now() - root.describeFailedAt < 60 * 60 * 1000) return
     var list = Describe.wanted(root.apps, root.appDescriptions, Apps.undescribed)
     if (list.length === 0) return
-    describer.run(Describe.argv(String((root.config.ask && root.config.ask.model) || "haiku"), list, root.cacheDir + "/ask"), list)
+    // Ask's model when Ask holds Claude; another agent's model means
+    // nothing to claude.
+    var model = askSession.agent === "claude" && root.config.ask && root.config.ask.model ? String(root.config.ask.model) : "haiku"
+    describer.run(Describe.argv(model, list, root.cacheDir + "/ask"), list)
   }
 
   Reader {

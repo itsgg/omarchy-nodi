@@ -2,7 +2,8 @@ import QtQuick
 import Quickshell
 import "../../components"
 
-// components/Ask.qml with real questions to Haiku: the answer streams,
+// components/Ask.qml with real questions to Haiku, through Claude's ACP
+// adapter (lib/Agents.js, installed there on the first run): the answer streams,
 // ends, and a recycle starts a fresh session; a question asked in the same
 // turn as the recycle, while the old session is still dying, is answered
 // by the new one; and one asked while the old session is still streaming
@@ -19,6 +20,7 @@ Item {
     id: ask
     model: "haiku"
     workDir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
+    dataDir: Quickshell.env("HOME") + "/.local/share/nodi"
     onPhaseChanged: test.phases.push(phase)
   }
 
