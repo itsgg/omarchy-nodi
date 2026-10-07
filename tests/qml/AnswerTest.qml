@@ -47,7 +47,10 @@ Item {
     Quickshell.execDetached(["/usr/bin/mkdir", "-p", test.marks])
     streams.start(spec('printf "## Hi\\n"; sleep 0.6; printf "there"; sleep 0.6; printf " end"'))
     // A child that would leave a marker after the stop: it never must.
-    stops.start(spec('printf "said so far "; (sleep 1.2; : > "$1/stopped-child") & sleep 1.2; : > "$1/stopped-parent"; printf b', 10000, [test.marks]))
+    // Three seconds to the marker, read at 5.5 s, so the stop has room on
+    // a loaded machine (2026-10-07: at a load of 20, 1.2 s was not enough
+    // for a kill sent every 50 ms through pkill).
+    stops.start(spec('printf "said so far "; (sleep 3; : > "$1/stopped-child") & sleep 3; : > "$1/stopped-parent"; printf b', 10000, [test.marks]))
     // A Tamil letter's three bytes in two writes, 0.3 s apart.
     tamil.start(spec("printf 'xx \\xe0\\xae'; sleep 0.3; printf '\\xa4 end'"))
     queuedStop.start(spec(test.stubborn))
@@ -90,7 +93,6 @@ Item {
       check(fails.phase === "error" && fails.error === "the reason it failed" && fails.text === "partial",
             "a failure says stderr's last line and keeps what it printed: " + fails.phase + " " + JSON.stringify(fails.error))
       check(twice.phase === "done" && twice.question === "q2" && twice.text === "new words", "the newer question's answer only: " + twice.phase + " " + JSON.stringify(twice.text))
-      marksRead.running = true
     }
   }
 
@@ -101,6 +103,7 @@ Item {
     onExited: {
       check(listing.text.trim() === "", "the stopped program and its child never reached their ends: " + JSON.stringify(listing.text))
       Quickshell.execDetached(["/usr/bin/rm", "-rf", "--", test.marks])
+      test.done(test.failures.length === 0, test.failures.join("; "))
     }
   }
 
@@ -111,7 +114,8 @@ Item {
       check(late.phase === "error" && /ran past 1 s/.test(late.error) && late.text === "x", "the deadline ends one that runs on: " + late.phase + " " + JSON.stringify(late.error))
       late.reset()
       check(late.phase === "idle" && late.text === "" && late.question === "", "reset() forgets it")
-      test.done(test.failures.length === 0, test.failures.join("; "))
+      // Last, after the stopped program's three seconds (marksRead says done).
+      marksRead.running = true
     }
   }
 }

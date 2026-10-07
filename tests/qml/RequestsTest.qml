@@ -35,8 +35,10 @@ Item {
       side: { argv: function(p) { return ["/usr/bin/bash", "-c", "sleep 1.2; printf %s \"$0\"", p] }, parse: function(text) { return text.trim() }, maxAgeMs: 60000, concurrent: true },
       // A script filter's shape: a newer read ends the running one, which
       // must then never reach its end (it would leave a marker), and the
-      // program sees the session's PATH.
-      typed: { argv: function(p) { return ["/usr/bin/bash", "-c", 'sleep 1.2; : > "$1/$0.done"; printf "%s %s" "$0" "$PATH"', p, test.marks] },
+      // program sees the session's PATH. Three seconds to its end, so the
+      // ending has room on a loaded machine (2026-10-07: at a load of 20,
+      // 1.2 s was not enough for a kill sent every 50 ms through pkill).
+      typed: { argv: function(p) { return ["/usr/bin/bash", "-c", 'sleep 3; : > "$1/$0.done"; printf "%s %s" "$0" "$PATH"', p, test.marks] },
                parse: function(text) { return text.trim() }, maxAgeMs: 60000, supersede: true, sessionPath: true },
       marks: { argv: function() { return ["/usr/bin/ls", "-1", test.marks] }, parse: function(text) { return text.trim().split("\n").filter(Boolean) }, maxAgeMs: 0 },
       // What a source puts in its program's environment, for the read it
@@ -88,26 +90,51 @@ Item {
     requests.request("secret", "a")
     requests.request("secret", "b")
     sameAgain.start()
+    typedLater.began = Date.now()
     typedLater.start()
-    peek.start()
+    sidesCheck.start()
     later.start()
   }
 
-  Timer { id: typedLater; interval: 300; onTriggered: requests.request("typed", "c") }
+  // `c` replaces `b` while `b` runs: asked once `b` is running, however long
+  // `a`'s end takes (Fable 2026-10-07: asked at a fixed 300 ms, under load
+  // `b` was still queued, was dropped unrun, and the check passed without
+  // the case it names).
+  Timer {
+    id: typedLater
+    interval: 50
+    repeat: true
+    property real began: 0
+    onTriggered: {
+      var r = requests.readers["typed"]
+      var bRuns = !!r && r.active && !!r.tag && r.tag.key === "typed:b"
+      if (!bRuns && Date.now() - began < 3000) return
+      stop()
+      check(bRuns, "b ran, so its replacing is tested")
+      requests.request("typed", "c")
+    }
+  }
+
+  // Three reads of 1.2 s each, side by side, are all in by 2.2 s; one at a
+  // time, at most the first would be (Fable 2026-10-07: checked at 3.8 s,
+  // after the 3.6 s one at a time takes, it could not tell them apart).
+  Timer {
+    id: sidesCheck
+    interval: 2200
+    onTriggered: {
+      var sides = ["a", "b", "c"].map(function(p) { return requests.request("side", p, { fetch: false }) })
+      check(sides.every(function(e, i) { return e.state === "ready" && e.value === ["a", "b", "c"][i] }),
+            "a concurrent source reads its keys side by side (one at a time would have one by now): " + JSON.stringify(sides))
+      check(Object.keys(requests.readers).filter(function(k) { return k.indexOf("side:") === 0 }).length === 0,
+            "a concurrent key's Reader is gone once its read lands: " + Object.keys(requests.readers).join(","))
+    }
+  }
   Timer { id: sameAgain; interval: 1500; onTriggered: requests.request("same") }
-  Timer { id: peek; interval: 3400; onTriggered: requests.request("marks") }
 
   Timer {
     id: later
     interval: 3800
     onTriggered: {
-      var tc = requests.request("typed", "c", { fetch: false })
-      check(tc.state === "ready" && tc.value === "c /nodi/test/bin:/usr/bin:/bin", "the newest typed read lands, with the session's PATH: " + JSON.stringify(tc))
-      check(!requests.cache["typed:a"] && !requests.cache["typed:b"], "the replaced reads hold nothing: " + Object.keys(requests.cache).filter(function(k) { return k.indexOf("typed") === 0 }).join(","))
-      var m = requests.request("marks", "", { fetch: false })
-      check(m.state === "ready" && m.value.indexOf("c.done") !== -1 && m.value.indexOf("a.done") === -1 && m.value.indexOf("b.done") === -1,
-            "a replaced program never reached its end, before it started or while it ran: " + JSON.stringify(m))
-      Quickshell.execDetached(["/usr/bin/rm", "-rf", "--", test.marks])
       var e = requests.request("echo")
       check(e.state === "ready" && e.value.length === 2 && e.value[1] === "b", "echo read a,b: " + JSON.stringify(e))
       var b = requests.request("broken")
@@ -125,17 +152,44 @@ Item {
       check(d.state === "ready" && d.value === "d", "a read asked while another lands is read: " + JSON.stringify(d))
       var r = requests.request("roomy")
       check(r.state === "ready" && r.value === 5000, "the same output under a larger cap reads whole: " + JSON.stringify(r))
-      var sides = ["a", "b", "c"].map(function(p) { return requests.request("side", p, { fetch: false }) })
-      check(sides.every(function(e, i) { return e.state === "ready" && e.value === ["a", "b", "c"][i] }),
-            "a concurrent source reads its keys side by side (one at a time would take 3.6 s): " + JSON.stringify(sides))
-      check(Object.keys(requests.readers).filter(function(k) { return k.indexOf("side:") === 0 }).length === 0,
-            "a concurrent key's Reader is gone once its read lands: " + Object.keys(requests.readers).join(","))
       var sm = requests.request("same", "", { fetch: false })
       check(test.sameArrivals === 1 && sm.state === "ready" && sm.value[0].trim() === "x" && sm.at > test.sameFirstAt,
             "a second read of the same text lands without an arrival (Requests.same): " + test.sameArrivals + " " + JSON.stringify(sm))
       var sa = requests.request("secret", "a", { fetch: false }), sb = requests.request("secret", "b", { fetch: false })
       check(sa.state === "ready" && sa.value.indexOf("s-a|0|") === 0 && sb.state === "ready" && sb.value.indexOf("s-b|0|") === 0 && sa.value.split("|")[2] !== "",
             "a source's environment reaches its program, each read its own, the rest kept (HOME): " + JSON.stringify([sa, sb]))
+      typedLast.start()
+    }
+  }
+
+  // No fixed time (Fable 2026-10-07): `c` starts only once `b`'s program
+  // has ended, so once `c` is in, an unstopped `b` has left its marker;
+  // then the markers are read, and that read waited for. Fifteen seconds
+  // for `c`, two for the read, each a loud failure past it.
+  Timer {
+    id: typedLast
+    interval: 100
+    repeat: true
+    property int waited: 0
+    property bool asked: false
+    onTriggered: {
+      waited++
+      if (!asked) {
+        if (requests.request("typed", "c", { fetch: false }).state !== "ready" && waited < 150) return
+        asked = true
+        waited = 0
+        requests.request("marks")
+        return
+      }
+      if (requests.request("marks", "", { fetch: false }).state !== "ready" && waited < 20) return
+      stop()
+      var tc = requests.request("typed", "c", { fetch: false })
+      check(tc.state === "ready" && tc.value === "c /nodi/test/bin:/usr/bin:/bin", "the newest typed read lands, with the session's PATH: " + JSON.stringify(tc))
+      check(!requests.cache["typed:a"] && !requests.cache["typed:b"], "the replaced reads hold nothing: " + Object.keys(requests.cache).filter(function(k) { return k.indexOf("typed") === 0 }).join(","))
+      var m = requests.request("marks", "", { fetch: false })
+      check(m.state === "ready" && m.value.indexOf("c.done") !== -1 && m.value.indexOf("a.done") === -1 && m.value.indexOf("b.done") === -1,
+            "a replaced program never reached its end, before it started or while it ran: " + JSON.stringify(m))
+      Quickshell.execDetached(["/usr/bin/rm", "-rf", "--", test.marks])
       test.done(test.failures.length === 0, test.failures.join("; "))
     }
   }
