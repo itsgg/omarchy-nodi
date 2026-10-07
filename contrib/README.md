@@ -1,7 +1,8 @@
 # contrib
 
 Extensions that come with Nodi. Each is an ordinary script filter or
-answer, the kinds you can write yourself (the main README says how), kept
+answer, the kinds you can write yourself ([Extending it](../docs/extend.md)
+says how), kept
 in this repository so that what runs is what was reviewed at its commit.
 Nothing here is fetched, and nothing runs until you name it in
 `~/.config/omarchy/extensions/nodi.json`:

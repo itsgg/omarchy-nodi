@@ -727,6 +727,20 @@ baseline query loses rank.
     and `weather`. Each is tested on a home of its own with stand-ins
     for gh, docker and curl, its rows through Nodi's own filter parser.
 
+83. **A user guide, held to the code.** His ask, 2026-10-07: "create a
+    grounded user documentation for the project".
+    Done 2026-10-07: docs/ has nine pages (getting started, what it
+    finds, keys, actions, settings, Claude, extending it, what it
+    touches, troubleshooting); the README keeps the overview and links
+    them. tools/docs.mjs writes every help topic, every key and every
+    default setting from the code into them, and `make docs-check` (in
+    check and CI) fails where a generated part says other than the code
+    or is missing, a link or a heading is not there, a `make` target is
+    not one, the settings page names a setting Nodi does not have, or
+    prose has a long dash, an arrow, a curly quote, an ellipsis or a
+    middle dot. Hand-written pages were each checked against the code by
+    a reviewer; the README is the overview, the rest moved here.
+
 ## Frontier, after the above
 
 Each an experiment with a measure before it stays: a model fallback over

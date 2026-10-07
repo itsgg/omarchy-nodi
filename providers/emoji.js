@@ -6,7 +6,6 @@
 // Nodi.qml and passed in as ctx.emojis.
 //
 //   :fire, :heart eyes, emoji thumbs up
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 
 var LIMIT = 40
 

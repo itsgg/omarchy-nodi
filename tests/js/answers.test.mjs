@@ -1,5 +1,5 @@
-// The ported providers: every case from omarchy-commandbar's suite, adapted
-// to Nodi's run contract and ASCII text.
+// The answers and the matching of apps, windows and processes, case by
+// case, on Nodi's run contract.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

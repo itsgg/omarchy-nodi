@@ -10,7 +10,6 @@
 //
 //   time, time in tokyo, tokyo time, 3pm lkt to pst, 15:30 in london
 //   days until dec 25, today + 45 days, 2026-01-01 to 2026-09-23, next friday
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 
 var DAY_MS = 86400000
 var WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]

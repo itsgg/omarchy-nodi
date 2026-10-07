@@ -9,7 +9,6 @@
 // after the API's own next-update time, or ten minutes after a failure.
 //
 //   100 usd to lkr, 100usd in eur, $50, €20 to inr, 50 eur, usd lkr, 12*50 usd
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 
 var SYMBOLS = { "$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR", "රු": "LKR", "₩": "KRW", "₽": "RUB", "₺": "TRY", "฿": "THB", "₱": "PHP", "₫": "VND", "₪": "ILS" }
 

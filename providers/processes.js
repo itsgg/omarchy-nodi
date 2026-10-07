@@ -8,7 +8,6 @@
 //   [{ pid, rss (KiB), cpu (%), name, args }]
 //
 //   kill, kill chrome, kill -9 chrome
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 
 var LIMIT = 30
 

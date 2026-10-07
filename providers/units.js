@@ -4,7 +4,6 @@
 // Unit conversion, offline.
 //
 //   5 km to mi, 180 lb in kg, 72f, 5 ft 11 in to cm, 90 min to hours
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 //
 // With a target unit you get that one answer; without one, the usual
 // counterparts (km to mi, °F to °C, and so on). Durations only convert with an explicit
