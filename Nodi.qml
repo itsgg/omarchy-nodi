@@ -18,6 +18,7 @@ import "lib/Keys.js" as NodiKeys
 import "lib/Config.js" as Config
 import "lib/Prefs.js" as Prefs
 import "lib/Starters.js" as Starters
+import "lib/WindowRules.js" as WindowRules
 import "lib/History.js" as History
 import "lib/Match.js" as Match
 import "lib/tzcities.js" as Tz
@@ -878,6 +879,7 @@ Item {
       root.finish()
       return
     }
+    if (a.nodi === "windowRule") { root.setWindowRule(a, row); root.recompute(); return }
     var next = a.nodi === "favourite" ? Prefs.toggledFavourite(root.prefs, row.key, snap)
       : a.nodi === "pinClip" ? Prefs.toggledPin(root.prefs, row.key, row.pin)
       : a.nodi === "hide" ? Prefs.hiddenRow(root.prefs, row.key, snap)
@@ -909,6 +911,49 @@ Item {
     root.reachQueued = []
     for (var i = 0; i < q.length; i++) root.noteReached(q[i])
   }
+
+  // A window rule from Ctrl+K or taken back from ?mine (lib/WindowRules.js):
+  // kept, handed to Hyprland at once, and the window floated now when its
+  // app is to float.
+  function setWindowRule(a, row) {
+    var w = a.window || {}
+    var next = Prefs.withRule(root.prefs, w.cls, w.app, a.change)
+    // Past fifty, or past what one hyprctl call takes: said, not dropped
+    // without a word (Fable 2026-10-07). Floating this window needs no rule.
+    if (!next) Quickshell.execDetached(["notify-send", "-a", "Nodi", "Window rule not kept",
+      "Nodi keeps fifty at most, and they must fit one hyprctl call. Take one back in ?mine."])
+    else {
+      root.savePrefs(next)
+      root.applyRules()
+    }
+    if (a.change.float === true && row.run && row.run.kind === "window") {
+      var f = Run.floatWindow(row.run.address, "enable")
+      if (f) Quickshell.execDetached(Run.command(f))
+    }
+  }
+
+  // Hyprland's rules of Nodi's made exactly the ones kept, all of them each
+  // time (lib/WindowRules.js): after the prefs are read, after each config
+  // reload, which drops them, and after each change. One reader, so a
+  // change asked while one is on its way replaces the one waiting, and
+  // the last one wins; a failed eval is tried again three times.
+  // Asked anew (prefs read, a reload, a change), it may be tried three
+  // times again: a count left from an earlier failure never runs out.
+  function applyRules(retry) {
+    if (!root.prefsLoaded) return
+    if (!retry) rulesRetry.tries = 0
+    rulesReader.run(["/usr/bin/hyprctl", "eval", WindowRules.lua(root.prefs.rules)])
+  }
+  Reader {
+    id: rulesReader
+    timeoutMs: 3000
+    onFinished: function(text, ok) {
+      if (ok && String(text).trim() === "ok") { rulesRetry.tries = 0; return }
+      console.warn("nodi: the window rules were not handed to Hyprland: " + String(text).trim().slice(0, 200))
+      if (rulesRetry.tries < 3) { rulesRetry.tries++; rulesRetry.restart() }
+    }
+  }
+  Timer { id: rulesRetry; interval: 5000; property int tries: 0; onTriggered: root.applyRules(true) }
 
   function savePrefs(next) {
     var rowKeys = function(p) { var o = {}; for (var c in p.hotkeys) o[c] = p.hotkeys[c].key; return JSON.stringify(o) }
@@ -1118,6 +1163,8 @@ Item {
       input.text = ""
     } else if (row.nodi === "show") {
       root.savePrefs(Prefs.shownRow(root.prefs, row.key))
+    } else if (row.nodi === "windowRule" && row.data) {
+      root.setWindowRule({ window: row.data.window, change: row.data.change }, row)
     } else if (row.nodi === "askAllow") {
       // Not in the first moment after it shows: an Enter pressed for the
       // row that was there runs nothing (Fable 2026-10-06).
@@ -1269,9 +1316,11 @@ Item {
     printErrors: false
     atomicWrites: true
     // Read after the bar opened: the home is drawn again from them, and
-    // what it shows is noted as reached then (Cursor 2026-10-07).
-    onLoaded: { root.prefs = Prefs.load(text()); root.prefsLoaded = true; root.noteQueued(); if (root.opened) root.recompute() }
-    onLoadFailed: { root.prefsLoaded = true; root.noteQueued(); if (root.opened) root.recompute() }
+    // what it shows is noted as reached then (Cursor 2026-10-07). The
+    // rows' hotkeys and the window rules are bound from them: a pass made
+    // before they were read bound neither.
+    onLoaded: { root.prefs = Prefs.load(text()); root.prefsLoaded = true; root.noteQueued(); root.ensureHotkey(); root.applyRules(); if (root.opened) root.recompute() }
+    onLoadFailed: { root.prefsLoaded = true; root.noteQueued(); root.ensureHotkey(); root.applyRules(); if (root.opened) root.recompute() }
   }
 
   // ---------------------------------------------------------------- keys
@@ -1535,7 +1584,7 @@ Item {
   Connections {
     target: Hyprland
     function onRawEvent(event) {
-      if (event && String(event.name) === "configreloaded") root.ensureHotkey()
+      if (event && String(event.name) === "configreloaded") { root.ensureHotkey(); root.applyRules() }
     }
   }
 

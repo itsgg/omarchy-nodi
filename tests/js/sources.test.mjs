@@ -18,7 +18,8 @@ test("windows: mapped, visible ones, and the active workspace", () => {
     { address: "0xc", mapped: true, hidden: true, class: "y", title: "hidden", workspace: { name: "1" }, focusHistoryID: 3 }
   ];
   const r = plain(S.windowsFrom(clients, { id: 4 }));
-  assert.deepEqual(r, { list: [{ address: "0xa", cls: "firefox", title: "Docs", workspace: "2", focus: 1, pid: 0, floating: false }], activeWorkspace: 4 });
+  // A record with no workspace id: no number to always open on (ROADMAP 79).
+  assert.deepEqual(r, { list: [{ address: "0xa", cls: "firefox", title: "Docs", workspace: "2", workspaceId: 0, focus: 1, pid: 0, floating: false }], activeWorkspace: 4 });
   assert.deepEqual(plain(S.windowsFrom("garbage", "x")), { list: [], activeWorkspace: null });
   assert.equal(S.windowsFrom([], { id: -1337, name: "code" }).activeWorkspace, "name:code", "a named workspace, never its negative id");
   assert.equal(S.windowsFrom([], { id: -98, name: "special:scratch" }).activeWorkspace, "special:scratch");
@@ -154,7 +155,7 @@ test("windows from Quickshell's records, null and junk skipped (ROADMAP 32)", ()
   const recs = [{ address: "0xa", class: "foot", title: "~", workspace: { id: 2, name: "2" }, focusHistoryID: 1, pid: 42, mapped: true, hidden: false },
                 { address: "0xb", class: "x", title: "hid", workspace: { id: 1, name: "1" }, focusHistoryID: 0, mapped: true, hidden: true }, null, "junk"];
   const r = plain(S.windowsFrom(recs, { id: 2, name: "2" }));
-  assert.deepEqual(r, { list: [{ address: "0xa", cls: "foot", title: "~", workspace: "2", focus: 1, pid: 42, floating: false }], activeWorkspace: 2 });
+  assert.deepEqual(r, { list: [{ address: "0xa", cls: "foot", title: "~", workspace: "2", workspaceId: 2, focus: 1, pid: 42, floating: false }], activeWorkspace: 2 });
   assert.equal(S.windowsFrom([], { id: -98, name: "special:scratch" }).activeWorkspace, "special:scratch");
   assert.deepEqual(plain(S.windowsFrom(null, null)), { list: [], activeWorkspace: null });
 });

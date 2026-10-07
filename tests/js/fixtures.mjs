@@ -45,11 +45,11 @@ export const history = { "app:firefox": { n: 12, t: new Date(2026, 8, 20).getTim
 export const launches = history;
 
 export const windows = [
-  { address: "0xa1", cls: "firefox", title: "Mozilla Firefox", workspace: "2", focus: 0 },   // the one you're in: never listed
-  { address: "0xb1", cls: "brave-browser", title: "Netflix - Brave", workspace: "1", focus: 1 },
-  { address: "0xb2", cls: "brave-browser", title: "GitHub - Brave", workspace: "3", focus: 3 },
-  { address: "0xc1", cls: "org.gnome.Nautilus", title: "Images", workspace: "5", focus: 2 },
-  { address: "0xd1", cls: "com.mitchellh.ghostty", title: "~/Code", workspace: "special:scratch", focus: 4 },
+  { address: "0xa1", cls: "firefox", title: "Mozilla Firefox", workspace: "2", workspaceId: 2, focus: 0 },   // the one you're in: never listed
+  { address: "0xb1", cls: "brave-browser", title: "Netflix - Brave", workspace: "1", workspaceId: 1, focus: 1 },
+  { address: "0xb2", cls: "brave-browser", title: "GitHub - Brave", workspace: "3", workspaceId: 3, focus: 3 },
+  { address: "0xc1", cls: "org.gnome.Nautilus", title: "Images", workspace: "5", workspaceId: 5, focus: 2 },
+  { address: "0xd1", cls: "com.mitchellh.ghostty", title: "~/Code", workspace: "special:scratch", workspaceId: 0, focus: 4 },
   { address: "$(rm -rf ~)", cls: "evil", title: "Evil window", workspace: "1", focus: 5 }
 ];
 

@@ -66,7 +66,12 @@ function row(win, d, rank, shown) {
     image: d.app ? d.app.icon : "",
     icon: "󰖯",
     copy: "",
-    run: Run.focus(win.address)
+    run: Run.focus(win.address),
+    // What Ctrl+K's window rules act on: the app by its class, and the
+    // workspace it is on (lib/WindowRules.js, ROADMAP 79).
+    // A named workspace may be called "2": by its number, never its name
+    // (Cursor 2026-10-07).
+    data: { window: { cls: String(win.cls || ""), workspace: win.workspaceId > 0 ? String(win.workspaceId) : "", app: d.name } }
   }
   // Under `w`, the window itself beside the list (ROADMAP 78,
   // components/WindowShot.qml), unless "windows": { "preview": false }.
