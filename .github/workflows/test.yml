@@ -39,3 +39,5 @@ jobs:
         run: node tools/hygiene.mjs
       - name: Manifest
         run: node tools/check-manifest.mjs
+      - name: The guide, held to the code
+        run: node tools/docs.mjs --check

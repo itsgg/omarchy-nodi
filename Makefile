@@ -1,14 +1,20 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check test rank rank-update opens picks replay lint compile qstest ui shots textsize a11y a11y-update ime themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check docs-check test rank rank-update opens picks replay lint compile qstest ui shots textsize a11y a11y-update ime themes docs bench hygiene manifest validate install uninstall reload installed swap
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 
-check: test rank lint compile qstest ui shots textsize a11y ime hygiene manifest validate
+check: test rank lint compile qstest ui shots textsize a11y ime hygiene manifest docs-check validate
 	@echo "all checks passed"
 
 test:
 	@node --test "tests/js/*.test.mjs"
+
+# The guide in docs/ held to the code (tools/docs.mjs): what is written
+# from the code says what the code says, links reach what they name, and
+# a setting named is one Nodi reads. `node tools/docs.mjs` writes it again.
+docs-check:
+	@node tools/docs.mjs --check
 
 # How well the bar ranks, over a frozen corpus of what Omarchy ships: the
 # rank of each query's meant row, letters typed until each app and each

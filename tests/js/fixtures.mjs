@@ -1,5 +1,5 @@
 // Shared fixtures: a Sri Lanka user's config, mocked rates, zones and clock,
-// apps, windows and processes. Ported from omarchy-commandbar's tests.
+// apps, windows and processes.
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";

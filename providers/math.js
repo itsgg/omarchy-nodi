@@ -3,7 +3,6 @@
 .import "../lib/Run.js" as Run
 
 // Calculator: a tokenizer and a recursive-descent parser, never eval().
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 //
 //   expr    := term (("+" | "-") term)*          a + b% means a * (1 + b/100)
 //   term    := unary (("*" | "/" | "mod" | "of" | implicit) unary)*

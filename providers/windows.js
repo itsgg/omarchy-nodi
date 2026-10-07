@@ -12,7 +12,6 @@
 //   brave: its open windows, most recently used first, above "open new"
 //   netflix: the window whose title says so
 //   w, w github: every window, or windows matching a filter
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 
 var LIMIT = 8
 

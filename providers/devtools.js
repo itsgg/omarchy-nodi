@@ -120,7 +120,7 @@ var provider = {
     { title: "Unix time", keywords: "epoch unix timestamp time", text: "Now, or a timestamp read", complete: "epoch" }
   ],
   help: [
-    { id: "devtools", title: "Developer", about: "UUIDs, Base64, Unix time and colours",
+    { id: "devtools", title: "Developer tools", about: "UUIDs, Base64, Unix time and colours",
       examples: [{ q: "uuid", note: "A new UUID v4 each time" }, "b64 hello", "b64 aGVsbG8=", { q: "epoch", note: "Now, in seconds and milliseconds" }, "#ff5722"] }
   ],
   match: function(query, ctx) {

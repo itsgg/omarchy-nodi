@@ -21,7 +21,6 @@
 // second letter, up to five searches DuckDuckGo's autocomplete suggests
 // for what is typed, under what is typed, which stays first; each keystroke
 // ends the read before it.
-// Ported from omarchy-commandbar (Saikomantisu, MIT).
 
 // A `run` takes what is typed when it reads its arguments: $1, ${1}, $@ or
 // $*, outside single quotes, where bash reads none of them; awk's '{print

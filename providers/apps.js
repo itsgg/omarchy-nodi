@@ -11,7 +11,6 @@
 // and how often each row was run lifts it, through lib/Score.js.
 //
 //   firefox, term, vsc (acronym), frfx (letters in order), brave new window
-// Ported from omarchy-commandbar (Saikomantisu, MIT); ranking is Nodi's.
 
 var LIMIT = 6
 var ACTIONS = 3
