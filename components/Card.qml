@@ -31,6 +31,12 @@ BorderSurface {
   // closed, the jerk he saw as the bar opened (2026-10-05). Nodi.qml turns
   // this on after the first frame and off at the close.
   property bool animated: false
+  // What it holds stays inside it: while the card grows or narrows, the
+  // rows and the pane are laid out at their new size at once, and drawn
+  // past its edge they showed on the scrim with no card behind them,
+  // longest when a loaded machine stretched the animation over slow frames
+  // (his report 2026-10-07; tests/ui/tst_grow.qml).
+  clip: true
   // None under reduced motion (ROADMAP 73).
   Behavior on height { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
   // The pane comes and goes with the selected row: Kadhir's 140 ms.
