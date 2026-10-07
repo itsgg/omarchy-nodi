@@ -19,12 +19,14 @@ jobs:
           # 2026-10-04); 22 took no directory after --test.
           node-version: latest
       # What an Omarchy machine has and the runner does not: fd, which file
-      # search runs, and pacman's database directory, which the menu's
-      # package cache is keyed on.
-      - name: fd and pacman's database directory, as on Omarchy
+      # search runs, ripgrep, which `in` runs over files' contents
+      # (providers/files.js; its test failed here from item 64 on), and
+      # pacman's database directory, which the menu's package cache is
+      # keyed on.
+      - name: fd, ripgrep and pacman's database directory, as on Omarchy
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q fd-find
+          sudo apt-get install -y -q fd-find ripgrep
           sudo ln -sf "$(command -v fdfind)" /usr/bin/fd
           sudo mkdir -p /var/lib/pacman/local
       - name: Providers, libraries and the toggle probe
