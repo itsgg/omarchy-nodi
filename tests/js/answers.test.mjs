@@ -228,6 +228,13 @@ test("windows", () => {
   const all = ["w ", "evil", "w evil", "brave"].flatMap(x => run(x, extra)).filter(x => x.run && x.run.kind === "window");
   assert.ok(all.every(x => /^0x[0-9a-f]+$/.test(x.run.address)), "window targets are hex addresses only");
   assert.ok(run("w", extra).every(x => !x.run || x.run.kind !== "window"), "a bare w is a normal search");
+  // Under `w`, the window itself beside the list (ROADMAP 78); found by
+  // name among other rows, none, so typing an app's name keeps the card
+  // as it was; and none with "windows": { "preview": false }.
+  assert.deepEqual(plain(w[0].preview), { title: w[0].title, subtitle: w[0].subtitle, window: "0xb1" });
+  assert.ok(r.every(x => !x.preview), "brave: no window pictures among the app's rows");
+  const off = Engine.run("w ", Object.assign({}, config, { windows: { preview: false } }), services(extra));
+  assert.ok(off.length === w.length && off.every(x => !x.preview), "turned off: no pane");
 });
 
 test("windows: a web app's window is its app's, by the site Chromium names it after (Fable 2026-10-06)", () => {

@@ -656,6 +656,17 @@ baseline query loses rank.
     character.
 77. **Starter rows on a first open.** X 11.
 78. **The window itself in the pane** for `w` rows. X 17.
+    Done 2026-10-07: under `w` the selected window is drawn beside the
+    list as it is now (components/WindowShot.qml, Quickshell's
+    ScreencopyView over Hyprland's toplevel export), one on another
+    workspace too, a still taken again each second: live it cost the
+    shell's thread about 8% of a core and Hyprland about 6% more, the
+    still 0.4%. Found by name among other rows, a window has no pane, so
+    typing an app's name keeps the card as it was; `"windows": {
+    "preview": false }` turns it off. Tried on the live compositor in a
+    surface no one could see or touch (the background layer at 1%
+    opacity, no input region); the offscreen render (56-windows) shows
+    its header only.
 79. **Window rules from Ctrl+K**, applied at runtime. X 19.
 
 ## Phase L: release

@@ -64,6 +64,9 @@ Item {
   property var filterStep: null
   property string paletteArmed: ""
 
+  // A pane may show a window as it is now (components/WindowShot.qml):
+  // here, inside the shell, never in the offscreen renders' stand-in.
+  readonly property bool captures: true
   readonly property string home: Quickshell.env("HOME")
   readonly property string user: Quickshell.env("USER")
   // The shell assigns this on load (shell.qml's plugin loader); readonly
@@ -224,9 +227,12 @@ Item {
     root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
     root.aliasRow = null
     root.endCapture()
+    // The first row before the bar counts as open: the pane's window
+    // picture starts as it opens, and took the last open's row first
+    // (Cursor 2026-10-07).
+    root.selectedIndex = 0
     root.opened = true
     card.hearAfresh()
-    root.selectedIndex = 0
     root.shownQuery = null
     root.armedKey = ""
     root.closePalette()

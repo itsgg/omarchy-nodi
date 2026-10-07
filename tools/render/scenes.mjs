@@ -187,6 +187,9 @@ const scenes = [
   scene("02-sum", "2+2"),
   scene("03-currency", "100 usd to eur"),
   scene("04-windows-and-app", "brave", { windows }),
+  // Under `w`, the selected window beside the list (ROADMAP 78): its
+  // header here, as no compositor draws the window offscreen.
+  scene("56-windows", "w ", { windows }),
   scene("05-app", "firefox"),
   scene("06-menu", "lock"),
   scene("07-toggle", "bluetooth"),
