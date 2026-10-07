@@ -45,6 +45,7 @@ started).
 | `"hotkey"` | The key that opens the bar, as `"SUPER + PERIOD"`; one something else holds is left alone, and a notification says so |
 | `"providers"` | What Nodi searches, in order; where two take the same word, the earlier wins |
 | `"fallbacks"` | What a query nothing answers offers: `"keywords"` (your searches, Google's first), `"find"` (files), `"ask"` (your agent) |
+| `"teach"` | `false` stops [showing a row's keys](keys.md) after you run it from the bar |
 | `"keywords"` | Searches and commands by a word of yours (below); they merge with the defaults by keyword |
 | `"snippets"` | Text pasted by a word of yours (below) |
 | `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts` |
@@ -101,6 +102,7 @@ What `config.default.json` holds, as it holds it:
 | `"hotkey"` | `"SUPER + PERIOD"` |
 | `"providers"` | `a list of 39 (config.default.json)` |
 | `"fallbacks"` | `["keywords","find","ask"]` |
+| `"teach"` | `true` |
 | `"ask"` | `{"agent":"","model":"","actions":true}` |
 | `"apps"` | `{"describe":false}` |
 | `"math"` | `{"precision":10}` |

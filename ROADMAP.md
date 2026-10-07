@@ -788,13 +788,27 @@ baseline query loses rank.
     searching the bar, thinking) until the words come; a failure stays
     in the pane with why. Renders 60 to 62 show it.
 
+86. **The keys for what was run by hand.** His pick, 2026-10-07, from
+    the frontier's "toasts that teach the shortcut for what was run by
+    hand". Done 2026-10-07: a row run from the bar by Enter or a click
+    that has keys of its own (an Omarchy menu action's binding, a
+    binding found under `keys `, a hotkey he gave the row) shows them in
+    Omarchy's on-screen display as the bar closes, its keyboard glyph and
+    the keys, as Omarchy shows the volume (`omarchy-osd`): the first
+    three times a row, counted again when its keys change, then never
+    (lib/Teach.js, ~/.cache/nodi/taught.json). Never from the row's own
+    hotkey or an agent's run. `"teach": false` turns it off. The measure
+    it stays on: `make picks` gives each taught row's picks from the bar
+    in the two weeks before its first hint and after.
+
 ## Frontier, after the above
 
 Each an experiment with a measure before it stays: a model fallback over
 the catalogue when nothing matches, toasts that teach the shortcut for what
 was run by hand, ranking by context, the scoring constants fitted to his
 own picks (on the log of item 42), Latin keys for Tamil titles, the
-focused app's own menus over AT-SPI, and a query spoken through voxtype.
+focused app's own menus over AT-SPI (parked, his word 2026-10-07), and a
+query spoken through voxtype.
 L 21, Q 13, Q 14, X (frontier).
 
 ## Not doing

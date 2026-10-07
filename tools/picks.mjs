@@ -21,5 +21,11 @@ if (since !== null) list = list.filter(e => e.at >= since);
 if (!list.length) { console.log("picks: none in that range"); process.exit(0); }
 const s = PickLog.summary(list);
 console.log(`picks: ${s.picks}, ${s.first} first (${Math.round(100 * s.first / s.picks)}%), the picked row at a median place of ${s.medianRank}, after a median of ${s.medianLetters} letters`);
+// Whether the keys shown after a run by hand teach them (lib/Teach.js).
+const Teach = load("lib/Teach.js");
+let taught = {};
+try { taught = Teach.parse(readFileSync(join(file, "../taught.json"), "utf8")); } catch {}
+for (const m of Teach.measure(taught, PickLog.parse(text), Date.now()))
+  console.log(`picks: ${m.key} (${m.keys}) shown ${m.shown}x; picked from a typed query ${m.before} times in the 14 days before, ${m.after} in the ${m.daysAfter} days since`);
 const late = list.filter(e => e.rank !== 1).slice(-10);
 if (late.length) console.log("picks: the last not picked first:\n  " + late.map(e => `"${e.query}" ${e.key} at ${e.rank || "?"}`).join("\n  "));

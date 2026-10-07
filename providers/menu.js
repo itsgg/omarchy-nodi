@@ -158,18 +158,23 @@ function chordsByAction(ctx) {
   var got = ctx.request ? ctx.request("keybindings", "", { fetch: false }) : null
   var list = got && Array.isArray(got.value) ? got.value : []
   var out = Object.create(null)
-  for (var i = 0; i < list.length; i++) if (list[i].dispatcher === "exec" && list[i].arg && !out[list[i].arg]) out[list[i].arg] = list[i].chord
+  // By the whole command, trimmed as providers/keys.js trims it.
+  for (var i = 0; i < list.length; i++) {
+    var arg = String(list[i].arg || "").trim()
+    if (list[i].dispatcher === "exec" && arg && !out[arg]) out[arg] = list[i].chord
+  }
   return out
 }
 
 function rowFor(hit, ctx, chords) {
   var item = hit.item
   var toggle = Toggles.byMenu(item.id)
-  var chord = item.kind === "action" && chords ? chords[item.action] : ""
+  var chord = item.kind === "action" && chords ? chords[String(item.action || "").trim()] || "" : ""
   var row = {
     key: "menu:" + item.id,
     title: item.label,
     subtitle: subtitleFor(item, hit.crumb) + (chord ? ", keys " + chord : ""),
+    keys: chord || "",
     icon: item.icon || "󰣇",
     iconFont: item.iconFont,
     tier: hit.tier,
