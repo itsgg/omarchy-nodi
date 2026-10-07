@@ -396,7 +396,11 @@ baseline query loses rank.
     failed-command notice, Ctrl+W, Ctrl+R and the kept query. A sweep of every help example and fill-in, with and
     without text, leaves only rows that need words and say so on their
     hint line (a command keyword typed alone, `tr ` and `b64 ` with
-    nothing selected or copied).
+    nothing selected or copied). Since 2026-10-07 one row leads the
+    empty bar in place of the five, naming the text ("Copied: git
+    push"); Enter on it types `copied ` (or `selected `), which lists
+    every action on the text, words after it narrowing them (his pick:
+    the five pushed Recent down after any copy).
 48. **Translation streamed into the pane**: `tr <language> <text>`, and
     `<text> in <language>`. L 8.
     Done 2026-10-06: `tr` takes a language by code or name (a code that

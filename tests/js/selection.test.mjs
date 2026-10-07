@@ -10,24 +10,58 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { config, run, top } from "./fixtures.mjs";
 
+const History = load("lib/History.js");
+const Rows = load("lib/Rows.js");
+const Engine = load("lib/Engine.js");
+
 const Sources = load("lib/Sources.js");
 const Placeholders = load("lib/Placeholders.js");
 const fresh = text => ({ selection: { text, fresh: true } });
 const stale = text => ({ selection: { text, fresh: false } });
 
-test("a fresh selection leads the empty bar with five rows on it; a stale one does not", () => {
-  const rows = run("", fresh("teh quick brown fox"));
-  assert.deepEqual(plain(rows.slice(0, 5).map(r => r.title)),
-                   ["Fix spelling and grammar", "Rewrite...", "Translate to English", "Change case...", "Search Google for the selection"]);
-  assert.ok(rows.slice(0, 5).every(r => r.group === "Selected: teh quick brown fox"), "the group names what they act on");
+test("a fresh selection leads the empty bar with one row naming it; a stale one does not", () => {
+  const ff = top("firefox", {}), lock = top("lock screen", {});
+  const history = History.record(History.record({}, ff.key, Date.now(), History.snapshot(ff)), lock.key, Date.now() - 60e3, History.snapshot(lock));
+  const rows = run("", { ...fresh("teh quick brown fox"), history });
+  const lead = plain(rows[0]);
+  assert.deepEqual([lead.title, lead.complete, lead.actionLabel, lead.section], ["Selected: teh quick brown fox", "selected ", "Open", ""],
+                   "no header over one row (his pick 2026-10-07)");
+  assert.ok(!lead.run && !lead.nodi && lead.copy === "", "Enter fills the field in (Nodi.qml activate)");
+  assert.deepEqual(plain([rows[1].key, rows[1].section]), [ff.key, "Recent"], "Recent one row down, not five");
+  const acts = plain(Rows.actionsFor(rows[0], {}));
+  assert.deepEqual([acts[0].label, acts[0].nodi, acts[0].own, acts[0].chord], ["Open", "complete", true, "Enter"],
+                   "Ctrl+K offers what Enter does, first (Cursor 2026-10-07)");
+  const copied = plain(run("", { selection: { text: "git push", fresh: true, source: "clipboard" } })[0]);
+  assert.deepEqual([copied.title, copied.complete], ["Copied: git push", "copied "]);
   assert.ok(!run("", stale("teh quick brown fox")).some(r => r.provider === "selection"), "selected long ago: the usual home");
   assert.ok(!run("", fresh("")).some(r => r.provider === "selection"));
+});
+
+test("copied or selected lists the actions on the text, and words after it narrow them", () => {
+  const rows = run("selected ", fresh("teh quick brown fox"));
+  assert.deepEqual(plain(rows.map(r => r.title)),
+                   ["Fix spelling and grammar", "Rewrite...", "Translate to English", "Change case...", "Search Google for the selection", "Summarize", "Explain"]);
+  assert.equal(rows[0].section, "Selected: teh quick brown fox", "the header names what they act on");
   const other = { ...config, translate: { language: "Tamil" } };
-  assert.equal(run("", fresh("hello"), other)[2].title, "Translate to Tamil", "the language from nodi.json");
+  assert.equal(run("selected ", fresh("hello"), other)[2].title, "Translate to Tamil", "the language from nodi.json");
+  const copied = { selection: { text: "bonjour", fresh: true, source: "clipboard" } };
+  assert.deepEqual(plain(run("copied tra", copied).map(r => r.title)), ["Translate to English"]);
+  assert.deepEqual(plain(run("selected upper", fresh("hi")).map(r => [r.title, r.copy])), [["UPPER CASE", "HI"], ["Change case...", ""]],
+                   "a case by its name pastes at once");
+  assert.equal(top("selected ", stale("hi")).title, "Fix spelling and grammar", "typed for it: any selection, as rewrite and case");
+  assert.equal(Engine.mode("copied ", config, run("copied ", copied)).label, "Selection");
+  // Words that name no action, or nothing selected: the rest of the bar's,
+  // and no chip over rows the mode did not make (Cursor 2026-10-07).
+  for (const [q, extra] of [["selected firefox", fresh("hi")], ["copied words", {}], ["case study", stale("hi")]]) {
+    const rows = run(q, extra);
+    assert.ok(!rows.some(r => r.provider === "selection"), q);
+    assert.ok(rows.length > 0, q + ": answered");
+    assert.equal(Engine.mode(q, config, rows), null, q + ": no chip");
+  }
 });
 
 test("Claude's rows carry the question the bar shows and the text, fenced", () => {
-  const fix = top("", fresh("teh fox"));
+  const fix = top("selected ", fresh("teh fox"));
   assert.equal(fix.nodi, "askWith");
   assert.equal(fix.ask.context, "selection");
   assert.equal(fix.ask.question, "Fix the spelling and grammar of the selection");
@@ -82,7 +116,7 @@ test("a case is changed here and pasted over the selection", () => {
 });
 
 test("search goes to the first keyword that searches, with the selection as its words", () => {
-  const s = run("", fresh("nodi launcher")).find(r => r.key === "selection:search");
+  const s = run("selected ", fresh("nodi launcher")).find(r => r.key === "selection:search");
   assert.deepEqual(plain(s.run), { kind: "open", target: "https://www.google.com/search?q=nodi%20launcher" });
 });
 
@@ -136,7 +170,8 @@ esac
 
 test("text copied with Ctrl+C stands in when nothing fresh is selected, named as copied, pasted at the cursor (his report 2026-10-06)", () => {
   const copied = { selection: { text: "teh fox", fresh: true, source: "clipboard" } };
-  const rows = run("", copied);
+  assert.equal(run("", copied)[0].title, "Copied: teh fox");
+  const rows = run("copied ", copied);
   assert.equal(rows[0].group, "Copied: teh fox");
   assert.deepEqual([rows[0].ask.question, rows[0].ask.context], ["Fix the spelling and grammar of the copied text", "copied"]);
   assert.equal(rows.find(r => r.key === "selection:search").title, "Search Google for the copied text");

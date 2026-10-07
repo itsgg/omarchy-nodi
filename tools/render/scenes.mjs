@@ -70,7 +70,7 @@ for (const [q, n] of [["firefox", 12], ["lock", 6], ["screenshot", 4], ["bluetoo
 function scene(name, query, extra, view, cfg) {
   const svc = services(Object.assign({}, base, extra || {}));
   const rows = plain(Engine.run(query, cfg || config, svc)).map(r => Object.assign(r, { image: icon(r.image) }));
-  const mode = plain(Engine.mode(query, cfg || config) || null);
+  const mode = plain(Engine.mode(query, cfg || config, rows) || null);
   return Object.assign({ name, query, rows, mode, selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0, paletteArmed: "", paletteRow: null, armedKey: "" }, view ? view(rows) : {});
 }
 
@@ -152,6 +152,10 @@ const scenes = [
   scene("01-home", "", { history }),
   scene("45-calendar-home", "", { history, calendar }, null, withCalendar),
   scene("46-calendar-list", "cal ", { calendar }, () => ({ selectedIndex: 0 }), withCalendar),
+  // Text copied just before the bar opened: one row naming it, its actions
+  // under `copied ` (his pick 2026-10-07).
+  scene("53-copied-home", "", { history, selection: { text: "git push", fresh: true, source: "clipboard" } }),
+  scene("54-copied-actions", "copied ", { selection: { text: "git push", fresh: true, source: "clipboard" } }),
   // Opened over a Save dialog (ROADMAP 66): folders first, Enter typing one in.
   // Everything set, in one place (ROADMAP 75).
   (() => {

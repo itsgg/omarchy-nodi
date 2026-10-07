@@ -245,6 +245,9 @@ test("a rofi script runs first with nothing, a pick runs it with the entry, and 
   const Rows = load("lib/Rows.js");
   const withActs = Rows.normalize(Object.assign({}, F.provider.match("s ", { settings: [stepper], request: () => ({ state: "ready", value: { rows: F.parseLines('{"title": "Folder", "action": {"next": "f"}, "actions": [{"title": "Open it", "action": {"open": "/tmp"}}]}', { keyword: "s" }).rows, data: "" } }), filterStep: { keyword: "s", trail: [at("x", "", "", 1)] } })[0]), { id: "filters", name: "Steps" }, 0, 0);
   assert.ok(plain(Rows.actionsFor(withActs, {}).map(a => a.label)).includes("Open it"), "Ctrl+K keeps a step row's own actions (Sonnet 2026-10-06)");
+  const completing = Rows.normalize(Object.assign({}, F.provider.match("s ", { settings: [stepper], request: () => ({ state: "ready", value: { rows: F.parseLines('{"title": "Folder", "complete": "s folder ", "action": {"next": "f"}}', { keyword: "s" }).rows, data: "" } }), filterStep: { keyword: "s", trail: [at("x", "", "", 1)] } })[0]), { id: "filters", name: "Steps" }, 0, 0);
+  assert.equal(completing.nodi, "filterNext");
+  assert.ok(!Rows.actionsFor(completing, {}).some(a => a.nodi === "complete"), "a step's Enter steps in, so Ctrl+K offers no fill-in as its own (Cursor 2026-10-07)");
   assert.deepEqual(plain(runIn(rofi, "r first").map(r => r.title)), ["Alpha", "Use \"first\""], "by its meta; what was typed, as a row");
   const custom = runIn(rofi, "r first").at(-1);
   assert.deepEqual([custom.next.pick, custom.next.retv], ["first", 2]);
