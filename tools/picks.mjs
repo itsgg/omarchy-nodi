@@ -16,8 +16,12 @@ if (i !== -1 && Number.isNaN(since)) { console.error("picks: --since takes a tim
 const file = join(process.env.XDG_CACHE_HOME || join(process.env.HOME || "", ".cache"), "nodi/picks-log.json");
 let text;
 try { text = readFileSync(file, "utf8"); } catch { console.log(`picks: none logged yet (${file})`); process.exit(0); }
-let list = PickLog.parse(text);
-if (since !== null) list = list.filter(e => e.at >= since);
+let all = PickLog.parse(text);
+if (since !== null) all = all.filter(e => e.at >= since);
+// Fallbacks picked when nothing matched measure no ranking (ROADMAP 87).
+const list = PickLog.ranked(all);
+const fell = PickLog.fallbacks(all);
+if (fell.length) console.log("picks: when nothing matched: " + fell.map(f => `${f.key} ${f.n}`).join(", "));
 if (!list.length) { console.log("picks: none in that range"); process.exit(0); }
 const s = PickLog.summary(list);
 console.log(`picks: ${s.picks}, ${s.first} first (${Math.round(100 * s.first / s.picks)}%), the picked row at a median place of ${s.medianRank}, after a median of ${s.medianLetters} letters`);

@@ -124,6 +124,15 @@ test("keyword links take the same placeholders, what is typed and copied encoded
   assert.equal(top("td", {}, all).run.target, "https://x.test/A/B", "every argument defaulted opens at once");
 });
 
+test("when nothing matches, Enter on Ask asks at once (ROADMAP 87)", () => {
+  const ask = run("make the screen dimmer zzqx", {}, config).find(r => r.key === "fallback:ask");
+  assert.ok(ask, "offered");
+  assert.equal(ask.nodi, "askWith", "Enter asks, as the selection's rows do");
+  assert.deepEqual(plain(ask.ask), { question: "make the screen dimmer zzqx", message: "make the screen dimmer zzqx", context: "" });
+  assert.equal(ask.remember, false, "the bar learns nothing from it");
+  assert.equal(ask.subtitle, "Claude", "named by the agent Ask holds");
+});
+
 test("fallbacks run only links with one argument and no clipboard", () => {
   const fb = run("zzqx nothing answers this", {}, links).filter(r => r.provider === "fallback").map(r => r.key);
   assert.ok(fb.indexOf("fallback:g") !== -1);

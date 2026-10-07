@@ -5,6 +5,16 @@ What changed in each version of Nodi, newest first. A version is a tag
 follows the main branch, not the tags: it shows the diff from the commit
 you have and asks before pulling. ROADMAP.md has each item's detail.
 
+## Unreleased
+
+- A row run from the bar that has keys of its own (an Omarchy menu
+  action's binding, a binding under `keys `, a hotkey you gave it) shows
+  them in Omarchy's on-screen display as the bar closes, the first three
+  times; `"teach": false` turns it off.
+- When nothing matches, Enter on "Ask: ..." asks at once; Tab still only
+  writes `ask ` before the query. Which fallback you pick is logged, by
+  its key, for `make picks`.
+
 ## 0.3.0 (2026-10-07)
 
 Ask

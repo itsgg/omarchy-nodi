@@ -163,6 +163,9 @@ Item {
   readonly property var rows: results
   readonly property bool showingHelp: root.rows.length > 0 && !!root.rows[0].help
   readonly property var selectedRow: root.rows[root.selectedIndex] || null
+  // The Ask fallback selected: its session warms, as `ask ` typed warms it,
+  // so the Enter that asks finds it up (ROADMAP 87).
+  onSelectedRowChanged: if (root.opened && root.selectedRow && root.selectedRow.key === "fallback:ask") askSession.warm()
   // The words the selected row, or else the mode, takes: under the field.
   readonly property string argsHint: root.paletteOpen ? "" : ((root.selectedRow && root.selectedRow.hint) || (root.mode && root.mode.hint) || "")
   // What is typed, an input method's composition in it while it is being
@@ -668,6 +671,14 @@ Item {
   function activate(index) {
     var row = root.rows[index]
     if (!row) return
+    // A fallback picked when nothing matched, logged by its key, so their
+    // order can be set from his use (ROADMAP 87); the bar remembers none.
+    // Not an Ask that cannot be asked now (Fable 2026-10-07: logged, then
+    // logged again when it could).
+    if (row.provider === "fallback" && !(row.nodi === "askWith" && (askSession.busy() || windowShot.active))) {
+      var q = Match.normalise(root.queryNow())
+      if (q && !root.pickSession) root.logPick(PickLog.entry(Date.now(), root.trail, q, row.key, root.rows))
+    }
     if (row.nodi) { root.doNodi(row); return }
     if (row.run) {
       if (row.confirmWord) {

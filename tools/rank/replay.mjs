@@ -46,6 +46,9 @@ export function replay(log, base, cfg) {
   let picks = Object.create(null);
   const out = [];
   for (const e of log) {
+    // A fallback picked when nothing matched: never remembered by the bar,
+    // so never learned here (ROADMAP 87).
+    if (String(e.key).indexOf("fallback:") === 0) continue;
     const at = e.at;
     const svc = Object.assign({}, base, { history, picks, now: () => new Date(at) });
     const run = q => Engine.run(q, cfg, svc);
@@ -94,7 +97,9 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const results = replay(log, base, config);
   const s = summary(results);
   const kept = s.picks - s.gone;
-  console.log(`replay: ${s.picks} picks, ${s.gone} of rows the replay's lists do not hold (a keyword or snippet of yours, a device, a window since closed)`);
+  const fell = PickLog.fallbacks(log).reduce((n, f) => n + f.n, 0);
+  console.log(`replay: ${s.picks} picks, ${s.gone} of rows the replay's lists do not hold (a keyword or snippet of yours, a device, a window since closed)`
+    + (fell ? `; ${fell} fallbacks picked when nothing matched, not replayed` : ""));
   console.log(`replay: first when picked, ${s.loggedFirst} of ${kept} as logged, ${s.first} of ${kept} as ranked now`);
   console.log(`replay: letters to first, a median of ${s.medianBefore} before each pick (${s.neverBefore} never) and ${s.medianAfter} after it (${s.neverAfter} never)`);
   const late = results.filter(r => !r.gone && r.place !== 1);

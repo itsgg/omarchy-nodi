@@ -18,6 +18,14 @@ test("an entry: the trail, the row picked, its place, the first rows as keys", (
   assert.equal(PickLog.entry(5, [], "x", "gone", rows).rank, 0, "not on the list: place 0");
 });
 
+test("fallbacks picked when nothing matched: counted apart, never in the ranking's measures (ROADMAP 87)", () => {
+  const list = [{ at: 1, query: "fire", key: "app:firefox", rank: 1 }, { at: 2, query: "zzqx", key: "fallback:ask", rank: 3 },
+                { at: 3, query: "zzqy", key: "fallback:g", rank: 1 }, { at: 4, query: "zzqz", key: "fallback:ask", rank: 3 }];
+  assert.deepEqual(plain(PickLog.ranked(list)).map(e => e.key), ["app:firefox"]);
+  assert.deepEqual(plain(PickLog.fallbacks(list)), [{ key: "fallback:ask", n: 2 }, { key: "fallback:g", n: 1 }]);
+  assert.equal(PickLog.summary(PickLog.ranked(list)).picks, 1);
+});
+
 test("the last MAX kept, a damaged file read as none, the summary", () => {
   let list = [];
   for (let i = 0; i < PickLog.MAX + 3; i++) list = PickLog.add(list, PickLog.entry(i, [], "q", "k", [{ key: "k" }]));
