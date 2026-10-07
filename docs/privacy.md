@@ -55,7 +55,8 @@ Everything Nodi reads, writes, starts and sends, and when.
   alone and gone at logout.
   Among the cache is how long its last 300 opens took (`opens.json`, read
   by `make opens`), with nothing of what was typed, and the last 1000 rows
-  run from a query (`picks-log.json`, read by `make picks`): the queries
+  run from a query, the fallbacks picked when nothing matched among them
+  (`picks-log.json`, read by `make picks`): the queries
   typed, the row's key and its place, and the keys of the first eight
   rows shown (a file's key holds its path), no titles; and the rows whose
   keys it has shown after a run (`taught.json`: the row's key, its keys,

@@ -801,6 +801,18 @@ baseline query loses rank.
     it stays on: `make picks` gives each taught row's picks from the bar
     in the two weeks before its first hint and after.
 
+87. **When nothing matches, Ask in one Enter.** His pick, 2026-10-07, from
+    the frontier's "a model fallback over the catalogue when nothing
+    matches", which was in part already there: the fallbacks offered "Ask:
+    <query>", whose Enter wrote `ask ` for a second Enter. Done
+    2026-10-07: Enter on it asks at once, the waiting pane opening as for
+    `ask `, the session warmed as soon as the row is selected; Tab still
+    only fills `ask ` in. A fallback picked is logged by its key
+    (lib/PickLog.js), which no fallback was, being unremembered, so the
+    order of the fallbacks can be set from his use: `make picks` counts
+    them apart from the ranking's measures, and `make replay` learns
+    nothing from them, as the bar learns nothing.
+
 ## Frontier, after the above
 
 Each an experiment with a measure before it stays: a model fallback over

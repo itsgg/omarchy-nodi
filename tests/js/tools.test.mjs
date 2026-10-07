@@ -268,7 +268,7 @@ test("fallbacks: what nothing answers can still be searched", () => {
   const rows = run("zzqx frobnicate");
   assert.deepEqual(plain(rows.map(r => r.title)), ["Search Google: zzqx frobnicate", "Search YouTube: zzqx frobnicate", "Search GitHub: zzqx frobnicate",
     "Wikipedia: zzqx frobnicate", "Find files named zzqx frobnicate", "Ask: zzqx frobnicate"]);
-  assert.equal(rows[5].complete, "ask zzqx frobnicate", "asking takes a second Enter");
+  assert.equal(rows[5].nodi, "askWith", "asking takes one Enter (ROADMAP 87)");
   assert.equal(rows[0].run.target, "https://www.google.com/search?q=zzqx%20frobnicate");
   assert.equal(rows[4].complete, "find zzqx frobnicate");
   assert.equal(rows[0].section, "Search instead");

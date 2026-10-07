@@ -26,3 +26,9 @@ test("a row these lists lack teaches nothing, and the services handed in are lef
   assert.equal(r[1].before, 3, "the gone pick taught nothing");
   assert.deepEqual([Object.keys(svc.history).length, Object.keys(svc.picks).length], [0, 0]);
 });
+
+test("a fallback picked when nothing matched is not replayed: the bar learns nothing from it (ROADMAP 87)", () => {
+  const log = [{ at: t, query: "zzqx", key: "fallback:ask", rank: 3 }, { at: t + 1, query: "Firefox", key: "app:firefox", rank: 2 }];
+  const r = replay(log, base(), config);
+  assert.deepEqual(r.map(x => x.key), ["app:firefox"]);
+});

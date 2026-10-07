@@ -52,7 +52,9 @@ answer fills it as the agent writes it. Then Enter pastes it where you were, Ctr
 copies it, "Continue in your agent" hands the question to Omarchy's
 default coding agent (`omarchy-agent-prompt`), and "Ask again" asks it
 again. Tab on a query nothing else fills in writes `ask ` before it, for
-Enter to ask, and a query nothing answers offers to ask it.
+Enter to ask, and a query nothing answers offers to ask it: Enter on that
+row asks at once, and selecting it, by the keys or the pointer, starts
+the agent as typing `ask ` does.
 
 It is a conversation: a question asked within ten minutes of the last
 answer follows it, across closes of the bar; later, or after "New
