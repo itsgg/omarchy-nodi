@@ -695,6 +695,17 @@ baseline query loses rank.
 80. **Tags, a version in the manifest, a CHANGELOG.** E 8.
 81. **`contrib/`**: filters and answers in the repository, off by default,
     never fetched. E 9.
+    Done 2026-10-07: `"filters": [{ "contrib": "obsidian" }]` names one,
+    and lib/Contrib.js fills in its program in the plugin's own folder,
+    keyword, title and icon, the entry's own fields winning and its
+    `args` handed on; an unknown name runs nothing. Five, none doing
+    what Nodi does itself (a first set of projects, ssh and tldr was
+    thrown away on finding providers/dev.js had all three): `obsidian`
+    (vault notes with their first lines; 367 in 104 ms here, kept under
+    900 KB), `issues` (GitHub issues assigned to you), `containers`
+    (Docker: logs, start, stop asked twice), and the answers `wikipedia`
+    and `weather`. Each is tested on a home of its own with stand-ins
+    for gh, docker and curl, its rows through Nodi's own filter parser.
 
 ## Frontier, after the above
 

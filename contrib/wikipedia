@@ -1,0 +1,27 @@
+#!/bin/bash
+# Nodi's `wikipedia` answer (contrib/README.md): `wp <words>`, then Enter:
+# the Wikipedia article they find, its summary as Markdown in the pane, with
+# a link to the whole of it. English unless an argument names another
+# Wikipedia ("args": ["ta"] for Tamil). Asks <lang>.wikipedia.org twice,
+# its search and its summary of the first article found.
+set -u
+q=${!#}
+lang=en
+[ $# -ge 2 ] && lang=$1
+case $lang in *[!a-z-]*|"") printf 'No Wikipedia is named `%s`: an argument is a language code, such as `en` or `ta`.\n' "$lang"; exit 0 ;; esac
+base="https://$lang.wikipedia.org"
+agent="Nodi (https://github.com/itsgg/omarchy-nodi)"
+words=$(printf '%s' "$q" | jq -sRr @uri)
+found=$(curl -fsS --max-time 10 -A "$agent" "$base/w/api.php?action=query&list=search&srlimit=1&format=json&srsearch=$words") \
+  || { printf 'Wikipedia did not answer.\n' >&2; exit 1; }
+title=$(printf '%s' "$found" | jq -r '.query.search[0].title // empty')
+[ -n "$title" ] || { printf 'Wikipedia has no article for *%s*.\n' "$q"; exit 0; }
+page=$(printf '%s' "$title" | jq -sRr 'gsub(" "; "_") | @uri')
+# Kept first, so a failed request says so: piped, only jq's status was seen,
+# and an empty answer showed with no reason (Fable 2026-10-07).
+summary=$(curl -fsS --max-time 10 -A "$agent" "$base/api/rest_v1/page/summary/$page") \
+  || { printf 'Wikipedia did not answer.\n' >&2; exit 1; }
+printf '%s' "$summary" \
+  | jq -r '"# " + .title + "\n\n" + (if .description then "*" + .description + "*\n\n" else "" end)
+           + (.extract // "") + "\n\n[Read the article](" + (.content_urls.desktop.page // "") + ")"' \
+  || { printf 'Wikipedia did not answer.\n' >&2; exit 1; }
