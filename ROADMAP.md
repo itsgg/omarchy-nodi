@@ -675,6 +675,19 @@ baseline query loses rank.
     opacity, no input region); the offscreen render (56-windows) shows
     its header only.
 79. **Window rules from Ctrl+K**, applied at runtime. X 19.
+    Done 2026-10-07: Ctrl+K on a window offers "Always open <app> on
+    workspace N" (its numbered workspace) and "Always float <app>", or
+    takes either back; kept by window class in the prefs and handed to
+    Hyprland through `hyprctl eval` whole each time, after the prefs are
+    read, after each config reload (which drops every rule) and after each
+    change (lib/WindowRules.js): Hyprland keeps a table of Nodi's rule
+    objects in its Lua state, a rule wanted is turned on or made, every
+    other turned off, so a handover twice changes nothing and the last of
+    two quick changes wins. Naming a rule again would add its effects
+    again, so it is turned on and off by its object. ?mine lists them,
+    Enter removing one. Tested in Lua against a stand-in written from
+    Hyprland's source; tried on the live Hyprland with a throwaway class
+    sent silently to special workspaces.
 
 82. **Previews that show the file**: code and text coloured by syntax in
     the theme's colours, a PDF's first page, a video's frame, a folder's

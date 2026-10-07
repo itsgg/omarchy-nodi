@@ -21,12 +21,13 @@ jobs:
       # What an Omarchy machine has and the runner does not: fd, which file
       # search runs, ripgrep, which `in` runs over files' contents
       # (providers/files.js; its test failed here from item 64 on), bat
-      # and pdftoppm, which a file's preview runs (item 82), and pacman's
+      # and pdftoppm, which a file's preview runs (item 82), Lua, which
+      # runs the window rules Nodi hands Hyprland (item 79), and pacman's
       # database directory, which the menu's package cache is keyed on.
-      - name: fd, ripgrep, bat, pdftoppm and pacman's database directory, as on Omarchy
+      - name: fd, ripgrep, bat, pdftoppm, Lua and pacman's database directory, as on Omarchy
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q fd-find ripgrep bat poppler-utils
+          sudo apt-get install -y -q fd-find ripgrep bat poppler-utils lua5.4
           sudo ln -sf "$(command -v fdfind)" /usr/bin/fd
           sudo ln -sf "$(command -v batcat)" /usr/bin/bat
           sudo mkdir -p /var/lib/pacman/local

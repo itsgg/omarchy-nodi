@@ -68,11 +68,14 @@ text already typed:
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
 | Select or copy text, then open the bar: Enter on its row, or `fix`, `rewrite `, `case ` | It fixed, rewritten, translated or its case changed, pasted over the selection or at the cursor; or searched |
 | `tr ta good morning`, `good morning in french` | A translation by Claude; Enter pastes it |
-| `?`, `?mine` | Help, with every example answered live; every alias, hotkey, favourite and hidden row you set |
+| `?`, `?mine` | Help, with every example answered live; every alias, hotkey, favourite, hidden row and window rule you set |
 
 Enter runs the selected row, Ctrl+K shows its other actions (an alias, a
 favourite, a hotkey, hide), grouped, each with its key on the right, and
-what is typed there finds one (Ctrl+Enter copies there too);
+what is typed there finds one (Ctrl+Enter copies there too). On a
+window it also sets a rule for its app, "Always open Firefox on workspace
+2" or "Always float Calculator", which Hyprland is handed at once and again
+after each reload, with no config file edited;
 Ctrl+Shift+F, A, D and H favourite, alias, copy the deeplink of and hide
 a row without it, and Ctrl+Shift+P pins a clipboard entry. Ctrl+1 to
 Ctrl+9 run a row directly, Tab fills in, Esc closes, or first steps back
@@ -382,8 +385,9 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   when you pick one of Claude's rows on it.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`,
   which holds the text of each clipboard entry you pin, the desktops
-  you save (each app's desktop id, window class and workspace), and
-  which of the first opens' starters you have been through. A search under
+  you save (each app's desktop id, window class and workspace), the
+  window rules you set, by window class, and which of the first opens'
+  starters you have been through. A search under
   `cb` with words reads the text in each image of the history once, with
   Omarchy's `tesseract` (about 2 s an image, a few seconds at a time
   while that search is open), into `~/.cache/nodi/ocr/`; pasting in sequence
