@@ -88,10 +88,15 @@ Rectangle {
       visible: subtitle.text !== ""
       spacing: Style.spacing.sm
       // Turning while the answer is on its way, as Omarchy's own spinner
-      // turns (Ui/MultiSelect.qml: 󰦖, 800 ms a turn, linear); set upright
-      // again when it stops, which an animator does not do by itself.
+      // turns (Ui/MultiSelect.qml: 󰦖, 800 ms a turn, linear); still under
+      // reduced motion (ROADMAP 73), the line beside it saying the same;
+      // set upright again when it stops, which an animator does not do by
+      // itself.
       Text {
         id: spinner
+        objectName: "askSpinner"
+        // Whether it turns: an animator leaves `rotation` alone until it stops.
+        readonly property bool turning: turn.running
         visible: !!pane.p.busy
         textFormat: Text.PlainText
         text: "󰦖"
@@ -99,7 +104,8 @@ Rectangle {
         font.family: nodi.fontFamily
         font.pixelSize: Style.font.caption
         RotationAnimator on rotation {
-          running: spinner.visible && pane.visible
+          id: turn
+          running: spinner.visible && pane.visible && !nodi.reducedMotion
           from: 0
           to: 360
           duration: 800
