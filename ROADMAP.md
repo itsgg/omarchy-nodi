@@ -676,6 +676,20 @@ baseline query loses rank.
     its header only.
 79. **Window rules from Ctrl+K**, applied at runtime. X 19.
 
+82. **Previews that show the file**: code and text coloured by syntax in
+    the theme's colours, a PDF's first page, a video's frame, a folder's
+    entries. His question, 2026-10-07 ("should we support syntax
+    highlighting in files preview, and show image preview etc").
+    Done 2026-10-07: bat, which Omarchy installs, colours the first 4 KB
+    with its `ansi` theme, the terminal's sixteen colours, which
+    lib/Ansi.js makes the theme's own from its colors.toml (named, as
+    Omarchy's themes are, or numbered), so code follows a theme switch
+    as the terminal does; about 40 ms a file. A PDF's first page
+    (pdftoppm) and a video's frame (ffmpegthumbnailer) are made once as
+    JPEG into ~/.cache/nodi/thumbs, by path, size and time (a page took
+    130 ms, 19 ms after); a folder lists 200 entries, folders first.
+    Pictures were already shown as themselves.
+
 ## Phase L: release
 
 80. **Tags, a version in the manifest, a CHANGELOG.** E 8.

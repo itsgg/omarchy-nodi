@@ -72,6 +72,8 @@ const gapNumber = gapParts.length ? Number(gapParts[0]) : Number(gaps.int);
 
 const theme = {
   colors, shellValues, fontFamily, menuFontFamily,
+  // Whole, for the sixteen colours a file's coloured lines take (lib/Ansi.js).
+  colorsToml: read(join(themeDir, "colors.toml")),
   cornerRadius: Number.isFinite(rounding) && rounding >= 0 ? rounding : 0,
   gapsOut: Number.isFinite(gapNumber) && gapNumber >= 0 ? Math.round(gapNumber / 2) : 5
 };

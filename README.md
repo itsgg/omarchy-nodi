@@ -54,7 +54,7 @@ text already typed:
 | `> htop` | A command, in a terminal |
 | `12*8 + 15%`, `5 km to mi`, `100 usd to eur`, `3pm to tokyo` | Answers |
 | `:fire`, `cb`, `f `, `notes.org`, `find report`, `~/Downloads/` | Emoji, clipboard, recent files (one by its whole name in any search), files, folders |
-| `q4 report`, `find img cat`, `in budget` | Files by name in any search, three at most; one kind of file (img, doc, video, audio, dir); files that hold the words, in `~/Work` and `~/Documents` (`"files": { "contents": [...] }`) |
+| `q4 report`, `find img cat`, `in budget` | Files by name in any search, three at most; one kind of file (img, doc, video, audio, dir); files that hold the words, in `~/Work` and `~/Documents` (`"files": { "contents": [...] }`). Beside the list, the selected file: a picture as itself, code and text coloured by its syntax in your theme's colours, a PDF's first page, a video's frame, a folder's entries |
 | `cb img`, `cb url`, `cb invoice` | One kind of entry; an image by the words in it. Ctrl+K pins an entry first, kept after the history drops it, or sends it to a device; "paste in sequence" pastes the newest text, then each older one on each press |
 | `kill chromium`, `ports`, `services` | Processes, listening ports, user services |
 | `h github`, `prs`, `tmux`, `ssh `, `man ls` | Browser history, pull requests, tmux, SSH hosts, man pages |
@@ -412,7 +412,11 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   environment, which only you can read, never in its arguments.
 - From a search's third letter it looks for files of that name under
   your home with fd (`"files": { "root": false }` turns that off), and
-  under `in` for files that hold the words with ripgrep.
+  under `in` for files that hold the words with ripgrep. For the selected
+  file it reads its first 4 KB, coloured by bat, or makes a picture of a
+  PDF's first page (pdftoppm) or a video's frame (ffmpegthumbnailer),
+  kept in `~/.cache/nodi/thumbs/` and removed after a month unused, and
+  reads the theme's `colors.toml` at each open for the colours.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 

@@ -28,6 +28,7 @@ import "lib/Opens.js" as Opens
 import "lib/PickLog.js" as PickLog
 import "lib/Markdown.js" as Markdown
 import "lib/Appearance.js" as Appearance
+import "lib/Ansi.js" as Ansi
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -295,6 +296,7 @@ Item {
     root.refreshWindows()
     root.refreshToggles()
     root.refreshAppearance()
+    themeColors.reload()
     root.refreshThemes()
     root.refreshReminders()
     root.refreshZones()
@@ -1571,6 +1573,18 @@ Item {
   Timer { id: hotkeyRecheck; interval: 5000; onTriggered: root.ensureHotkey() }
 
   // ---------------------------------------------------------------- config
+
+  // The theme's sixteen colours, which a file's coloured lines are drawn
+  // in (lib/Ansi.js, ROADMAP 82): read where the shell reads its theme,
+  // and again at each open, so a theme switched to is the next open's.
+  // The shell's path, which no XDG_STATE_HOME moves (Commons/Color.qml).
+  property var themeColours: ({})
+  FileView {
+    id: themeColors
+    path: root.home + "/.local/state/omarchy/current/theme/colors.toml"
+    printErrors: false
+    onLoaded: root.themeColours = Ansi.paletteFrom(text())
+  }
 
   FileView {
     path: root.pluginDir + "/config.default.json"
