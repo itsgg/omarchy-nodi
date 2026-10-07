@@ -10,9 +10,8 @@
 // terminal (in tmux too, the terminal its client runs in), the most
 // recently busy first, each with the last thing you asked it (Claude
 // Code's own transcript), Enter focusing its terminal. One with no window
-// is left out, as are runs for a single answer (claude -p, an SDK run),
-// Codex's other subcommands, and Akshi's (his ruling: its agents wait for
-// its rewrite).
+// is left out, as are runs for a single answer (claude -p, an SDK run)
+// and Codex's other subcommands.
 
 var ICON = "󰚩"
 var SHOW_AT = 0.8
@@ -70,8 +69,8 @@ var CODEX_VALUED = { "-m": true, "--model": true, "-p": true, "--profile": true,
 // Whether a process the script found is a session to list: no run for a
 // single answer (claude -p, an SDK run), no other codex subcommand, by
 // its own arguments only, never words of a prompt (Sonnet 2026-10-06:
-// "fix the exec path" was left out); and none of Akshi's (his ruling).
-function isSession(c, home) {
+// "fix the exec path" was left out).
+function isSession(c) {
   var argv = Array.isArray(c.argv) ? c.argv.map(String) : []
   if (c.tool === "claude") {
     if (argv.indexOf("-p") !== -1 || argv.indexOf("--print") !== -1) return false
@@ -83,9 +82,7 @@ function isSession(c, home) {
     while (i < argv.length && argv[i].charAt(0) === "-") i += CODEX_VALUED[argv[i]] ? 2 : 1
     if (i < argv.length && Object.prototype.hasOwnProperty.call(CODEX_NOT, argv[i])) return false
   } else return false
-  var cwd = String(c.cwd || "") + "/"
-  var h = String(home || "/nonexistent")
-  return [h + "/Akshi/", h + "/.local/state/akshi/", h + "/.local/share/akshi/"].every(function(a) { return cwd.indexOf(a) !== 0 })
+  return true
 }
 
 function lines(text) {
@@ -187,7 +184,7 @@ var provider = {
     if (AGENTS_WORDS.test(q)) {
       var s = ctx.request ? ctx.request("agent-sessions") : { state: "pending" }
       if (!Array.isArray(s.value)) return [{ title: s.state === "error" ? "The sessions could not be read" : "Looking for agent sessions...", score: 40, copy: "", remember: false }]
-      var list = s.value.filter(function(x) { return /^0x[0-9a-fA-F]+$/.test(String(x.address || "")) && isSession(x, ctx.home) })
+      var list = s.value.filter(function(x) { return /^0x[0-9a-fA-F]+$/.test(String(x.address || "")) && isSession(x) })
       if (!list.length) return [{ title: "No agent session in a terminal", subtitle: "Claude Code and Codex, run in a terminal window", score: 40, copy: "", remember: false }]
       list.sort(function(a, b) { return (b.at || 0) - (a.at || 0) })
       return list.map(function(x, i) {

@@ -4,7 +4,7 @@ import "../../components"
 
 // What a program Nodi reads from sees of the environment (components/Reader.qml):
 // the variables it names and the PATH it is given, nothing else of the
-// shell's, which runs with the whole session's (Akshi's check 2026-10-05:
+// shell's, which runs with the whole session's (a check 2026-10-05:
 // the list was tested nowhere). bash adds PWD, SHLVL and _ for the wrapper.
 // Run by tools/qs-test.sh inside Quickshell.
 Item {

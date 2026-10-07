@@ -40,8 +40,8 @@ lives in a `.pragma library` file that `node --test` runs without Qt.
 ## What it does
 
 Parity with the upstream bar, the fixes the 2026-10-02 review found, and
-Omarchy's own commands at the centre. Akshi integration is out until the
-Akshi rewrite lands (his ruling, 2026-10-02).
+Omarchy's own commands at the centre. Integration with his personal agent
+is out until its rewrite lands (his ruling, 2026-10-02).
 
 1. Apps: launch, desktop actions ("brave new window"), acronyms, fuzzy
    fallback, launch counts as a tiebreak, Omarchy's hidden apps left out.
@@ -261,8 +261,9 @@ from.
 
 ## Not now
 
-- Akshi rows and actions: after the Akshi rewrite, through `akshi rows` and a
-  non-interactive `akshi pick` (asked of the Akshi session, 2026-10-02).
+- Rows and actions from his personal agent, once its rewrite lands: through a
+  command that prints rows and a non-interactive pick (the shape asked of
+  his agent's session, 2026-10-02).
 - Pushing to GitHub and a marketplace submission: each on his word.
 
 ## Milestones
@@ -275,4 +276,4 @@ from.
    themes, power with confirmation.
 4. Clipboard, files with directory listing, developer tools.
 5. Ctrl+K actions, Ctrl+digit, README, screenshots.
-6. Review, install, the swap, a pointer in the Akshi vault.
+6. Review, install, the swap, a pointer in his vault.

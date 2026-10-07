@@ -526,8 +526,9 @@ baseline query loses rank.
     Claude Code and Codex sessions running in a terminal (through tmux
     too), the most recently busy first, with the last prompt from the
     session's own transcript, Enter focusing the terminal. One with no
-    window, a single answer (-p, an SDK run), Codex's other subcommands
-    and Akshi's are left out. Waiting sessions first
+    window, a single answer (-p, an SDK run) and Codex's other
+    subcommands are left out; his personal agent's were too, until it was
+    uninstalled on 2026-10-07. Waiting sessions first
     needs a Notification hook outside Nodi, so it is not done.
 62. **Placeholders**: `{cursor}` (arrow keys after the paste, which
     answers item 19's "a paste cannot place the cursor"), `{clipboard:N}`,
@@ -744,9 +745,9 @@ baseline query loses rank.
 
 84. **Ask over ACP: Claude, Codex, Gemini, or an agent of his own.** His
     asks, 2026-10-07: "we have to support other coding agents as well,
-    should we consider zed's agent control protocol for it?", "Can't we
-    move claude to ACP as well? Given akshi is coming later?", and "web
-    research and do it properly".
+    should we consider zed's agent control protocol for it?", whether
+    Claude could move to ACP as well, given his own agent was coming
+    later, and "web research and do it properly".
     Done 2026-10-07: Ask speaks ACP v1 (lib/Acp.js, schema v1.24.1) to
     the agent lib/Agents.js starts, and the stream-json path is gone.
     Claude runs through claude-agent-acp 0.86.0 on his own `claude`;
@@ -757,7 +758,7 @@ baseline query loses rank.
     settings, which register none of its built-in tools. An adapter
     installs from npm once, pinned. The agent is nodi.json's, else
     Omarchy's default agent, else Claude; one of his own goes by its
-    command (Akshi, when it lands). The bar's tools reach the agent as
+    command (when it lands). The bar's tools reach the agent as
     `nodi mcp --ask`, which hands each message to Ask in the shell; a
     run is the row he allowed through the agent's question, or else
     shown in the bar for his Enter. Every other tool the agent asks
@@ -828,7 +829,8 @@ L 21, Q 13, Q 14, X (frontier).
 A Raycast extension runtime (needs Node inside the bar; Nodi's own code is
 QML and JS, and npm only installs an agent's ACP adapter, its own process),
 text expansion anywhere (needs uinput and setcap), a local embedding model
-(this laptop's prefill times), and Akshi rows until the Akshi rewrite lands.
+(this laptop's prefill times), and rows from his personal agent until its
+rewrite lands.
 
 From the 2026-10-05 reports: KRunner and GNOME search providers (one on
 this machine), MCP tools as rows (their inputs are schemas written for
