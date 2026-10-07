@@ -12,8 +12,8 @@ jobs:
   javascript:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           # The newest release, as on the machine Nodi is built on (26 on
           # 2026-10-04); 22 took no directory after --test.
