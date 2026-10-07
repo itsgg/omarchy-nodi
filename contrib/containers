@@ -25,10 +25,10 @@ printf '%s\n' "$out" | jq -s -c --argjson term "$term" '
   { title: .Names, subtitle: (.Image + ", " + .Status + (if (.Ports // "") != "" then ", " + .Ports else "" end)),
     icon: "󰡨", badge: .State, id: ("container:" + .Names), match: .Image,
     action: { exec: ($term + ["docker", "logs", "--follow", "--tail", "200", $id]) },
-    actions: (if $up then
+    actions: ((if $up then
         [ { title: "Stop", action: { exec: ["docker", "stop", $id] }, confirm: true, risk: ("Stops " + .Names + "; what it serves goes down") },
           { title: "Restart", action: { exec: ["docker", "restart", $id] } },
           { title: "Open a shell in it", action: { exec: ($term + ["docker", "exec", "-it", $id, "sh"]) } } ]
       else
         [ { title: "Start", action: { exec: ["docker", "start", $id] } } ]
-      end) + [ { title: "Copy its id", action: { copy: $id } } ] }'
+      end) + [ { title: "Copy its id", action: { copy: $id } } ]) }'
