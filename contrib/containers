@@ -1,0 +1,34 @@
+#!/bin/bash
+# Nodi's `containers` script filter (contrib/README.md): your Docker
+# containers, running ones first, Enter following one's logs in a terminal,
+# Ctrl+K starting, stopping (asked twice) or restarting it, or a shell in
+# it. Read again every ten seconds.
+set -u
+command -v docker >/dev/null || { printf '{"title": "Docker is not installed", "subtitle": "sudo pacman -S docker"}\n'; exit 0; }
+err=$(mktemp) || exit 1
+trap 'rm -f -- "$err"' EXIT
+if ! out=$(docker ps -a --no-trunc --format '{{json .}}' 2>"$err"); then
+  why=$(tail -n 1 "$err")
+  case $why in
+    *"permission denied"*) why="You are not in the docker group: sudo usermod -aG docker \$USER, then log in again" ;;
+    *"Cannot connect"*|*"Is the docker daemon running"*) why="Docker is not running: sudo systemctl start docker" ;;
+  esac
+  jq -cn --arg why "${why:-docker gave no reason}" '{title: "No containers to show", subtitle: $why}'
+  exit 0
+fi
+[ -n "$out" ] || { printf '{"title": "No containers", "subtitle": "docker ps -a lists none"}\n'; exit 0; }
+term='["uwsm-app", "--", "xdg-terminal-exec", "--"]'
+printf '%s\n' "$out" | jq -s -c --argjson term "$term" '
+  sort_by(if .State == "running" then 0 else 1 end, .Names) | .[] |
+  (.ID | select(test("^[0-9a-f]{12,64}$"))) as $id |
+  (.State == "running") as $up |
+  { title: .Names, subtitle: (.Image + ", " + .Status + (if (.Ports // "") != "" then ", " + .Ports else "" end)),
+    icon: "󰡨", badge: .State, id: ("container:" + .Names), match: .Image,
+    action: { exec: ($term + ["docker", "logs", "--follow", "--tail", "200", $id]) },
+    actions: (if $up then
+        [ { title: "Stop", action: { exec: ["docker", "stop", $id] }, confirm: true, risk: ("Stops " + .Names + "; what it serves goes down") },
+          { title: "Restart", action: { exec: ["docker", "restart", $id] } },
+          { title: "Open a shell in it", action: { exec: ($term + ["docker", "exec", "-it", $id, "sh"]) } } ]
+      else
+        [ { title: "Start", action: { exec: ["docker", "start", $id] } } ]
+      end) + [ { title: "Copy its id", action: { copy: $id } } ] }'

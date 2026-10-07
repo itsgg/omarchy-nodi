@@ -88,7 +88,7 @@ Item {
   property bool userConfigGood: false   // a nodi.json has parsed since load
   property string configWarned: ""      // the error last notified, so each is said once
   property string hotkeyWarned: ""
-  readonly property var config: Config.merge(defaultConfig, userConfig)
+  readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir)
 
   property var zones: ({})          // { "Asia/Tokyo": { offset: 540, abbr: "JST" } }
   property real zonesFetchedAt: 0

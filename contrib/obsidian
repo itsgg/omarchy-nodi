@@ -1,0 +1,92 @@
+#!/usr/bin/python3 -I
+# Nodi's `obsidian` script filter (contrib/README.md): the notes in your
+# Obsidian vaults, the most recently changed first, a thousand at most,
+# Enter opening one in Obsidian and its first lines shown beside the list;
+# the list stops short of 900 KB, under the 1 MB a filter may print.
+# The vaults are those Obsidian lists in ~/.config/obsidian/obsidian.json,
+# or the folders given as arguments ("~/" is your home). Folders whose
+# names start with a dot (.obsidian, .trash, .git) are not read; a folder
+# linked into a vault is, once, as Obsidian reads it. A name that is not
+# UTF-8 is left out: it cannot be written as a row (Fable 2026-10-07).
+import json, os, sys, urllib.parse
+
+home = os.path.expanduser("~")
+LIMIT, HEAD, BUDGET = 1000, 800, 900 * 1024
+
+def row(title, subtitle):
+    print(json.dumps({"title": title, "subtitle": subtitle}))
+
+def vaults():
+    named = [os.path.expanduser(a) for a in sys.argv[1:]]
+    if named:
+        return named
+    try:
+        with open(os.path.join(home, ".config/obsidian/obsidian.json"), encoding="utf-8") as f:
+            listed = json.load(f).get("vaults", {})
+        return [v.get("path", "") for v in listed.values() if isinstance(v, dict)]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+# Each real folder once, across every vault: a vault inside another, or a
+# link from one into another, lists a note once (Fable 2026-10-07).
+seen = set()
+
+def notes(root):
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        real = os.path.realpath(dirpath)
+        if real in seen:
+            dirnames[:] = []
+            continue
+        seen.add(real)
+        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        for name in filenames:
+            if name.endswith(".md") and "\n" not in name:
+                path = os.path.join(dirpath, name)
+                try:
+                    path.encode("utf-8")
+                    yield os.path.getmtime(path), path
+                except (OSError, UnicodeEncodeError):
+                    pass
+
+def head(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read(HEAD)
+    except OSError:
+        return ""
+    # Front matter is Obsidian's, not the note's.
+    if text.startswith("---\n"):
+        end = text.find("\n---", 4)
+        text = text[end + 4:].lstrip("\n") if end != -1 else ""
+    return text
+
+roots = [v for v in vaults() if v and os.path.isdir(v)]
+if not roots:
+    row("No Obsidian vault found", 'Open one in Obsidian, or name its folder: "args": ["~/Notes"]')
+    sys.exit(0)
+found = sorted((n for r in roots for n in ((m, p, r) for m, p in notes(r))), reverse=True)[:LIMIT]
+spent = 0
+for _, path, root in found:
+    vault = os.path.basename(os.path.normpath(root))
+    rel = os.path.relpath(path, root)
+    folder = os.path.dirname(rel)
+    title = os.path.basename(path)[:-3]
+    link = "obsidian://open?path=" + urllib.parse.quote(path, safe="")
+    line = json.dumps({
+        "title": title,
+        "subtitle": vault + (" / " + folder if folder else ""),
+        "icon": "󰠮",
+        "id": "obsidian:" + path,
+        "match": rel[:-3].replace("/", " "),
+        "preview": {"title": title, "subtitle": vault + " / " + rel, "markdown": head(path)},
+        "action": {"open": link},
+        "actions": [
+            {"title": "Open in your editor", "action": {"exec": ["omarchy-launch-editor", path]}},
+            {"title": "Copy the Obsidian link", "action": {"copy": link}},
+            {"title": "Copy the path", "action": {"copy": path}},
+        ],
+    }, ensure_ascii=False)
+    spent += len(line.encode("utf-8")) + 1
+    if spent > BUDGET:
+        break
+    print(line)

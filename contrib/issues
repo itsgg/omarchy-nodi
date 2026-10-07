@@ -1,0 +1,23 @@
+#!/bin/bash
+# Nodi's `issues` script filter (contrib/README.md): the open GitHub issues
+# assigned to you, the most recently updated first, through gh (signed in),
+# Enter opening one; `prs` is Nodi's own for pull requests. About two
+# seconds over the network, read again every five minutes.
+set -u
+command -v gh >/dev/null || { printf '{"title": "GitHub CLI is not installed", "subtitle": "sudo pacman -S github-cli, then gh auth login"}\n'; exit 0; }
+err=$(mktemp) || exit 1
+trap 'rm -f -- "$err"' EXIT
+if ! out=$(gh search issues --assignee=@me --state=open --sort=updated --limit 100 --json number,title,repository,url,updatedAt,labels 2>"$err"); then
+  # Its own words when it is not signed in, which come first; else its last line.
+  why=$(grep -m 1 'gh auth login' "$err" || tail -n 1 "$err")
+  jq -cn --arg why "${why:-gh gave no reason}" '{title: "GitHub did not answer", subtitle: $why}'
+  exit 0
+fi
+printf '%s' "$out" | jq -c '
+  if length == 0 then { title: "No open issues are assigned to you", subtitle: "GitHub" } else .[] |
+  { title: .title, subtitle: (.repository.nameWithOwner + " #" + (.number | tostring)
+      + (if (.labels | length) > 0 then ", " + ([.labels[].name] | join(", ")) else "" end)),
+    icon: "", id: ("issue:" + .url), match: (.repository.nameWithOwner + " " + (.number | tostring)),
+    action: { open: .url },
+    actions: [ { title: "Copy the link", action: { copy: .url } },
+               { title: "Copy its reference", action: { copy: (.repository.nameWithOwner + "#" + (.number | tostring)) } } ] } end'

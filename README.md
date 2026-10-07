@@ -284,6 +284,14 @@ started, and so does closing the bar. Once it has ended, Enter pastes the
 answer where you were, Ctrl+Enter copies it, and Ask again asks it again;
 if it fails, the last line it wrote to stderr says why.
 
+Some come with Nodi, in [`contrib/`](contrib/README.md), and are off
+until named: `"filters": [{ "contrib": "obsidian" }]` gives `ob`, the
+notes in your Obsidian vaults, and `issues` and `containers` give your
+GitHub issues and Docker containers; `"answers": [{ "contrib": "weather" }]`
+gives `weather chennai`, and `wikipedia` gives `wp`, an article's summary.
+They are kept in this repository, never fetched; what you set on the
+entry wins over theirs.
+
 Other settings: `fallbacks` (what a query nothing answers offers),
 `ask.model` (the Claude model for `ask` and app descriptions, `haiku` by
 default), `ask.actions` (`false` keeps Claude to answers, without the bar's
@@ -417,6 +425,10 @@ claude -p "..." --permission-prompt-tool mcp__nodi__approve
   PDF's first page (pdftoppm) or a video's frame (ffmpegthumbnailer),
   kept in `~/.cache/nodi/thumbs/` and removed after a month unused, and
   reads the theme's `colors.toml` at each open for the colours.
+- A program in `contrib/` runs only once you name it under `filters` or
+  `answers`, and then as any of yours does: `issues` asks GitHub through
+  `gh`, `wikipedia` asks Wikipedia and `weather` asks wttr.in, each on
+  your Enter or its refresh.
 - It uses what Omarchy ships. Wi-Fi state needs `nmcli`, browser history
   `sqlite3`, and pull requests a signed-in `gh`.
 

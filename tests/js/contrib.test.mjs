@@ -1,0 +1,154 @@
+// Extensions that come with Nodi (ROADMAP 81): named in settings, made
+// whole from contrib/, and each program run on a home of its own, with
+// stand-ins for gh, docker and curl.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readdirSync, statSync, readFileSync, chmodSync, utimesSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { load, plain, root } from "./load.mjs";
+import { defaults } from "./fixtures.mjs";
+
+const Contrib = load("lib/Contrib.js");
+const Config = load("lib/Config.js");
+const Filters = load("providers/filters.js");
+const DIR = "/plug";
+
+test("a name in settings is made whole; what the entry sets wins; nothing else runs", () => {
+  const c = Config.merge(defaults, { filters: [{ contrib: "obsidian" }, { contrib: "issues", keyword: "i", args: ["-v", 3] },
+                                               { contrib: "weather" }, { contrib: "nope" }, { contrib: "../x" },
+                                               { contrib: "containers", command: ["/bin/sh", "-c", "evil"] },
+                                               { keyword: "n", command: ["my-notes"] }],
+                                     answers: [{ contrib: "weather" }, { contrib: "obsidian" }] }, DIR);
+  const f = plain(c.filters);
+  assert.deepEqual([f[0].keyword, f[0].title, f[0].list, f[0].refresh, f[0].command], ["ob", "Obsidian", true, "2m", [DIR + "/contrib/obsidian"]]);
+  assert.deepEqual([f[1].keyword, f[1].command], ["i", [DIR + "/contrib/issues", "-v"]], "your keyword, and your args after the program");
+  assert.deepEqual(f[5].command, [DIR + "/contrib/containers"], "a command of the entry's own never replaces the program named");
+  assert.deepEqual(f[6], { keyword: "n", command: ["my-notes"] }, "an entry of your own is as it was");
+  // An answer named among filters, an unknown name, a path: no program, so
+  // the filter list leaves them out.
+  assert.deepEqual(plain(Filters.list(c.filters).map(x => x.keyword)), ["ob", "i", "dk", "n"]);
+  assert.deepEqual(plain(c.answers.map(a => a.command || null)), [[DIR + "/contrib/weather"], null]);
+  assert.equal(Config.merge(defaults, { filters: [{ contrib: "obsidian" }] }).filters[0].command, undefined, "no plugin folder known: nothing to run");
+});
+
+test("every name has its program, executable, and every program its name", () => {
+  const files = readdirSync(join(root, "contrib")).filter(n => n !== "README.md").sort();
+  assert.deepEqual(files, Object.keys(Contrib.CATALOGUE).sort());
+  const readme = readFileSync(join(root, "contrib/README.md"), "utf8");
+  for (const n of files) {
+    assert.ok(statSync(join(root, "contrib", n)).mode & 0o111, n + " is executable");
+    assert.match(readFileSync(join(root, "contrib", n), "utf8"), new RegExp("^#![^\\n]+\\n# Nodi's `" + n + "`"), n + " says what it is");
+    assert.ok(readme.includes("| `" + n + "` |"), n + " is in contrib/README.md");
+  }
+});
+
+function home() {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-contrib-"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  return {
+    dir,
+    stub: (name, script) => { writeFileSync(join(bin, name), "#!/bin/bash\n" + script); chmodSync(join(bin, name), 0o755); },
+    run: (name, args = []) => execFileSync(join(root, "contrib", name), args,
+      { env: { HOME: dir, PATH: bin + ":/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" } }).toString(),
+    done: () => rmSync(dir, { recursive: true, force: true })
+  };
+}
+
+test("obsidian: a vault's notes newest first, front matter left out, Enter opening Obsidian", () => {
+  const h = home();
+  try {
+    assert.match(plain(Filters.parse(h.run("obsidian"), {})[0].title), /^No Obsidian vault found/);
+    const vault = join(h.dir, "Notes vault");
+    const note = (rel, text, t) => { mkdirSync(join(vault, rel, ".."), { recursive: true }); writeFileSync(join(vault, rel), text); utimesSync(join(vault, rel), t, t); };
+    note("daily/2026-10-07.md", "---\ntags: [day]\n---\n# Today\n\nShip it.", 2000);
+    note("ideas & \"quotes\".md", "Old idea", 1000);
+    note(".obsidian/workspace.md", "not a note", 3000);
+    note("தமிழ்.md", "வணக்கம்", 1500);
+    // A name that is not UTF-8 is left out, not the end of the list.
+    writeFileSync(Buffer.concat([Buffer.from(join(vault, "caf")), Buffer.from([0xe9]), Buffer.from(".md")]), "latin-1");
+    // A folder linked into the vault is read, once.
+    mkdirSync(join(h.dir, "elsewhere"));
+    writeFileSync(join(h.dir, "elsewhere", "linked.md"), "x");
+    utimesSync(join(h.dir, "elsewhere", "linked.md"), 500, 500);
+    symlinkSync(join(h.dir, "elsewhere"), join(vault, "link"));
+    symlinkSync(join(vault, "daily"), join(vault, "daily", "loop"));
+    mkdirSync(join(h.dir, ".config/obsidian"), { recursive: true });
+    writeFileSync(join(h.dir, ".config/obsidian/obsidian.json"), JSON.stringify({ vaults: { a: { path: vault, ts: 1 } } }));
+    const rows = Filters.parse(h.run("obsidian"), { keyword: "ob", title: "Obsidian" });
+    assert.deepEqual(plain(rows.map(r => [r.title, r.subtitle])),
+      [["2026-10-07", "Notes vault / daily"], ["தமிழ்", "Notes vault"], ["ideas & \"quotes\"", "Notes vault"], ["linked", "Notes vault / link"]]);
+    assert.equal(plain(rows[0].run.target), "obsidian://open?path=" + encodeURIComponent(join(vault, "daily/2026-10-07.md")));
+    assert.equal(plain(rows[0].preview.markdown), "# Today\n\nShip it.", "front matter is Obsidian's, not the note's");
+    assert.deepEqual(plain(Filters.parse(h.run("obsidian", [join(vault, "daily")]), {}).map(r => r.title)), ["2026-10-07"], "the folders given");
+  } finally { h.done(); }
+});
+
+test("issues: assigned issues with their labels; gh's failure said as a row", () => {
+  const h = home();
+  try {
+    h.stub("gh", 'echo "$*" > "$HOME/gh-args"; echo \'[{"number": 7, "title": "Fix \\"it\\"", "repository": {"nameWithOwner": "o/r"}, "url": "https://github.com/o/r/issues/7", '
+      + '"updatedAt": "2026-10-07T00:00:00Z", "labels": [{"name": "bug"}, {"name": "P1"}]}]\'\n');
+    const rows = Filters.parse(h.run("issues"), {});
+    assert.deepEqual(plain(rows.map(r => [r.title, r.subtitle, r.run.target])), [["Fix \"it\"", "o/r #7, bug, P1", "https://github.com/o/r/issues/7"]]);
+    assert.equal(readFileSync(join(h.dir, "gh-args"), "utf8").trim(),
+      "search issues --assignee=@me --state=open --sort=updated --limit 100 --json number,title,repository,url,updatedAt,labels");
+    h.stub("gh", 'echo "[]"\n');
+    assert.match(plain(Filters.parse(h.run("issues"), {})[0].title), /^No open issues/);
+    h.stub("gh", 'echo "To get started with GitHub CLI, please run:  gh auth login" >&2; '
+      + 'echo "Alternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token." >&2; exit 4\n');
+    const failed = Filters.parse(h.run("issues"), {})[0];
+    assert.deepEqual(plain([failed.title, failed.subtitle, failed.run]), ["GitHub did not answer", "To get started with GitHub CLI, please run:  gh auth login", null]);
+  } finally { h.done(); }
+});
+
+test("containers: running first, stop asked twice, a shell and the logs in a terminal; Docker's trouble said", () => {
+  const h = home();
+  try {
+    const id = "a".repeat(64), id2 = "b".repeat(64);
+    h.stub("docker", `echo "$*" > "$HOME/docker-args"; printf '%s\\n' '{"ID":"${id2}","Names":"old","Image":"pg:16","State":"exited","Status":"Exited (0) 2 days ago","Ports":""}' `
+      + `'{"ID":"${id}","Names":"web","Image":"nginx","State":"running","Status":"Up 3 hours","Ports":"0.0.0.0:80->80/tcp"}' '{"ID":"$(rm -rf ~)","Names":"bad"}'\n`);
+    const rows = Filters.parse(h.run("containers"), {});
+    assert.deepEqual(plain(rows.map(r => [r.title, r.subtitle, r.badge])),
+      [["web", "nginx, Up 3 hours, 0.0.0.0:80->80/tcp", "running"], ["old", "pg:16, Exited (0) 2 days ago", "exited"]], "an id that is not one is left out");
+    assert.equal(readFileSync(join(h.dir, "docker-args"), "utf8").trim(), "ps -a --no-trunc --format {{json .}}");
+    assert.deepEqual(plain(rows[0].run.argv), ["uwsm-app", "--", "xdg-terminal-exec", "--", "docker", "logs", "--follow", "--tail", "200", id]);
+    const stop = rows[0].actions.find(a => a.label === "Stop");
+    assert.deepEqual(plain([stop.run.argv, stop.confirm]), [["docker", "stop", id], true]);
+    assert.deepEqual(plain(rows[1].actions.map(a => a.label)), ["Start", "Copy its id"]);
+    h.stub("docker", 'echo "permission denied while trying to connect to the Docker daemon socket" >&2; exit 1\n');
+    assert.match(plain(Filters.parse(h.run("containers"), {})[0].subtitle), /^You are not in the docker group/);
+  } finally { h.done(); }
+});
+
+test("wikipedia and weather: Markdown from what the sites send, and nothing asked for a bad language", () => {
+  const h = home();
+  try {
+    h.stub("curl", 'case "$*" in *list=search*) echo \'{"query":{"search":[{"title":"Tamil language"}]}}\';; '
+      + '*rest_v1/page/summary/Tamil_language*) echo \'{"title":"Tamil language","description":"Dravidian language","extract":"Tamil is old.",'
+      + '"content_urls":{"desktop":{"page":"https://en.wikipedia.org/wiki/Tamil_language"}}}\';; *) exit 22;; esac\n');
+    assert.equal(h.run("wikipedia", ["tamil language"]),
+      "# Tamil language\n\n*Dravidian language*\n\nTamil is old.\n\n[Read the article](https://en.wikipedia.org/wiki/Tamil_language)\n");
+    h.stub("curl", 'echo "$*" >> "$HOME/asked"; echo \'{"query":{"search":[]}}\'\n');
+    assert.equal(h.run("wikipedia", ["zzqx"]), "Wikipedia has no article for *zzqx*.\n");
+    assert.match(h.run("wikipedia", ["e;n", "x"]), /^No Wikipedia is named/);
+    // The summary failing after the search found the article: said, not an empty answer.
+    h.stub("curl", 'case "$*" in *list=search*) echo \'{"query":{"search":[{"title":"Gone"}]}}\';; *) exit 22;; esac\n');
+    assert.throws(() => h.run("wikipedia", ["gone"]), e => /Wikipedia did not answer/.test(String(e.stderr)));
+    assert.equal(readFileSync(join(h.dir, "asked"), "utf8").split("\n").filter(Boolean).length, 1, "the bad language asked nothing");
+    const day = (d, lo, hi) => ({ date: d, mintempC: lo, maxtempC: hi, mintempF: "0", maxtempF: "0", hourly: [{}, {}, {}, {}, { weatherDesc: [{ value: "Sunny " }] }] });
+    const j1 = { nearest_area: [{ areaName: [{ value: "Sowcarpet" }], country: [{ value: "India" }] }],
+                 current_condition: [{ temp_C: "31", temp_F: "88", FeelsLikeC: "34", FeelsLikeF: "93", weatherDesc: [{ value: " Sunny" }],
+                                       humidity: "60", windspeedKmph: "17", windspeedMiles: "11", precipMM: "0.0" }],
+                 weather: [day("2026-10-07", "28", "31"), day("2026-10-08", "27", "30")] };
+    // As curl -o FILE -w '%{http_code}' does: the body to the file, the status out.
+    h.stub("curl", 'out=; prev=; for a; do [ "$prev" = -o ] && out=$a; prev=$a; done\n'
+      + 'case "$*" in *wttr.in/chennai?format=j1*) cat > "$out" <<"J"\n' + JSON.stringify(j1) + '\nJ\nprintf 200;; *) : > "$out"; printf 404;; esac\n');
+    assert.equal(h.run("weather", ["chennai"]), "# chennai\n\n*Measured near Sowcarpet, India*\n\n**31°C**, Sunny, feels like 34°C\n\n"
+      + "Humidity 60%, wind 17 km/h, rain 0.0 mm\n\n| Day | Low | High | Sky |\n|---|---|---|---|\n"
+      + "| 2026-10-07 | 28°C | 31°C | Sunny |\n| 2026-10-08 | 27°C | 30°C | Sunny |\n");
+    assert.equal(h.run("weather", ["zzzzqqx"]), "wttr.in knows no place called *zzzzqqx*.\n");
+  } finally { h.done(); }
+});
