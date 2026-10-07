@@ -53,7 +53,15 @@ Item {
   signal finished(string text, bool ok, var tag)
   signal chunk(string data, var tag)
 
-  property string collected: ""
+  // What a streaming read printed, in pieces joined once as it ends; a
+  // read that does not stream is gathered whole by Quickshell (`whole`,
+  // below). A string property added to at every line was copied whole at
+  // every line: Omarchy's commands, 183 KB in about 15,000 lines read at
+  // every shell start, took 11.7 s of the shell's GUI thread (qmlprofiler,
+  // 2026-10-07). An array in a var property is the same array at each
+  // read, and a push copies nothing.
+  property var pieces: []
+  property int collectedLength: 0
   property bool overflowed: false
   property bool timedOut: false
   property var queued: null
@@ -79,7 +87,8 @@ Item {
     if (reader.active) { reader.queued = { argv: argv, tag: tag }; return }
     reader.active = true
     reader.tag = tag === undefined ? null : tag
-    reader.collected = ""
+    reader.pieces = []
+    reader.collectedLength = 0
     reader.streamedAny = false
     reader.errorTail = ""
     reader.overflowed = false
@@ -124,21 +133,7 @@ Item {
   Process {
     id: proc
     clearEnvironment: true
-    stdout: SplitParser {
-      splitMarker: reader.streaming ? " " : "\n"
-      onRead: function(data) {
-        if (reader.overflowed) return
-        var piece = reader.streaming ? (reader.streamedAny ? " " : "") + data : data + "\n"
-        if (reader.streaming) reader.streamedAny = true
-        if (reader.collected.length + piece.length > reader.maxBytes) {
-          reader.overflowed = true
-          proc.running = false
-          return
-        }
-        reader.collected += piece
-        if (reader.streaming) reader.chunk(piece, reader.tag)
-      }
-    }
+    stdout: reader.streaming ? words : whole
     // At spaces too, so a character is never cut; only the end is kept.
     stderr: SplitParser {
       splitMarker: " "
@@ -147,8 +142,42 @@ Item {
     onExited: function(exitCode, exitStatus) {
       if (exitCode === Sources.OVERFLOW) reader.overflowed = true
       if (exitCode === Sources.TIMEOUT || exitCode === Sources.KILLED) reader.timedOut = true
-      reader.ended(exitCode === 0 && exitStatus === 0 && !reader.overflowed && !reader.timedOut)
+      reader.ended(exitCode === 0 && exitStatus === 0 && !reader.overflowed && !reader.timedOut, reader.streaming ? "" : whole.text)
     }
+  }
+
+  // A read that does not stream: kept by Quickshell as it arrives and read
+  // once, when the program ends (Quickshell ends the stream before it says
+  // the program exited). Nothing per line runs here; the cap is
+  // Sources.limited()'s, before Quickshell sees a byte.
+  StdioCollector { id: whole }
+
+  SplitParser {
+    id: words
+    splitMarker: " "
+    onRead: function(data) {
+      if (reader.overflowed) return
+      var piece = (reader.streamedAny ? " " : "") + data
+      reader.streamedAny = true
+      if (reader.collectedLength + piece.length > reader.maxBytes) {
+        reader.overflowed = true
+        proc.running = false
+        return
+      }
+      reader.pieces.push(piece)
+      reader.collectedLength += piece.length
+      reader.chunk(piece, reader.tag)
+    }
+  }
+
+  // What a read that does not stream hands back: as the line splitter
+  // before it did, every line ending in a newline, the last one too. A
+  // read cut at its cap loses the line it was cut in, which is not whole:
+  // a search keeps the lines of a failed read, and a cut name would be
+  // listed as a file (Cursor 2026-10-07).
+  function lines(text, cut) {
+    if (cut) return text.slice(0, text.lastIndexOf("\n") + 1)
+    return text === "" || text.charAt(text.length - 1) === "\n" ? text : text + "\n"
   }
 
   // The run is over: say so, then start what waits. The reader stays busy
@@ -157,11 +186,15 @@ Item {
   // queue is read when it is drained, never captured before. Capturing it
   // first let a run that waited start after a newer one and replace it,
   // which then stayed pending for ever (codex 2026-10-04).
-  function ended(ok) {
+  // A run that never started is handed nothing: what `whole` holds is the
+  // last run's.
+  function ended(ok, gathered) {
     if (!reader.active) return
     deadline.stop()
     cancelling.stop()
-    reader.finished(reader.collected, ok, reader.tag)
+    var text = reader.streaming ? reader.pieces.join("") : reader.lines(gathered || "", reader.overflowed)
+    reader.pieces = []
+    reader.finished(text, ok, reader.tag)
     reader.active = false
     Qt.callLater(reader.drain)
   }
