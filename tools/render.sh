@@ -74,16 +74,28 @@ if [[ -n ${NODI_IME:-} ]]; then
   env -i HOME="$HOME" PATH="$PATH" LANG=C.UTF-8 XDG_RUNTIME_DIR="$run" XDG_CONFIG_HOME="$work/config" XDG_DATA_HOME="$work/data" \
     XDG_CACHE_HOME="$work/cache" DISPLAY=":$(head -n1 "$work/display")" QT_QPA_PLATFORM=xcb QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx \
     QT_FORCE_STDERR_LOGGING=1 dbus-run-session -- /usr/bin/bash -c '
+      # Each step waits for what the next needs, never a fixed time: two
+      # 2 s sleeps lost the keys at load 32 (2026-10-07), the keys reaching
+      # the card before fcitx5 owned its name or the card its input context.
+      until_() { for _ in $(seq 1 300); do "$1" && return 0; sleep 0.1; done; echo "xkeys: waited 30 s and $1 never held" >>"$W/keys.log"; return 1; }
+      fcitx_up() { dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.NameHasOwner string:org.fcitx.Fcitx5 2>/dev/null | grep -q "boolean true"; }
+      ic_focused() { dbus-send --session --print-reply --dest=org.fcitx.Fcitx5 /controller org.fcitx.Fcitx.Controller1.DebugInfo 2>/dev/null | grep -q "focus:1"; }
+      W=$1
       fcitx5 --disable=wayland,waylandim,notificationitem,kimpanel,clipboard >"$1/fcitx.log" 2>&1 &
-      sleep 2
-      timeout 30 qml6 -I "$1" "$1/ime/Ime.qml" >"$1/log" 2>&1 &
+      until_ fcitx_up
+      timeout 150 qml6 -I "$1" "$1/ime/Ime.qml" >"$1/log" 2>&1 &
       q=$!
-      sleep 2
-      timeout 20 /usr/bin/python3 -I "$2" "$DISPLAY" nodi-ime ctrl+shift+u text:0b85 space sleep:0.3 text:x sleep:0.5 >"$1/keys.log" 2>&1
-      sleep 0.5
+      # Focus first (no steps), then type once fcitx5 has the card focused.
+      timeout 40 /usr/bin/python3 -I "$2" "$DISPLAY" nodi-ime >>"$1/keys.log" 2>&1
+      until_ ic_focused
+      timeout 40 /usr/bin/python3 -I "$2" "$DISPLAY" nodi-ime ctrl+shift+u text:0b85 space sleep:0.3 text:x sleep:0.5 >>"$1/keys.log" 2>&1
+      # Done when the card has said something and then nothing new for two
+      # seconds; 20 s at most.
+      n=-1; for _ in $(seq 1 10); do m=$(grep -c STATE "$1/log"); [ "$m" -gt 0 ] && [ "$m" = "$n" ] && break; n=$m; sleep 2; done
       kill "$q" 2>/dev/null; wait "$q" 2>/dev/null; true' nodi-ime "$work" "$root/tools/xkeys.py" >/dev/null 2>&1 || true
   sed -n 's/.*STATE //p' "$work/log" >"$out/ime.txt"
   cp "$work/log" "$out/ime-harness.log"
+  cp "$work/keys.log" "$out/ime-keys.log" 2>/dev/null || true
   # Qt looking for an accessibility registry this session has none of is
   # the session's, not the card's.
   problems=$(grep -E "Error|TypeError|ReferenceError|is not a type|Binding loop|xkeys:" "$work/log" "$work/keys.log" | grep -v "qt.accessibility.atspi" | sed "s#file://$work/##g" | sort -u || true)
