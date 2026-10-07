@@ -5,26 +5,44 @@ What changed in each version of Nodi, newest first. A version is a tag
 follows the main branch, not the tags: it shows the diff from the commit
 you have and asks before pulling. ROADMAP.md has each item's detail.
 
-## Unreleased
+## 0.3.0 (2026-10-07)
 
 Ask
-- Ask talks to its agent over the Agent Client Protocol: Claude, Codex or
-  Gemini, Omarchy's default agent unless `"ask": { "agent" }` names one,
-  or an agent of your own by its command. Claude runs through its ACP
-  adapter, which the first question installs with npm, so Ask with Claude
-  needs Node.js 22 or newer.
-- Anything the agent asks to use shows in the bar, one at a time, and is
-  allowed once; a sign-in the agent needs is asked there too.
+- Ask talks to a coding agent over the Agent Client Protocol: Claude,
+  Codex or Gemini. It holds the one `"ask": { "agent" }` names, else
+  Omarchy's default agent when that is one of the three, else Claude;
+  or an agent of your own by its command. Claude and Codex run through
+  their ACP adapters, which Nodi installs with npm the first time you
+  type `ask `, so they need Node.js and npm (22 or newer for Claude's).
+- The actions on selected text and Translate go to the same agent.
+- Anything the agent asks to use, but the bar's own search, shows in the
+  bar: Enter allows that one call, Esc refuses it, and Nodi never answers
+  "always". A sign-in the agent needs is asked there too.
 - `"ask": { "model" }` is the agent's own name for a model; unset, Claude
-  keeps Haiku and the others their default.
-- `nodi` reaches the shell from an MCP client that clears the
-  environment, as Codex does.
+  keeps Haiku and the others their default. Describing apps
+  (`"apps": { "describe": true }`) still uses Claude, with Ask's model
+  only when Ask holds Claude.
 - The answer's pane opens at the Enter that asks, saying what the agent
-  is doing beside Omarchy's spinner until its words come; a failure
-  says why there.
+  is doing beside Omarchy's spinner (still under reduced motion) until
+  its words come; a failure says why there.
+
+Documentation
+- A user guide in docs/: getting started, what it finds, keys, actions,
+  settings, Ask, extending it, what it touches, and troubleshooting; the
+  parts written from the code are checked against it in every check. The
+  README is short. In help, "Developer" is "Developer tools", and "Yours"
+  names window rules.
 
 Fixed
+- `nodi mcp` reaches the shell from an MCP client that clears the
+  environment, as Codex does.
+- Under load the card could show without its background, its icons
+  spilling out, while it grew.
 - A file's preview logged a binding loop when its read was due.
+
+Development
+- `make reload` stops the shell before it copies, refuses while a locker
+  holds the screen, and fails if the shell does not start again.
 
 ## 0.2.0 (2026-10-07)
 
