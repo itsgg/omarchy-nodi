@@ -18,7 +18,8 @@ QtObject {
   readonly property var selectedBorderSpec: look.selectedBorderSpec
   readonly property real rowInsetLeft: look.rowInsetLeft
   readonly property bool selectionBar: look.selectionBar
-  readonly property bool reducedMotion: false
+  // Set by a test (tests/ui/tst_spinner.qml); the renders keep motion.
+  property bool reducedMotion: false
   readonly property int barWidth: look.barWidth
   readonly property int barInset: look.barInset
   readonly property real rowInsetRight: look.rowInsetRight

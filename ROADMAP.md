@@ -630,7 +630,8 @@ baseline query loses rank.
     (lib/Appearance.js, through a Reader); higher contrast marks the
     selected row in every theme (72's bar) and raises secondary text to
     7:1, reduced motion or animations off leaves the card's resizing
-    unanimated. This portal serves contrast (0) and no reduced-motion.
+    unanimated, and Ask's spinner still (item 85, 2026-10-07). This
+    portal serves contrast (0) and no reduced-motion.
 74. **Mouse**: right click opens Ctrl+K; the footer's keys click. X 14.
     Done 2026-10-06: a right click selects the row and opens its actions,
     running nothing; each footer key (Enter, Ctrl K, Tab, Esc, the
