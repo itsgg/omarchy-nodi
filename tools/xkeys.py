@@ -72,7 +72,8 @@ def main():
     if not dpy:
         sys.exit("xkeys: no display " + sys.argv[1])
     win = 0
-    for _ in range(50):
+    # Up to 30 s for the window: a loaded machine starts qml6 slowly.
+    for _ in range(300):
         win = find(dpy, X11.XDefaultRootWindow(dpy), sys.argv[2])
         if win:
             break
