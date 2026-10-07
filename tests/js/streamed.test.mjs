@@ -63,7 +63,19 @@ test("the pane shows the answer only while the query is its question", () => {
   const p = plain(Pane.choose({ answer: { question: "q", title: "Assistant", text: "**hi**", seq: 3 }, row: null }));
   assert.deepEqual(p, { title: "q", subtitle: "Assistant", markdown: "**hi**", follow: true, round: 3 }, "each run its round, so asked again it starts at its top");
   assert.equal(Pane.choose({ paletteOpen: true, answer: { question: "q", title: "t", text: "x" } }), null, "Ctrl+K's actions hide it");
-  assert.equal(Pane.choose({ ask: { question: "q", model: "haiku", text: "" }, row: null }), null, "Claude's answer shows once it has words");
+  assert.equal(Pane.choose({ ask: { question: "q", model: "haiku", text: "" }, row: null }), null, "nothing asked, nothing on its way: no pane");
+  // From the Enter that asks (his report 2026-10-07): open at once, saying
+  // what it waits on, then its words, then why it failed if it did.
+  const asked = { question: "q", agent: "Claude", model: "haiku", text: "", busy: true, status: "Searching the bar for lock" };
+  assert.deepEqual(plain(Pane.choose({ ask: asked, row: null })),
+    { title: "q", subtitle: "Claude, haiku", text: "", follow: true, busy: true, status: "Searching the bar for lock..." });
+  const words = plain(Pane.choose({ ask: Object.assign({}, asked, { text: "Ran" }), row: null }));
+  assert.deepEqual([words.text, words.busy, words.status], ["Ran", true, ""], "its words in place of the status, the spinner on");
+  const done = plain(Pane.choose({ ask: Object.assign({}, asked, { text: "Ran Lock.", busy: false }), row: null }));
+  assert.deepEqual([done.busy, done.status], [false, ""]);
+  const failed = plain(Pane.choose({ ask: Object.assign({}, asked, { busy: false, error: "Claude stopped: exit 1" }), row: null }));
+  assert.deepEqual([failed.text, failed.busy], ["Could not ask: Claude stopped: exit 1", false], "the pane stays open with why");
+  assert.equal(plain(Pane.choose({ ask: Object.assign({}, asked, { text: "Half", busy: false, error: "cut" }), row: null })).text, "Half\n\nCould not ask: cut");
   const row = { title: "r", subtitle: "s", preview: { title: "own" } };
   assert.equal(Pane.choose({ row }).title, "own");
   assert.deepEqual(plain(Pane.choose({ row: { title: "r", subtitle: "s" }, anyPreview: true })), { title: "r", subtitle: "s" });

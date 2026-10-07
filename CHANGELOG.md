@@ -19,6 +19,12 @@ Ask
   keeps Haiku and the others their default.
 - `nodi` reaches the shell from an MCP client that clears the
   environment, as Codex does.
+- The answer's pane opens at the Enter that asks, saying what the agent
+  is doing beside Omarchy's spinner until its words come; a failure
+  says why there.
+
+Fixed
+- A file's preview logged a binding loop when its read was due.
 
 ## 0.2.0 (2026-10-07)
 

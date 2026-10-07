@@ -774,6 +774,19 @@ baseline query loses rank.
     credits) and Gemini (not signed in). Research in
     ~/.local/share/nodi-research/acp2.
 
+85. **Ask's pane from the Enter that asks.** His report, 2026-10-07:
+    "there is a delay after I press enter, shouldn't we open the window
+    state and do a proper loader state etc that is consistent with UI/UX
+    pattern and omarchy". Measured with the session warm, as the bar
+    warms it: first words 0.7 to 0.8 s after Enter, 2.0 s for a question
+    that searches the bar first; the pane opened only at the first word.
+    Done 2026-10-07: the pane opens at Enter with the question, the agent
+    and its model, Omarchy's own spinner (Ui/MultiSelect.qml: 󰦖, a turn
+    each 800 ms) while the answer is on its way, and a dim line of what
+    it waits on (Ask.qml status: starting, installing, signing in,
+    searching the bar, thinking) until the words come; a failure stays
+    in the pane with why. Renders 60 to 62 show it.
+
 ## Frontier, after the above
 
 Each an experiment with a measure before it stays: a model fallback over

@@ -271,6 +271,17 @@ const scenes = [
   scene("19-ask-answer", "ask how do I list open ports", { ask: { phase: "done", question: "how do I list open ports", agent: "Claude", model: "haiku",
     answer: "Use ss, which ships with iproute2:\n\nss -tulpn\n\n-t and -u are TCP and UDP, -l listening sockets, -p the process holding each, -n numbers instead of names. Run it with sudo to see other users' processes." } },
     rows => ({ answer: "Use ss, which ships with iproute2:\n\nss -tulpn\n\n-t and -u are TCP and UDP, -l listening sockets, -p the process holding each, -n numbers instead of names. Run it with sudo to see other users' processes." })),
+  // From the Enter that asks (his report 2026-10-07): the pane open at
+  // once, saying what it waits on, then the words as they come.
+  scene("60-ask-waiting", "ask how do I list open ports",
+    { ask: { phase: "waiting", question: "how do I list open ports", agent: "Claude", model: "haiku", answer: "", status: "Asking Claude" } },
+    () => ({ askPane: { busy: true, status: "Asking Claude" } })),
+  scene("61-ask-searching", "ask lock my screen",
+    { ask: { phase: "waiting", question: "lock my screen", agent: "Claude", model: "haiku", answer: "", status: "Searching the bar for lock", activity: "Searching the bar for lock" } },
+    () => ({ askPane: { busy: true, status: "Searching the bar for lock" } })),
+  scene("62-ask-streaming", "ask how do I list open ports",
+    { ask: { phase: "streaming", question: "how do I list open ports", agent: "Claude", model: "haiku", answer: "Use ss, which ships with iproute2:", status: "Asking Claude" } },
+    () => ({ answer: "Use ss, which ships with iproute2:", askPane: { busy: true, status: "Asking Claude" } })),
   scene("20-snippets", "snip ", { clipboardText: "the build is green" }, null, snippets),
   scene("21-snippet-arguments", "mt Ravi", {}, null, snippets),
   scene("22-ports", "ports", { ports }),

@@ -22,13 +22,13 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 14
+  property int remaining: 15
   readonly property string fake: String(Qt.resolvedUrl("fake-agent.py")).replace(/^file:\/\//, "")
   readonly property string nodi: String(Qt.resolvedUrl("../../bin/nodi")).replace(/^file:\/\//, "")
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
   // bin/nodi's omarchy-shell, a stand-in that reaches this instance.
   readonly property var toolEnv: ({ OMARCHY_PATH: String(Qt.resolvedUrl("fake-omarchy")).replace(/^file:\/\//, ""), NODI_TEST_SHELL: Quickshell.shellDir, NODI_TEST_TARGET: "nodiAskTest" })
-  readonly property var sessions: [ask, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm]
+  readonly property var sessions: [ask, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed]
 
   function finished() {
     if (--test.remaining > 0) return
@@ -58,6 +58,10 @@ Item {
     searcher: function(q) { return [{ key: "menu:system.lock", title: "Lock", subtitle: "System", kind: "action", asks: "" }] }
     checker: function(k) { return k === "menu:system.lock" ? "" : "No row has that key" }
     runner: function(k) { test.ran.push(k); return "Ran: Lock" }
+    // What the bar says it waits on, in order (the pane, the row).
+    property var statuses: []
+    Component.onCompleted: statuses = [status]
+    onStatusChanged: if (statuses[statuses.length - 1] !== status) statuses.push(status)
     onPhaseChanged: {
       test.phases.push(phase)
       if (phase === "proposing") {
@@ -76,6 +80,8 @@ Item {
       if (ask.answer !== "ok") test.failures.push("the stand-in said: " + ask.answer)
       if (JSON.stringify(test.ran) !== JSON.stringify(["menu:system.lock"])) test.failures.push("ran " + JSON.stringify(test.ran))
       if (test.proposals !== 3) test.failures.push("proposals " + test.proposals + ": " + test.phases.join(","))
+      var said = ask.statuses.join(" | ")
+      if (!/^Starting Claude \| Asking Claude \| Searching the bar \|/.test(said + " |")) test.failures.push("what it said it waits on: " + said)
       test.finished()
     }
   }
@@ -355,8 +361,33 @@ Item {
   }
   Timer { id: askLater; interval: 300; onTriggered: signWarm.send("say ok") }
 
+  // An adapter that installed as the session started: the bar says so
+  // until the agent is up, and then what it is doing (Fable 2026-10-07:
+  // "Installing" stayed for the whole session); the rest of the start has
+  // its own time, not what the install left of it (its second pass). The
+  // stand-in installs for 3 s and answers session/new 2 s later, against
+  // a 3.5 s start limit (Fable: a second's margin either way).
+  Ask {
+    id: installed
+    acts: true
+    startMs: 3500
+    program: [test.fake, "claude", "installing"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property bool sawInstall: false
+    onStatusChanged: if (/^Installing fake@1/.test(status)) sawInstall = true
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || installed.answer !== "ok" || !installed.sawInstall || installed.status !== "Asking Claude")
+        test.failures.push("after an install: " + phase + " " + installed.sawInstall + " " + JSON.stringify(installed.status) + " " + installed.error + installed.answer)
+      test.finished()
+    }
+  }
+
   function start() {
     signHang.send("sign in first")
+    installed.send("say ok")
     signWarm.warm()
     named.send("use the shouter")
     picture.send("What is in the picture?", "What is in the picture?", "window", { mediaType: "image/jpeg", data: "AAAA" })

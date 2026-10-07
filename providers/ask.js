@@ -4,7 +4,7 @@
 
 // Ask: a quick answer from a coding agent in the bar (components/Ask.qml
 // holds the session; Nodi.qml puts its state in ctx.ask = { phase,
-// question, answer, error, agent, model, setup, activity, proposal }).
+// question, answer, error, agent, model, status, activity, proposal }).
 // `ask how do I ...` then Enter asks; the answer streams
 // into the card, then Enter pastes it where you were, Ctrl+Enter copies it,
 // and Ctrl+K continues the question in your coding agent. Tab on a query
@@ -86,11 +86,9 @@ var provider = {
       return rows
     }
     if (a.phase === "waiting" || a.phase === "streaming") {
-      // What it is doing while there are no words yet: an adapter
-      // installing, or a tool at work.
-      var doing = a.setup && a.phase === "waiting" && !a.answer ? a.setup + "..."
-                : a.activity ? who + ": " + a.activity + "..."
-                : a.phase === "waiting" ? "Asking " + name + "..." : "Answering..."
+      // What it is waiting on (components/Ask.qml status): the start, an
+      // adapter installing, a tool at work; then its words.
+      var doing = a.phase === "waiting" || a.activity ? (a.status || "Asking " + name) + "..." : "Answering..."
       return [{ key: "ask:wait", title: doing, subtitle: q, icon: "󰚩", score: 98, copy: a.answer || "", remember: false }]
     }
     if (a.phase === "error") {

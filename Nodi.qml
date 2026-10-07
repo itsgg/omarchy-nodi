@@ -588,7 +588,7 @@ Item {
       session: root.closedAt,
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error,
-             agent: askSession.agentName, model: askSession.modelName, setup: askSession.setup, activity: askSession.activity,
+             agent: askSession.agentName, model: askSession.modelName, status: askSession.status, activity: askSession.activity,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active },
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
@@ -1916,10 +1916,12 @@ Item {
     }
   }
 
-  // The answer the card shows, while the query is the question it answers.
+  // The answer the card shows, while the query is the question it answers:
+  // its pane from the Enter that asked it, waiting, then its words.
   readonly property bool asking: /^\s*ask\s/i.test(root.composedQuery)
-  readonly property string askShown: root.asking && askSession.phase !== "idle"
-    && askSession.question === root.composedQuery.replace(/^\s*ask\s+/i, "").trim() ? askSession.answer : ""
+  readonly property bool askOn: root.asking && askSession.phase !== "idle" && askSession.question !== ""
+    && askSession.question === root.composedQuery.replace(/^\s*ask\s+/i, "").trim()
+  readonly property string askShown: root.askOn ? askSession.answer : ""
   // A streamed answer (providers/answers.js), while the query is its question.
   readonly property bool answerShown: Answers.shown(root.composedQuery, root.config.answers,
     { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question })
@@ -1933,7 +1935,9 @@ Item {
     formatTime: function(ms) { return Qt.formatDateTime(new Date(ms), "yyyy-MM-dd HH:mm") }
     chosen: Pane.choose({
       paletteOpen: root.paletteOpen,
-      ask: root.askShown !== "" ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: root.askShown } : null,
+      ask: root.askOn ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: askSession.answer,
+                          busy: askSession.phase === "waiting" || askSession.phase === "streaming", status: askSession.status,
+                          error: askSession.phase === "error" ? askSession.error : "" } : null,
       proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
       agent: askSession.agentName,
       answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,

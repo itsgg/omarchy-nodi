@@ -98,9 +98,14 @@ Item {
     var made = []
     for (var i = 0; i < test.agents.length; i++) made.push(session.createObject(test, { agent: test.agents[i] }))
     test.sessions = made
-    for (var j = 0; j < made.length; j++) made[j].next()
+    // Warmed first, as the bar does while `ask ` is typed, so each round's
+    // times are from Enter (Nodi.qml warm).
+    for (var j = 0; j < made.length; j++) made[j].warm()
+    firstAsk.start()
     deadline.start()
   }
+
+  Timer { id: firstAsk; interval: 6000; onTriggered: test.sessions.forEach(function(s) { s.next() }) }
 
   Timer {
     id: deadline
