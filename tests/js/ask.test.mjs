@@ -113,9 +113,9 @@ test("after session/new: the mode Ask needs and the model asked for, or a start 
 });
 
 test("an agent of his own: started as its command says, its instructions with the first prompt, nothing of it turned off", () => {
-  const s = plain(G.spec({ name: "Akshi", command: ["akshi", "acp", "--quiet"], env: { AKSHI_MODE: "bar", "bad name": "x", N: 3 } }, "/d", "", "x", ["nodi"]));
-  assert.deepEqual(s.argv.slice(4), ["exec", "akshi", "acp", "--quiet"]);
-  assert.deepEqual([s.name, s.env, s.instructs, s.meta, s.mode, s.modelInMeta], ["Akshi", { AKSHI_MODE: "bar", N: "3" }, false, null, "", false]);
+  const s = plain(G.spec({ name: "Helper", command: ["helper", "acp", "--quiet"], env: { HELPER_MODE: "bar", "bad name": "x", N: 3 } }, "/d", "", "x", ["nodi"]));
+  assert.deepEqual(s.argv.slice(4), ["exec", "helper", "acp", "--quiet"]);
+  assert.deepEqual([s.name, s.env, s.instructs, s.meta, s.mode, s.modelInMeta], ["Helper", { HELPER_MODE: "bar", N: "3" }, false, null, "", false]);
   assert.equal(G.spec({ command: ["/opt/x/bin/opencode", "acp"] }, "/d", "").name, "opencode", "named by its program when unnamed");
   for (const bad of [{}, { command: [] }, { command: "opencode acp" }, { command: [3] }, { command: [""] }, []])
     assert.equal(G.spec(bad, "/d", ""), null, JSON.stringify(bad));

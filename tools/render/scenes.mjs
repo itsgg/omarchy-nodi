@@ -351,7 +351,7 @@ const scenes = [
     // what is typed.
     const Pick = load("lib/Pick.js");
     const given = Pick.parse([
-      { title: "Ship the filter contract", subtitle: "Today, Nodi", icon: "󰄲", preview: "## Ship the filter contract\n\nThe README section, then the **Akshi** side." },
+      { title: "Ship the filter contract", subtitle: "Today, Nodi", icon: "󰄲", preview: "## Ship the filter contract\n\nThe README section, then the **caller's** side." },
       { title: "Review the nodi command", subtitle: "Tomorrow", icon: "󰄱" },
       { title: "Shop for the week", subtitle: "Saturday", icon: "󰄱" },
       { title: "Write the release notes", subtitle: "Friday", icon: "󰄱" }

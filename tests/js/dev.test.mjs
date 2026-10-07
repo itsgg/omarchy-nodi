@@ -8,12 +8,12 @@ import { Engine, config, services, run, top } from "./fixtures.mjs";
 
 const D = load("providers/dev.js");
 const projects = D.parseProjects("git\t/home/u/Work/GG/omarchy-nodi\ngit\t/home/u/Work/kalvi\nz\t18.0\t/home/u/Work\nz\t4.0\t/home/u/Work/kalvi\nnot a line\n", true);
-const tmux = D.parseTmux("$0\takshi\t1\t1\n$3\tlane.a\t3\t0\n\n");
+const tmux = D.parseTmux("$0\twork\t1\t1\n$3\tlane.a\t3\t0\n\n");
 const ssh = D.parseSsh("Host *\n  User x\nHost box web.example.com\n  HostName 1.2.3.4\nhost !bad\n");
 
 test("the lists parse: one entry per path, repositories marked; sessions; hosts without patterns", () => {
   assert.deepEqual(plain(projects.map(p => [p.name, p.git])), [["omarchy-nodi", true], ["kalvi", true], ["Work", false]]);
-  assert.deepEqual(plain(tmux), [{ id: "$0", name: "akshi", windows: 1, attached: true }, { id: "$3", name: "lane.a", windows: 3, attached: false }]);
+  assert.deepEqual(plain(tmux), [{ id: "$0", name: "work", windows: 1, attached: true }, { id: "$3", name: "lane.a", windows: 3, attached: false }]);
   assert.deepEqual(plain(ssh), ["box", "web.example.com"]);
 });
 
@@ -27,7 +27,7 @@ test("a project by its folder's name: a terminal there, the editor and lazygit i
 
 test("tmux sessions, SSH hosts, man and tldr", () => {
   const t = run("tmux", { tmux }).filter(r => r.key.indexOf("tmux:") === 0);
-  assert.deepEqual(plain(t.map(r => r.title)), ["akshi", "lane.a"]);
+  assert.deepEqual(plain(t.map(r => r.title)), ["work", "lane.a"]);
   assert.deepEqual(plain(t[1].run.argv.slice(-4)), ["tmux", "attach-session", "-t", "$3"], "by id, which a dotted name cannot break");
   assert.equal(t[0].subtitle, "tmux, 1 window, attached");
   assert.deepEqual(plain(top("ssh box", { ssh }).run.argv.slice(-3)), ["ssh", "--", "box"]);
@@ -54,7 +54,7 @@ const ports = D.parsePorts([
   'LISTEN 0 2048 127.0.0.1:8000 0.0.0.0:* users:(("gunicorn",pid=5002,fd=5),("gunicorn",pid=5001,fd=5),("gunicorn",pid=5000,fd=5))',
   'LISTEN 0 4096 127.0.0.54:53 0.0.0.0:*', 'garbage', ''].join("\n"));
 const userServices = D.parseServices([
-  "akshi-mirror.service loaded active running Akshi: the vault mirrored to Dropbox",
+  "backup-sync.service loaded active running Backup: files synced",
   "app-gnome\\x2dkeyring\\x2dsecrets@autostart.service loaded inactive dead Secret Storage Service",
   "-bad.service loaded active running Starts with a dash",
   "dbus.socket loaded active running D-Bus User Message Bus Socket", ""].join("\n"));
@@ -138,16 +138,16 @@ test("projects are ranked before the list is cut", () => {
 });
 
 test("services parse escaped names and refuse one that reads as an option", () => {
-  assert.deepEqual(plain(userServices.map(s => [s.name, s.active])), [["akshi-mirror", "active"], ["app-gnome-keyring-secrets@autostart", "inactive"]]);
+  assert.deepEqual(plain(userServices.map(s => [s.name, s.active])), [["backup-sync", "active"], ["app-gnome-keyring-secrets@autostart", "inactive"]]);
   assert.equal(userServices[1].unit, "app-gnome\\x2dkeyring\\x2dsecrets@autostart.service");
 });
 
 test("services: Enter shows the logs, Ctrl+K restarts and stops or starts, the unit after --", () => {
-  const s = top("services mirror", lists);
-  assert.equal(s.title, "akshi-mirror"); assert.equal(s.badge, "ON");
-  assert.deepEqual(plain(s.run.argv.slice(-7)), ["journalctl", "--user", "-u", "akshi-mirror.service", "-n", "200", "-f"]);
+  const s = top("services sync", lists);
+  assert.equal(s.title, "backup-sync"); assert.equal(s.badge, "ON");
+  assert.deepEqual(plain(s.run.argv.slice(-7)), ["journalctl", "--user", "-u", "backup-sync.service", "-n", "200", "-f"]);
   assert.deepEqual(plain(s.actions.map(a => a.label)), ["Restart", "Stop", "Status in a terminal"]);
-  assert.deepEqual(plain(s.actions[1].run.argv), ["systemctl", "--user", "stop", "--", "akshi-mirror.service"]);
+  assert.deepEqual(plain(s.actions[1].run.argv), ["systemctl", "--user", "stop", "--", "backup-sync.service"]);
   assert.equal(s.actions[1].confirm, true);
   const k = top("service keyring", lists);
   assert.equal(k.title, "app-gnome-keyring-secrets@autostart");

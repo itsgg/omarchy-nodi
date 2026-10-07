@@ -62,8 +62,8 @@ test("the usage read: each record as it is, nothing for none", () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("a session by its own arguments, never a prompt's words; no single answer, no SDK run, none of Akshi's", () => {
-  const is = (c, home) => A.isSession(Object.assign({ cwd: "/home/u/x" }, c), home || "/home/u");
+test("a session by its own arguments, never a prompt's words; no single answer, no SDK run", () => {
+  const is = c => A.isSession(Object.assign({ cwd: "/home/u/x" }, c));
   assert.equal(is({ tool: "claude", argv: ["--continue"], entrypoint: "cli" }), true);
   assert.equal(is({ tool: "claude", argv: ["fix the exec path"] }), true, "a prompt that says exec (Sonnet 2026-10-06)");
   assert.equal(is({ tool: "claude", argv: ["-p", "hi"] }), false);
@@ -75,8 +75,6 @@ test("a session by its own arguments, never a prompt's words; no single answer, 
   assert.equal(is({ tool: "codex", argv: ["resume"] }), true);
   assert.equal(is({ tool: "codex", argv: ["--dangerously-bypass-approvals-and-sandbox", "exec", "x"] }), false, "a flag before its subcommand (Sonnet 2026-10-06)");
   assert.equal(is({ tool: "codex", argv: ["-m", "exec", "hi"] }), true, "exec as a flag's value is no subcommand");
-  assert.equal(is({ tool: "claude", argv: [], cwd: "/home/u/Akshi" }), false, "Akshi's (his ruling)");
-  assert.equal(is({ tool: "claude", argv: [], cwd: "/home/u/Akshix" }), true, "only Akshi's own folder");
   assert.equal(is({ tool: "node", argv: [] }), false);
 });
 
@@ -95,7 +93,7 @@ test("the reset said plainly: minutes, hours, a date past a day, and a record ol
 test("sessions from the script's lines: windowed, by isSession", () => {
   const sessions = [
     { tool: "claude", pid: "1", cwd: "/home/u/a", address: "0xa", argv: ["-p"], said: "", at: 9 },
-    { tool: "claude", pid: "2", cwd: "/home/u/Akshi", address: "0xb", argv: [], said: "", at: 8 },
+    { tool: "claude", pid: "2", cwd: "/home/u/b", address: "0xb", argv: [], said: "", at: 8 },
     { tool: "codex", pid: "3", cwd: "/home/u/c", address: "0xc", argv: ["-p", "work"], said: "", at: 7 }];
-  assert.deepEqual(plain(run("agents", { agentSessions: sessions }).filter(r => r.key.startsWith("agents:session")).map(r => r.title)), ["Codex in ~/c"]);
+  assert.deepEqual(plain(run("agents", { agentSessions: sessions }).filter(r => r.key.startsWith("agents:session")).map(r => r.title)), ["Claude Code in ~/b", "Codex in ~/c"]);
 });

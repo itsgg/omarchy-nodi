@@ -137,7 +137,7 @@ test("a bar that closes without answering ends the wait; a shell that is down is
     assert.ok(Date.now() - started < 6000, "within a check or two");
     assert.match(r.log, /pickAlive/);
     r = nodi(t, ["pick"], { input: "a\n", down: true });
-    assert.equal(r.status, 3, "unreachable, not refused (Akshi 2026-10-05)");
+    assert.equal(r.status, 3, "unreachable, not refused (a check 2026-10-05)");
     r = nodi(t, ["hello"], { down: true });
     assert.equal(r.status, 3);
     r = nodi(t, ["run", "x"], { runRow: "unknown" });

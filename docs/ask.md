@@ -33,7 +33,7 @@ not speak ACP.
 An agent of your own, any that speaks ACP, goes by its command:
 
 ```jsonc
-"ask": { "agent": { "name": "Akshi", "command": ["akshi", "acp"], "env": { "AKSHI_MODE": "bar" } } }
+"ask": { "agent": { "name": "Helper", "command": ["helper", "acp"], "env": { "HELPER_MODE": "bar" } } }
 ```
 
 Nodi cannot turn such an agent's own tools off: the bar shows each thing

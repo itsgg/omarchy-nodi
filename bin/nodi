@@ -41,7 +41,7 @@ usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
 
 fail() { echo "nodi: $*" >&2; exit 2; }
 # Kept apart from a refusal, so a caller can tell "no" from "not there"
-# (Akshi's check 2026-10-05).
+# (a check 2026-10-05).
 unreachable() { echo "nodi: $*" >&2; exit 3; }
 
 command -v jq >/dev/null || unreachable "jq is needed"

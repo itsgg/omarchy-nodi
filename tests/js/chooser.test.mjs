@@ -19,7 +19,7 @@ const typing = rows => rows.filter(r => r.run && r.run.script === C.TYPE);
 const portal = { address: "0x5a1", "class": "xdg-desktop-portal-gtk", title: "Save File", floating: true };
 const folders = [
   { kind: "recent", path: "/home/u/Downloads" }, { kind: "recent", path: "/home/u/Work/kalvi/docs" }, { kind: "recent", path: "/home/u" },
-  { kind: "recent", path: "/home/u/Akshi" }, { kind: "recent", path: "/home/u/Old" },
+  { kind: "recent", path: "/home/u/Notes" }, { kind: "recent", path: "/home/u/Old" },
   { kind: "z", path: "/home/u/Learn" }, { kind: "z", path: "/home/u/Work/GG/nodi" }, { kind: "z", path: "/home/u/Work" }, { kind: "z", path: "/home/u/Work/GG" },
   { kind: "bookmark", path: "/home/u/Projects" }, { kind: "xdg", path: "/home/u/Documents" }, { kind: "xdg", path: "/home/u/Pictures" }
 ];
@@ -43,7 +43,7 @@ test("chooser: a file dialog is the portal's, or a floating window titled as one
 test("chooser: over a dialog the empty bar leads with folders, four of recent files, three of zoxide's, then bookmarks and XDG", () => {
   const rows = Engine.home(config, services({ window: portal, chooserFolders: folders, history: {}, reminders: [] }));
   eq(mine(rows).map(r => [r.title, r.subtitle]), [
-    ["Downloads", "~/Downloads"], ["docs", "~/Work/kalvi/docs"], ["Home", "~"], ["Akshi", "~/Akshi"],
+    ["Downloads", "~/Downloads"], ["docs", "~/Work/kalvi/docs"], ["Home", "~"], ["Notes", "~/Notes"],
     ["Learn", "~/Learn"], ["nodi", "~/Work/GG/nodi"], ["Work", "~/Work"], ["Projects", "~/Projects"]]);
   assert.equal(rows[0].title, "Downloads", "first on the bar");
   eq(mine(Engine.home(config, services({ window: { address: "0x2", "class": "foot", title: "~", floating: false }, chooserFolders: folders, history: {}, reminders: [] }))), [],

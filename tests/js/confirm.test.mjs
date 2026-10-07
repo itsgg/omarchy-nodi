@@ -18,7 +18,7 @@ const P = { id: "t", name: "T" };
 const norm = (r) => Rows.normalize(Object.assign({ title: "Send report", run: Run.exec(["mailer", "send"]) }, r), P, 0, 0);
 
 test("the command as a shell would read it back, each kind", () => {
-  assert.equal(Run.describe(Run.exec(["akshi", "act", "run", "a b", "it's", "$(x)", "--flag=1"])), "akshi act run 'a b' 'it'\\''s' '$(x)' --flag=1");
+  assert.equal(Run.describe(Run.exec(["helper", "act", "run", "a b", "it's", "$(x)", "--flag=1"])), "helper act run 'a b' 'it'\\''s' '$(x)' --flag=1");
   assert.equal(Run.describe(Run.shell('rm -f "$1"', ["/tmp/a b"])), 'rm -f "$1"\n\n$1 = \'/tmp/a b\'');
   assert.equal(Run.describe(Run.shell("systemctl reboot")), "systemctl reboot");
   assert.equal(Run.describe(Run.open("https://x.test/a?b=c&d")), "xdg-open 'https://x.test/a?b=c&d'");
@@ -85,7 +85,7 @@ test("the pane: a row's own preview until it is armed or its word asked, then th
   assert.ok(Pane.hasPane(archive) && !Pane.hasPane(reboot));
 });
 
-test("a Ctrl+K action that asks shows its command and risk too, for a row that shows commands (Akshi 2026-10-05)", () => {
+test("a Ctrl+K action that asks shows its command and risk too, for a row that shows commands (a check 2026-10-05)", () => {
   // The row itself need not ask: its provider shows commands, its action asks.
   const row = norm({ showsCommand: true, title: "Weekly report" });
   const action = { label: "Purge", run: Run.exec(["mailer", "purge", "all mail"]), confirm: true, risk: "Deletes everything" };

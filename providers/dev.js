@@ -11,7 +11,7 @@
 //   ssh, a host's name           ssh to a Host of ~/.ssh/config in a terminal
 //   man ls, tldr tar             the page, in a terminal
 //   ports, port 8080             what listens on TCP: open it, or stop it
-//   services, service akshi      your user services: logs, restart, stop
+//   services, service backup     your user services: logs, restart, stop
 //   h slack, history slack       Chromium's history: open a page again
 //   prs, pr nodi                 open GitHub pull requests that involve you
 //
