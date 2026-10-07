@@ -111,7 +111,9 @@ lib/
   Requests.js           when a provider's read is due, and what it keeps
   Keys.js               what a key press does
   Placeholders.js       snippet and link placeholders
-  AskStream.js          the Claude session's command and its output
+  Acp.js                the Agent Client Protocol, Ask's side of it
+  Agents.js             the agents Ask can hold, and how each starts
+  AskTools.js           the bar's two tools, and the agent's instructions
   Jsonc.js, Config.js   JSONC; nodi.json over config.default.json
   Menu.js, Toggles.js   the menu tree and its guards; the toggle probe
   Sources.js            parsers for the readers' output
@@ -172,8 +174,8 @@ Some readers depart from the minimal environment on purpose, by running a
 login shell inside it: the menu's `when:` and `checked:` guards, as
 Omarchy's menu runs them, so a guard in the user's own menu sees the PATH
 their profile sets; `gh` for pull requests, which mise or a profile may put
-on PATH; and inline script commands. Ask's session inherits the user's
-environment, since Claude Code needs its own login. Actions run as
+on PATH; and inline script commands. Ask's agent inherits the user's
+environment, since the agent needs its own login. Actions run as
 Omarchy's menu runs them (`bash -lc`, arguments through a constant
 `exec "$@"`).
 

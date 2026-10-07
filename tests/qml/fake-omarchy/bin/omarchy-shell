@@ -1,0 +1,9 @@
+#!/usr/bin/bash
+# omarchy-shell for tests/qml/AskActsTest.qml: bin/nodi's `shell call <id>
+# askMcp <token> <line>` reaches the test's own Quickshell instance (its
+# shell directory in NODI_TEST_SHELL), at the handler NODI_TEST_TARGET
+# names, never the session's shell.
+# As the facade does (shell.qml call(id: string, method: string, arg:
+# string)), exactly one argument for the function, or nothing is called.
+[ $# -eq 5 ] && [ "$1" = shell ] && [ "$2" = call ] || { echo "Too many arguments provided ($# for shell call id method arg)" >&2; exit 1; }
+exec /usr/bin/qs ipc -p "$NODI_TEST_SHELL" call "$NODI_TEST_TARGET" "$4" "$5"

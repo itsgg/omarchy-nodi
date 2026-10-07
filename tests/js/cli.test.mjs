@@ -27,6 +27,16 @@ case "$2" in
       search) printf '%s\\n' "\${FAKE_SEARCH:-[]}" ;;
       describeRow) printf '%s\\n' "\${FAKE_DESCRIBE:-unknown row}" ;;
       pickAlive) echo "$FAKE_ALIVE" ;;
+      askMcp)
+        # As the facade, one argument: { token, line }. Ask answers: an echo
+        # of the message's id, "" for a notification.
+        [ $# -eq 5 ] || { echo "Too many arguments provided" >&2; exit 1; }
+        line=$(printf '%s' "$5" | /usr/bin/jq -r .line)
+        printf '%s\n' "$line" >> "$FAKE_LOG.ask"
+        [ "$(printf '%s' "$5" | /usr/bin/jq -r .token)" = "$FAKE_TOKEN" ] || { echo unknown; exit 0; }
+        [ "$FAKE_EMPTY" = 1 ] && exit 0
+        [ "$FAKE_EMPTY" = ok ] && { echo ok; exit 0; }
+        printf '%s' "$line" | /usr/bin/jq -c 'if has("id") then {jsonrpc: "2.0", id: .id, result: {seen: .method}} else empty end' ;;
       pick)
         dir=$(printf '%s' "$5" | /usr/bin/jq -r .dir)
         printf '%s\\n' "$5" > "$FAKE_LOG.req"
@@ -53,7 +63,8 @@ function nodi(t, args, opts = {}) {
   const env = {
     OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"), LANG: "C.UTF-8",
     FAKE_PICK: opts.pick || "cancel", FAKE_ALIVE: opts.alive || "yes", FAKE_RUNROW: opts.runRow || "ok", FAKE_DOWN: opts.down ? "1" : "0",
-    FAKE_SEARCH: opts.search || "[]", FAKE_DESCRIBE: opts.describe || "unknown row", FAKE_RUNPROPOSED: opts.runProposed || "ok"
+    FAKE_SEARCH: opts.search || "[]", FAKE_DESCRIBE: opts.describe || "unknown row", FAKE_RUNPROPOSED: opts.runProposed || "ok",
+    FAKE_TOKEN: "t0k", ...(opts.env || {})
   };
   const r = spawnSync(NODI, args, { env, input: opts.input || "", timeout: 15000 });
   return { status: r.status, out: r.stdout.toString(), err: r.stderr.toString(), log: (() => { try { return readFileSync(join(t, "log"), "utf8") } catch (e) { return "" } })() };
@@ -289,5 +300,38 @@ test("nodi mcp: ended while a question waits in the bar, it takes the question a
     const log = readFileSync(join(t, "log"), "utf8");
     const id = JSON.parse(readFileSync(join(t, "log.req"), "utf8")).id;
     assert.match(log, new RegExp("call io\\.github\\.itsgg\\.nodi cancelPick " + id + "\\n"), "the bar is told (Fable 2026-10-06)");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp --ask hands each message to Ask whole and prints its answer; one the shell cannot take is answered here (ROADMAP 84)", () => {
+  const t = setup();
+  try {
+    const lines = ['{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}',
+                   '{"jsonrpc":"2.0","method":"notifications/initialized"}',
+                   '', '{"jsonrpc":"2.0","id":"x","method":"tools/call","params":{"name":"search","arguments":{"query":"a \\"b\\" நொடி"}}}'];
+    let r = nodi(t, ["mcp", "--ask"], { input: lines.join("\n") + "\n", env: { NODI_ASK_SESSION: "t0k" } });
+    assert.equal(r.status, 0, r.err);
+    assert.deepEqual(r.out.trim().split("\n").map(l => JSON.parse(l)),
+      [{ jsonrpc: "2.0", id: 1, result: { seen: "initialize" } }, { jsonrpc: "2.0", id: "x", result: { seen: "tools/call" } }], "a notification gets nothing");
+    assert.equal(readFileSync(join(t, "log.ask"), "utf8").split("\n")[2], lines[3], "the message reaches Ask as it came");
+    // An ended session's token, then the shell down: each request still answered.
+    r = nodi(t, ["mcp", "--ask"], { input: lines[0] + "\n" + lines[1] + "\n", env: { NODI_ASK_SESSION: "old" } });
+    assert.deepEqual(JSON.parse(r.out), { jsonrpc: "2.0", id: 1, error: { code: -32603, message: "The bar cannot be reached" } });
+    r = nodi(t, ["mcp", "--ask"], { input: lines[3] + "\n", down: true, env: { NODI_ASK_SESSION: "t0k" } });
+    assert.equal(JSON.parse(r.out).error.code, -32603);
+    assert.equal(JSON.parse(r.out).id, "x");
+    // An empty answer from the shell: the request is still answered, the notification not.
+    r = nodi(t, ["mcp", "--ask"], { input: lines[1] + "\n" + lines[3] + "\n", env: { NODI_ASK_SESSION: "t0k", FAKE_EMPTY: "1" } });
+    assert.deepEqual(JSON.parse(r.out), { jsonrpc: "2.0", id: "x", error: { code: -32603, message: "The bar gave no answer" } });
+    // The facade's "ok" for a function that returned nothing is no answer either.
+    r = nodi(t, ["mcp", "--ask"], { input: lines[3] + "\n", env: { NODI_ASK_SESSION: "t0k", FAKE_EMPTY: "ok" } });
+    assert.equal(JSON.parse(r.out).error.message, "The bar gave no answer");
+    // Past 64 KB a message is refused here; without its session it does not start.
+    r = nodi(t, ["mcp", "--ask"], { input: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "search", arguments: { query: "x".repeat(70000) } } }) + "\n",
+                                    env: { NODI_ASK_SESSION: "t0k" } });
+    assert.match(JSON.parse(r.out).error.message, /64 KB/);
+    r = nodi(t, ["mcp", "--ask"], { input: lines[0] + "\n" });
+    assert.equal(r.status, 2);
+    assert.match(r.err, /NODI_ASK_SESSION/);
   } finally { rmSync(t, { recursive: true, force: true }); }
 });

@@ -2,15 +2,16 @@
 .import "../lib/Run.js" as Run
 .import "selection.js" as Selection
 
-// Ask: a quick answer from Claude in the bar (components/Ask.qml holds the
-// session; Nodi.qml puts its state in ctx.ask = { phase, question, answer,
-// error, model }). `ask how do I ...` then Enter asks; the answer streams
+// Ask: a quick answer from a coding agent in the bar (components/Ask.qml
+// holds the session; Nodi.qml puts its state in ctx.ask = { phase,
+// question, answer, error, agent, model, setup, activity, proposal }).
+// `ask how do I ...` then Enter asks; the answer streams
 // into the card, then Enter pastes it where you were, Ctrl+Enter copies it,
 // and Ctrl+K continues the question in your coding agent. Tab on a query
 // nothing completes asks it; a query nothing answers offers Ask. A question
 // within ten minutes of the last answer follows it (components/Ask.qml);
 // "New question" starts afresh. A question can be about the text selected
-// or the window the bar opened over, which goes to Claude as a picture
+// or the window the bar opened over, which goes to the agent as a picture
 // (ROADMAP 43).
 
 // The message for a question about the selection: the question, then the
@@ -19,9 +20,10 @@ function aboutText(q, text) {
   return String(q) + "\n\nThe text it is about:\n<text>\n" + String(text) + "\n</text>"
 }
 
-function modelName(model) {
-  var m = String(model || "haiku")
-  return m.charAt(0).toUpperCase() + m.slice(1)
+// "Claude", "Claude Haiku": the agent, and the model asked of it.
+function agentName(a) {
+  var m = String((a && a.model) || "")
+  return String((a && a.agent) || "Claude") + (m && !/[\/:]/.test(m) ? " " + m.charAt(0).toUpperCase() + m.slice(1) : "")
 }
 
 var provider = {
@@ -30,10 +32,10 @@ var provider = {
   icon: "󰚩",
   modes: [{ pattern: /^\s*ask\s/i, label: "Ask", icon: "󰚩", exclusive: true, hint: "ask <question>" }],
   commands: [
-    { title: "Ask Claude", keywords: "ask ai claude question chat llm answer", text: "A quick answer, streamed into the bar", complete: "ask " }
+    { title: "Ask your agent", keywords: "ask ai claude gemini codex cursor opencode agent question chat llm answer", text: "A quick answer, streamed into the bar", complete: "ask " }
   ],
   help: [
-    { id: "ask", title: "Ask", icon: "󰚩", about: "A quick answer from Claude; Enter pastes it, Ctrl+Enter copies it",
+    { id: "ask", title: "Ask", icon: "󰚩", about: "A quick answer from your coding agent; Enter pastes it, Ctrl+Enter copies it",
       examples: [{ q: "ask ", note: "Then a question, and Enter" },
                  { q: "list open ports", note: "Tab, where there is nothing to fill in, asks it" }] }
   ],
@@ -42,21 +44,23 @@ var provider = {
     if (!m) return []
     var q = m[1].trim()
     var a = ctx.ask || { phase: "idle" }
-    var name = modelName(a.model)
-    // Claude asks to run a row it found (ROADMAP 44): Enter runs it, Escape
-    // or the other row refuses, and Claude is told either way; whatever
-    // the field holds, since it waits on him (Fable 2026-10-06). With the
-    // field on another question, Refuse leads: an Enter meant for that
-    // question says no rather than running a row he may not have read.
+    var who = String(a.agent || "Claude")
+    var name = agentName(a)
+    // The agent asks to run a row it found (ROADMAP 44), to use a tool, or
+    // for him to sign in: Enter allows, Escape or the other row refuses,
+    // and the agent is told either way; whatever the field holds, since it
+    // waits on him (Fable 2026-10-06). With the field on another question,
+    // Refuse leads: an Enter meant for that question says no rather than
+    // running a row he may not have read.
     if (a.phase === "proposing" && a.proposal) {
       var p = a.proposal
       var other = a.question !== q
-      // A named server's tool is allowed, a row run (ROADMAP 49).
-      var verb = p.tool ? "to use it" : "to run it"
-      var allowRow = { key: "ask:allow", title: (p.tool ? "Allow " : "Run ") + p.title,
-                       subtitle: other ? "Claude asks " + verb + " for: " + a.question : (p.subtitle || "Claude asks " + verb),
-                       icon: "󰚩", score: other ? 98 : 99, copy: "", nodi: "askAllow", actionLabel: p.tool ? "Allow" : "Run", remember: false }
-      var denyRow = { key: "ask:deny", title: "Refuse", subtitle: "Claude is told no", icon: "󰜺", score: other ? 99 : 98, copy: "",
+      // A tool is allowed, a row run (ROADMAP 49, 84).
+      var verb = p.auth ? "you to sign in" : p.tool ? "to use it" : "to run it"
+      var allowRow = { key: "ask:allow", title: p.auth ? p.title : (p.tool ? "Allow " : "Run ") + p.title,
+                       subtitle: other ? who + " asks " + verb + " for: " + a.question : (p.subtitle || who + " asks " + verb),
+                       icon: "󰚩", score: other ? 98 : 99, copy: "", nodi: "askAllow", actionLabel: p.auth ? "Sign in" : p.tool ? "Allow" : "Run", remember: false }
+      var denyRow = { key: "ask:deny", title: p.auth ? "Not now" : "Refuse", subtitle: who + " is told no", icon: "󰜺", score: other ? 99 : 98, copy: "",
                       nodi: "askDeny", actionLabel: "Refuse", remember: false }
       return other ? [denyRow, allowRow] : [allowRow, denyRow]
     }
@@ -65,9 +69,9 @@ var provider = {
     if (a.capturing) return [{ key: "ask:shot", title: "Taking a picture of the window...", subtitle: q, icon: "󰹑", score: 98, copy: "", remember: false }]
     var running = a.phase === "waiting" || a.phase === "streaming"
     if (running && a.question !== q)
-      return [{ key: "ask:busy", title: "Claude is still on: " + a.question, subtitle: "Ask when it has answered", icon: "󰚩", score: 98, copy: "", remember: false }]
+      return [{ key: "ask:busy", title: who + " is still on: " + a.question, subtitle: "Ask when it has answered", icon: "󰚩", score: 98, copy: "", remember: false }]
     if (a.question !== q || a.phase === "idle") {
-      var rows = [{ key: "ask:new", title: "Ask " + name + ": " + q, subtitle: name, icon: "󰚩", score: 98,
+      var rows = [{ key: "ask:new", title: "Ask " + who + ": " + q, subtitle: name, icon: "󰚩", score: 98,
                     copy: q, nodi: "ask", actionLabel: "Ask", remember: false }]
       var sel = ctx.selection || {}
       var ab = Selection.about(sel)
@@ -82,8 +86,12 @@ var provider = {
       return rows
     }
     if (a.phase === "waiting" || a.phase === "streaming") {
-      return [{ key: "ask:wait", title: a.phase === "waiting" ? "Asking " + name + "..." : "Answering...", subtitle: q, icon: "󰚩",
-                score: 98, copy: a.answer || "", remember: false }]
+      // What it is doing while there are no words yet: an adapter
+      // installing, or a tool at work.
+      var doing = a.setup && a.phase === "waiting" && !a.answer ? a.setup + "..."
+                : a.activity ? who + ": " + a.activity + "..."
+                : a.phase === "waiting" ? "Asking " + name + "..." : "Answering..."
+      return [{ key: "ask:wait", title: doing, subtitle: q, icon: "󰚩", score: 98, copy: a.answer || "", remember: false }]
     }
     if (a.phase === "error") {
       return [{ key: "ask:error", title: "Could not ask: " + a.error, subtitle: q, icon: "󰚩", score: 98,
@@ -103,7 +111,7 @@ var provider = {
       { key: "ask:again", title: "Ask again", subtitle: a.context === "window" ? q + ", with the same picture" : q, icon: "󰚩", score: 95, copy: q,
         nodi: "ask", remember: false, actionLabel: "Ask" },
       // A follow-up is a question typed after `ask `; this one forgets.
-      { key: "ask:fresh", title: "New question", subtitle: "Claude forgets this conversation", icon: "󰚩", score: 94, copy: "",
+      { key: "ask:fresh", title: "New question", subtitle: who + " forgets this conversation", icon: "󰚩", score: 94, copy: "",
         nodi: "askNew", remember: false, actionLabel: "Start" }
     ]
   }

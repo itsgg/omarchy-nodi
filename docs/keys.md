@@ -10,7 +10,7 @@ What each key does in the bar, as the Keys topic (`?shortcuts`) shows it:
 | Ctrl K | The row's other actions; type to find one |
 | Ctrl Shift F A D H | Favourite, alias, deeplink, hide the row |
 | Ctrl Shift P | Pin a clipboard entry |
-| Tab | Fill the row in, or ask Claude |
+| Tab | Fill the row in, or ask your agent |
 | Ctrl 1-9 | Run one of the first nine rows |
 | Up Down Ctrl N P | Move in the list |
 | PgUp PgDn | A page of the list |

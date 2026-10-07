@@ -3,9 +3,9 @@
 //   1. Every Process clears its environment, and only Reader.qml has one:
 //      a reader added straight into Nodi.qml would inherit the shell's.
 //      The one exception is Ask.qml's session, which is not a reader: one
-//      process held open with stdin, started from the constant command in
-//      lib/AskStream.js, that needs the user's environment for Claude's
-//      own credentials.
+//      process held open with stdin, the agent started by the constant
+//      script in lib/Agents.js (spec), that needs the user's environment
+//      for the agent's own credentials.
 //   2. No provider builds a shell string from data: `bash -c` appears only
 //      in lib/Run.js and in constant scripts, and every row a corpus of
 //      queries produces has a run the contract accepts.
@@ -32,7 +32,7 @@ const files = dir => readdirSync(join(root, dir)).filter(f => /\.(js|qml|mjs|sh|
 for (const rel of ["Nodi.qml", ...files("components")]) {
   const src = read(rel);
   const count = (src.match(/^\s*Process\s*\{/gm) || []).length;
-  const allowed = rel === "components/Reader.qml" || (rel === "components/Ask.qml" && count === 1 && /command = AskStream\.argv\(/.test(src));
+  const allowed = rel === "components/Reader.qml" || (rel === "components/Ask.qml" && count === 1 && /var argv = ask\.program \|\| \(ask\.spec && ask\.spec\.argv\)/.test(src) && /proc\.command = argv\n/.test(src));
   if (!allowed && count > 0) problems.push(`${rel}: a Process outside Reader.qml`);
   if (rel === "components/Reader.qml" && !/clearEnvironment:\s*true/.test(src)) problems.push(`${rel}: Process without clearEnvironment`);
 }

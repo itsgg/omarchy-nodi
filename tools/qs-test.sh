@@ -61,7 +61,10 @@ QML
 
 qs --no-color -p "$work/shell.qml" >"$work/out" 2>&1 &
 pid=$!
-for _ in $(seq 1 600); do
+# A minute, or five when real agents are asked (tests/qml/AgentsLiveTest.qml).
+limit=600
+[[ -z ${NODI_TEST_AGENTS:-} ]] || limit=3000
+for _ in $(seq 1 "$limit"); do
   grep -q "NODI-TEST done" "$work/out" 2>/dev/null && break
   kill -0 "$pid" 2>/dev/null || break
   sleep 0.1
@@ -70,4 +73,5 @@ grep -q "NODI-TEST done" "$work/out" || { echo "qs-test: Quickshell did not fini
 sed -n "s#^.*NODI-TEST \(pass\|fail\) file://$root/#\1 #p" "$work/out"
 # NODI_TEST_LOG=1 shows what the tests printed besides their verdicts.
 [[ -z ${NODI_TEST_LOG:-} ]] || grep -v "NODI-TEST" "$work/out" | grep "NODI-" | sed 's/^.*\(NODI-\)/\1/'
+[[ -z ${NODI_TEST_ALL:-} ]] || cat "$work/out"
 ! grep -q "NODI-TEST fail" "$work/out"
