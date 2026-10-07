@@ -14,8 +14,12 @@
 // (ctx.selection.source "clipboard", Nodi.qml); a copy's answer pastes
 // where the cursor is.
 //
-//   (empty, fresh)        Fix spelling and grammar, Rewrite..., Translate,
-//                         Change case..., a search, at the top
+//   (empty, fresh)        one row at the top naming the text, "Copied: git
+//                         push"; Enter types `copied ` (or `selected `)
+//   copied, selected      what can be done with it: Fix spelling and
+//                         grammar, Rewrite..., Translate, Change case...,
+//                         a search, Summarize, Explain; words after it
+//                         narrow them
 //   fix, translate, ...   the same rows by name, while it is fresh (two
 //                         minutes from when it was first seen): a primary
 //                         selection is nearly always there, from any
@@ -43,9 +47,11 @@ function language(config) {
 // What the text is called and where it came from: selected, or copied
 // with Ctrl+C (Nodi.qml readSelection). A copy is not selected in the
 // window, so Claude's answer pastes where the cursor is (providers/ask.js).
+// `word` is what the home row types to list its actions.
 function about(sel) {
   var copied = !!sel && sel.source === "clipboard"
-  return { noun: copied ? "the copied text" : "the selection", context: copied ? "copied" : "selection", label: copied ? "Copied: " : "Selected: " }
+  return { noun: copied ? "the copied text" : "the selection", context: copied ? "copied" : "selection", label: copied ? "Copied: " : "Selected: ",
+           word: copied ? "copied" : "selected" }
 }
 
 // What Claude is asked for each action: the question as the bar shows it,
@@ -169,15 +175,42 @@ function extend(row, extra) {
   return row
 }
 
-var HOME = 5
-
-// What an empty bar leads with when the selection is fresh: the first five.
+// What an empty bar leads with when the selection is fresh: one row naming
+// the text, whose Enter lists what can be done with it. Five rows of
+// actions led the bar for two minutes after any copy and pushed Recent
+// down, "Fix spelling and grammar" on a copied "git push" (his pick
+// 2026-10-07); Alfred shows its actions on a selection by a hotkey of
+// their own and Raycast by name, neither on its root list.
 function homeRows(ctx) {
   var sel = ctx.selection || {}
   if (!sel.fresh || !sel.text) return []
-  return all(sel.text, ctx).slice(0, HOME).map(function(a, n) {
-    return a.row({ score: 300 - n, kind: "action", group: about(sel).label + shown(sel.text) })
-  })
+  var ab = about(sel)
+  return [{ key: "selection:actions", title: ab.label + shown(sel.text), subtitle: "Fix, rewrite, translate, change case, search",
+            icon: ICON, copy: "", complete: ab.word + " ", actionLabel: "Open", remember: false, score: 300, kind: "action" }]
+}
+
+// `copied ` or `selected `, and words after it: the actions on the text,
+// all of them in the home view's order, or those the words name. Words
+// that name none are the rest of the bar's: a selection is nearly always
+// there, and "selected editor" found nothing else (Cursor 2026-10-07).
+function actionRows(text, filter, ctx) {
+  var sel = ctx.selection || {}
+  var group = about(sel).label + shown(text)
+  var list = all(text, ctx)
+  var out = []
+  for (var i = 0; i < list.length; i++) {
+    if (!filter) { out.push(list[i].row({ score: 98 - i * 0.01, kind: "action", group: group })); continue }
+    var t = Score.tier(filter, { name: list[i].c.title, keywords: list[i].c.keywords })
+    if (t && !Score.loose(t)) out.push(list[i].row({ tier: t, kind: "action", group: group }))
+  }
+  if (!filter) return out
+  // A case by its name ("upper") pastes at once.
+  for (var j = 0; j < CASES.length; j++) {
+    var ct = Score.tier(filter, { name: CASES[j].title, keywords: CASES[j].keywords })
+    if (ct && !Score.loose(ct)) out.push(pasteRow("selection:case:" + CASES[j].id, CASES[j].title, CASES[j].change(text),
+                                                  { tier: ct, kind: "action", group: group }))
+  }
+  return out
 }
 
 // Ready rewrites under `rewrite ` before he says how, the first chosen, so
@@ -198,13 +231,15 @@ function rewriteRow(title, how, text, score, ab) {
 
 var REWRITE = /^\s*rewrite(?:\s+(.*))?$/i
 var CASE = /^\s*case(?:\s+(.*))?$/i
+var ACTIONS = /^\s*(?:copied|selected)(?:\s+(.*))?$/i
 
 var provider = {
   id: "selection",
   name: "Selection",
   icon: ICON,
   modes: [{ pattern: /^\s*rewrite\s/i, label: "Rewrite", icon: ICON, exclusive: true, hint: "rewrite <how>" },
-          { pattern: /^\s*case\s/i, label: "Change case", icon: ICON, exclusive: true, hint: "case <which>" }],
+          { pattern: /^\s*case\s/i, label: "Change case", icon: ICON, exclusive: true, hint: "case <which>" },
+          { pattern: /^\s*(?:copied|selected)\s/i, label: "Selection", icon: ICON, exclusive: true, hint: "copied|selected <action>" }],
   help: [
     { id: "selection", title: "Selection", icon: ICON,
       about: "Text you selected before opening the bar: fixed, rewritten, translated, its case changed, searched; pasted over it",
@@ -231,8 +266,14 @@ var provider = {
     }
     if ((m = String(query).match(CASE)) && /\s/.test(String(query).replace(/^\s+/, ""))) {
       if (!text) return []
-      var rows = caseRows(text, String(m[1] || "").trim())
-      return rows.length ? rows : [{ title: "No case matches " + m[1].trim(), subtitle: "Change case", score: 40, copy: "", remember: false }]
+      // A word that is no case is the rest of the bar's, as above: "case
+      // study" with any text selected.
+      return caseRows(text, String(m[1] || "").trim())
+    }
+    // Like rewrite and case, any selection: the words were typed for it.
+    if ((m = String(query).match(ACTIONS)) && /\s/.test(String(query).replace(/^\s+/, ""))) {
+      if (!text) return []
+      return actionRows(text, String(m[1] || "").trim(), ctx)
     }
     // By name, while the selection is fresh: each row says what it acts on.
     var q = String(query).trim()

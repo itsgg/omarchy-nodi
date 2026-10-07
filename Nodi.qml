@@ -610,7 +610,7 @@ Item {
       // The desktop the rows show, so the timer redraws them when it moves;
       // a search for Claude does not count (Fable 2026-10-06).
       desktopTimer.seen = JSON.stringify(svc.desktop)
-      root.mode = Engine.mode(root.queryNow(), root.config)
+      root.mode = Engine.mode(root.queryNow(), root.config, root.results)
       // A step names where it is: "Wi-Fi > Home".
       if (root.filterStep && root.mode && root.filterStep.trail.length)
         root.mode = { label: root.mode.label + " > " + root.filterStep.trail[root.filterStep.trail.length - 1].label, icon: root.mode.icon, hint: root.mode.hint }
@@ -815,6 +815,7 @@ Item {
       root.forget(row.key)
       return
     }
+    if (a.nodi === "complete") { root.complete(row); return }
     if (a.nodi) { root.setPref(a, row); return }
     var own = !!a.own
     var remembered = own && row.remember

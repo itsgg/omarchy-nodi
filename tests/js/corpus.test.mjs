@@ -45,7 +45,12 @@ test("every row from every query is well formed", () => {
       assert.equal(typeof row.title, "string", q);
       assert.equal(typeof row.key, "string", q);
       if (row.run) { runs++; assert.equal(Run.problem(row.run), "", `${q}: ${row.title}`); assert.ok(Run.command(row.run, () => ["x"]), `${q}: ${row.title}`); }
-      for (const a of Rows.actionsFor(row, { activeWorkspace: 2 })) { actions++; assert.equal(Run.problem(a.run), "", `${q}: ${row.title}: ${a.label}`); }
+      for (const a of Rows.actionsFor(row, { activeWorkspace: 2 })) {
+        actions++;
+        // Nodi's own verbs (complete, favourite, alias) run nothing.
+        if (a.nodi) { assert.ok(!a.run, `${q}: ${row.title}: ${a.label}`); continue; }
+        assert.equal(Run.problem(a.run), "", `${q}: ${row.title}: ${a.label}`);
+      }
     }
     Engine.mode(q, config);
   }

@@ -66,7 +66,7 @@ text already typed:
 | `note call the bank`, `notes bank` | One dated line in `~/Documents/notes.md` (`"notes": { "file": ... }`); its lines found again, Enter opening the file (at the line, in a terminal editor) |
 | `ask why is the sky blue`, or Tab | A quick answer from Claude, a conversation for ten minutes, or about the selected text or the window you came from; needs [Claude Code](https://claude.com/claude-code) installed and signed in |
 | `ask lock my screen`, `ask turn on night light` | Claude finds the row and asks to run it: the bar shows it with its command, Enter runs it, Esc refuses |
-| Select or copy text, then open the bar; `fix`, `rewrite `, `case ` | It fixed, rewritten, translated or its case changed, pasted over the selection or at the cursor; or searched |
+| Select or copy text, then open the bar: Enter on its row, or `fix`, `rewrite `, `case ` | It fixed, rewritten, translated or its case changed, pasted over the selection or at the cursor; or searched |
 | `tr ta good morning`, `good morning in french` | A translation by Claude; Enter pastes it |
 | `?`, `?mine` | Help, with every example answered live; every alias, hotkey, favourite and hidden row you set |
 
