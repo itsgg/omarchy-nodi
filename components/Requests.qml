@@ -16,6 +16,9 @@ Item {
   property var env: ({})            // { user, home, cacheDir, pluginDir, path } for the sources' argv
 
   signal arrived(string key)
+  // Every read that lands, the same rows again included (a hold waits on
+  // it: Nodi.qml homeReadsIn).
+  signal landed(string key)
 
   property var cache: ({})          // key -> entry, changed in place
   property var readers: ({})        // source name, or key of a concurrent source -> Reader
@@ -94,6 +97,7 @@ Item {
     if (unchanged) after.value = before.value
     requests.put(tag.key, after)
     if (!unchanged) requests.arrived(tag.key)
+    requests.landed(tag.key)
   }
 
   // What a saved copy gives before any read (rates.json at start).

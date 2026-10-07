@@ -30,6 +30,7 @@ import "lib/Appearance.js" as Appearance
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
+import "providers/chooser.js" as Chooser
 
 // Nodi: a command bar for Omarchy. This file draws, takes keys and fetches
 // data; what a query means is decided by providers/, run through
@@ -177,6 +178,10 @@ Item {
     var starting = !root.opened
     if (starting) root.openRec = Opens.start(Date.now(), root.openBy || "call", false)
     root.openBy = ""
+    // The window it opened over, first: a payload's query below is
+    // answered over it, a script filter's run told of it (Cursor
+    // 2026-10-07: noted after, the last window was).
+    root.noteWindow()
     // Sizes change at once until the card is up (startReads).
     card.animated = false
     var payload = {}
@@ -197,12 +202,24 @@ Item {
       input.text = ""
     }
     root.recallAt = -1
-    // The selection is this open's, read after its first frame: until then
-    // there is none, so the last open's rows never lead this one (Fable
-    // 2026-10-06).
-    if (starting) { root.selection = ""; root.selectionFresh = false }
+    // The selection is this open's: until it is read there is none, so the
+    // last open's rows never lead this one (Fable 2026-10-06). It is read
+    // now, before the first frame (one fork, about 20 ms), and the empty
+    // bar's rows wait for it, a quarter second at most: read after the
+    // frame, the copied text's rows landed over Recent a moment after it
+    // showed (his report 2026-10-07).
+    root.openGen++
+    if (starting) {
+      root.selection = ""
+      root.selectionFresh = false
+      root.homeHeld = true
+      homeHold.restart()
+    }
+    root.readSelection()
+    // The other reads that put rows at the top, started now where they
+    // apply, so the hold knows they are on their way.
+    root.readAhead(true)
     launchFeedback.opened()
-    root.noteWindow()
     root.opens++
     root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
     root.aliasRow = null
@@ -261,8 +278,10 @@ Item {
   }
 
   function startReads() {
-    // The card is on screen by now: its size changes animate from here on.
-    card.animated = true
+    // The card is on screen by now: its size changes animate from here on,
+    // unless it is still held unseen, when it shows at its size (Cursor
+    // 2026-10-07: the reveal grew in 90 ms).
+    card.animated = !root.contentHeld
     if (!root.readsPending) return
     root.readsPending = false
     readsAfterFrame.stop()
@@ -272,12 +291,8 @@ Item {
     root.refreshThemes()
     root.refreshReminders()
     root.refreshZones()
-    root.readSelection()
     requests.request("omarchy-commands")
     requests.request("agent-usage")
-    // The calendar, once a feed is set: the next meeting leads (ROADMAP 67).
-    var feeds = Calendars.param(root.config.calendar)
-    if (feeds && (root.config.providers || []).indexOf("calendar") !== -1) requests.request("calendar", feeds)
     trayMenus.active = true
     if (Date.now() - root.guardsAt > 60 * 1000) root.evaluateGuards()
   }
@@ -305,7 +320,60 @@ Item {
   property string lastCopied: ""
   property real copiedSeenAt: 0
 
-  function readSelection() { selectionReader.run(Sources.selectionArgv()) }
+  // This open's read, tagged with it: a read still running from the last
+  // open lands as the last open's, and this one's waits behind it (Cursor
+  // 2026-10-07).
+  property int openGen: 0
+  property bool selectionPending: false
+  function readSelection() {
+    root.selectionPending = true
+    selectionReader.run(Sources.selectionArgv(), { gen: root.openGen })
+  }
+
+  // The empty bar's rows, held until what may lead them is read: the
+  // copied or selected text, and, where they apply, a file dialog's
+  // folders and the calendar's events (each read ahead, at start, so an
+  // open finds them). Drawn once, whole, they do not move under the eye.
+  property bool homeHeld: false
+  // Only the empty bar's own rows wait: a pick, an alias, a confirm word
+  // or a hotkey being set shows at once (Cursor 2026-10-07: an unseen
+  // pick took Enter).
+  readonly property bool contentHeld: root.homeHeld && root.composedQuery.trim() === "" && !root.pickSession && !root.aliasRow
+                                      && !root.wordAsk && !root.captureRow
+  Timer { id: homeHold; interval: 250; onTriggered: root.releaseHome() }
+  function providerOn(id) { return (root.config.providers || []).indexOf(id) !== -1 }
+  // A read with nothing yet or one on its way holds the rows; a failed one
+  // does not (Cursor 2026-10-07: a refresh due when the hold let go moved
+  // them after).
+  function settled(key) { var e = requests.cache[key]; return !!e && !e.pending }
+  function homeReadsIn() {
+    if (root.selectionPending) return false
+    if (root.providerOn("chooser") && Chooser.dialogOf(root.cameFrom) && !root.settled("chooser-folders")) return false
+    var feeds = Calendars.param(root.config.calendar)
+    if (feeds && root.providerOn("calendar") && !root.settled("calendar:" + feeds)) return false
+    return true
+  }
+  // Those reads, started if due: at each open where they apply, and at
+  // start and on a new config, so an open finds them in hand.
+  function readAhead(opening) {
+    if (root.providerOn("chooser") && (!opening || Chooser.dialogOf(root.cameFrom))) requests.request("chooser-folders")
+    var feeds = Calendars.param(root.config.calendar)
+    if (feeds && root.providerOn("calendar")) requests.request("calendar", feeds)
+  }
+  function settleHome() { if (root.homeHeld && root.homeReadsIn()) root.releaseHome() }
+  function releaseHome() {
+    if (!root.homeHeld) return
+    root.homeHeld = false
+    homeHold.stop()
+    Opens.stamp(root.openRec, "settled", Date.now())
+    if (!root.opened) return
+    var top = root.selectedIndex === 0
+    var shown = card.animated
+    card.animated = false
+    root.recompute()
+    if (top) root.selectedIndex = 0
+    Qt.callLater(function() { card.animated = shown || !root.readsPending })
+  }
 
   // A copy the bar makes itself is no copy of his to act on: seen, and
   // stale (Fable 2026-10-06: "Copied: 96" led the next open).
@@ -318,16 +386,23 @@ Item {
     id: selectionReader
     timeoutMs: 1000
     maxBytes: 140000
-    onFinished: function(text, ok) {
+    onFinished: function(text, ok, tag) {
+      // The last open's read: this open's own waits behind it.
+      if (!tag || tag.gen !== root.openGen) return
+      root.selectionPending = false
       // A read that failed or was cut off knows nothing: this open has no
       // text, and what was seen before stays seen (Fable 2026-10-06: it
       // made an old copy look new at the next read).
       var had = root.selection !== ""
+      Opens.stamp(root.openRec, "selection", Date.now())
       if (!ok) {
         root.selection = ""
         root.selectionFresh = false
         // Rows made from an earlier read go too (Fable 2026-10-06).
-        if (root.opened && had) root.recompute()
+        if (root.homeHeld) {
+          root.settleHome()
+          if (root.homeHeld && !root.contentHeld && root.opened && had) root.recompute()
+        } else if (root.opened && had) root.recompute()
         return
       }
       var both = Sources.selections(text)
@@ -352,6 +427,14 @@ Item {
       root.selection = root.selectionSource === "clipboard" ? copied : got
       root.selectionFresh = fresh || copiedFresh
       got = root.selection
+      // Held, the rows are drawn once, now that it is read; a query on show
+      // meanwhile (a payload's) is answered with it at once (Cursor
+      // 2026-10-07: it waited for the hold).
+      if (root.homeHeld) {
+        root.settleHome()
+        if (root.homeHeld && !root.contentHeld && root.opened) root.recompute()
+        return
+      }
       // The open began with none: any selection redraws (`tr ta`, `case `),
       // as does one gone since an open while the bar was up, and a fresh
       // one's first row is chosen while he is still at the top, a kept
@@ -463,7 +546,8 @@ Item {
   Connections {
     target: card.Window.window
     ignoreUnknownSignals: true
-    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1) Opens.stamp(root.openRec, "frame", Date.now()) }
+    // The first frame that shows the card: one held is not seen (contentHeld).
+    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1 && !root.contentHeld) Opens.stamp(root.openRec, "frame", Date.now()) }
   }
 
   // Hyprland maps the layer: what the compositor shows.
@@ -500,8 +584,12 @@ Item {
     }
   }
 
+  // The keys of the rows on screen, as far as a card shows them.
+  function shownKeys() { return root.rows.slice(0, 8).map(function(r) { return r.key }).join("\u0001") }
+
   function recompute() {
     var before = { query: root.shownQuery, key: root.selectedRow ? root.selectedRow.key : "", index: root.selectedIndex }
+    var keysBefore = root.shownKeys()
     if (root.captureRow) {
       root.results = Engine.hotkeyPrompt(root.captureRow, root.captureNote)
       root.mode = { label: "Hotkey", icon: "󰌌" }
@@ -516,7 +604,9 @@ Item {
       root.mode = { label: "Pick", icon: Pick.PROVIDER.icon }
     } else {
       var svc = root.services()
-      root.results = Engine.run(root.queryNow(), root.config, svc)
+      // The empty bar while what may lead it is still being read: nothing
+      // yet, rather than rows that move when it lands.
+      root.results = root.homeHeld && root.queryNow().trim() === "" ? [] : Engine.run(root.queryNow(), root.config, svc)
       // The desktop the rows show, so the timer redraws them when it moves;
       // a search for Claude does not count (Fable 2026-10-06).
       desktopTimer.seen = JSON.stringify(svc.desktop)
@@ -530,6 +620,11 @@ Item {
         Qt.callLater(function() { if (root.opened) root.finish() })
     }
     root.selectedIndex = NodiKeys.reselect(before, root.rows, root.queryNow())
+    // Rows that changed on screen after the first frame, in the open's
+    // first three seconds, with nothing typed (blank to full counts): the
+    // open's jank (lib/Opens.js moved).
+    if (root.openRec && root.openRec.frame >= 0 && !root.typedSinceOpen && Date.now() - root.openRec.at < 3000 && keysBefore !== root.shownKeys())
+      root.openRec.moved++
     root.shownQuery = root.queryNow()
     if (root.rows.length > 0) card.keepVisible(root.selectedIndex)
   }
@@ -1292,6 +1387,7 @@ Item {
 
   onConfigChanged: {
     if (root.opened) root.recompute()
+    if (root.configsLoaded) root.readAhead(false)
     root.zonesFetchedAt = 0
     root.ensureHotkey()
     root.describeApps()
@@ -1419,6 +1515,7 @@ Item {
     if (which === "user") root.userConfigSeen = true
     if (root.defaultConfigSeen && root.userConfigSeen && !root.configsLoaded) {
       root.configsLoaded = true
+      root.readAhead(false)
       hotkeyStart.start()
       hotkeyRecheck.start()
       if (root.configPending) { var e = root.configPending; root.configPending = ""; root.configError(e) }
@@ -1775,7 +1872,10 @@ Item {
     id: requests
     providers: Engine.providers()
     env: ({ user: root.user, home: root.home, cacheDir: root.cacheDir, pluginDir: root.pluginDir, path: Quickshell.env("PATH") || "" })
-    onArrived: if (root.opened) root.recompute()
+    // Held, the read that completes the rows draws them once.
+    onArrived: if (root.opened) { if (root.homeHeld && root.homeReadsIn()) root.releaseHome(); else root.recompute() }
+    // A read that brought the same rows again still completes them.
+    onLanded: if (root.opened && root.homeHeld) root.settleHome()
   }
 
   // The rates saved by the last read, so conversions work offline from the
@@ -1946,6 +2046,8 @@ Item {
     root.windows = w.list
     root.activeWorkspace = w.activeWorkspace
     if (root.cameFromTop) root.cameFrom = Sources.windowContext(root.cameFromTop, w.list)
+    // A dialog whose floating only the list says: its folders, while held.
+    if (root.opened && root.homeHeld) root.readAhead(true)
   }
 
   // A burst of records (one per window on a refresh) read once.
@@ -2136,6 +2238,13 @@ Item {
       nodi: root
       anchors.horizontalCenter: parent.horizontalCenter
       y: look.cardTop
+      // Unseen until the empty bar's rows are whole: the GUI thread draws
+      // the first frame before it reads the selection's answer, so a card
+      // shown at once showed without the rows that then pushed the list
+      // down (measured 2026-10-07: the read in at 75 ms, the frame at 74).
+      // Shown a frame later, whole. Opacity, not visibility: the field
+      // takes the keys meanwhile.
+      opacity: root.contentHeld ? 0 : 1
     }
   }
 }

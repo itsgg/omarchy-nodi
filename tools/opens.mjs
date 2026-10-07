@@ -28,7 +28,8 @@ const row = (name, sub) => {
   const s = Opens.summary(sub);
   if (!s.opens) return;
   const cell = p => s[p].seen ? `${p} ${s[p].p50}/${s[p].p90} ms (${s[p].seen})` : `${p} not seen`;
-  console.log(`opens: ${name}, ${s.opens}: ` + Opens.PHASES.map(cell).join(", "));
+  const moved = s.moved.counted ? `, rows moved after the first frame in ${s.moved.opens} of ${s.moved.counted}` : "";
+  console.log(`opens: ${name}, ${s.opens}: ` + Opens.PHASES.map(cell).join(", ") + moved);
 };
 console.log(`opens: ${list.length} from ${new Date(list[0].at).toISOString()} to ${new Date(list[list.length - 1].at).toISOString()}; median/p90 after the start`);
 row("all", list);
