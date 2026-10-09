@@ -716,6 +716,23 @@ def where(url):
     return None, "not an https:// or webcal:// address, nor a file"
 
 
+class HttpsOnly(urllib.request.HTTPRedirectHandler):
+    """Follows a feed's redirect, but never from https to anything else:
+    an address asked for over https is not read in the clear (codex's
+    review, 2026-10-09). urllib follows ten at most, and only to http,
+    https and ftp; ftp is no feed's either."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        to = (newurl or "").lower()
+        if req.full_url.lower().startswith("https://") and not to.startswith("https://"):
+            raise urllib.error.HTTPError(newurl, code, "a redirect away from https", headers, fp)
+        if not to.startswith(("https://", "http://")):
+            raise urllib.error.HTTPError(newurl, code, "a redirect to no web address", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+OPENER = urllib.request.build_opener(HttpsOnly)
+
+
 def fetch(url, cache_dir, now):
     """The feed's text, and its { ok, error, stale, fetchedAt }."""
     kind, at = where(url)
@@ -753,7 +770,7 @@ def fetch(url, cache_dir, now):
         req.add_header("If-Modified-Since", meta["modified"])
     error = ""
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
+        with OPENER.open(req, timeout=TIMEOUT_S) as r:
             # The socket's timeout is for each read: a feed that trickles
             # is bounded as a whole too (Sonnet 2026-10-06).
             body, until = bytearray(), time.monotonic() + READ_S
@@ -790,7 +807,9 @@ def fetch(url, cache_dir, now):
                 pass
             with open(base + ".ics", "rb") as f:
                 return f.read().decode("utf-8", "replace"), {"ok": True, "fetchedAt": meta["fetchedAt"]}
-        error = "HTTP %d" % e.code
+        # A redirect refused: ours says why; urllib's own, to a scheme it
+        # follows to nowhere (file:), says it with its code.
+        error = e.msg if e.msg == "a redirect away from https" else "a redirect to no web address" if e.code in (301, 302, 303, 307, 308) else "HTTP %d" % e.code
     except urllib.error.URLError as e:
         error = "could not be reached (%s)" % (getattr(e.reason, "strerror", None) or e.reason)
     except (TimeoutError, OSError) as e:

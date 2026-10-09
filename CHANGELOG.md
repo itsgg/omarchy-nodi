@@ -41,6 +41,10 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   desktop, saved desktops, keybindings, plugins; not a reminder); an agent
   proposes anything else, and it runs on your Enter. An agent's search
   starts none of your script filters or inline scripts.
+- Downloads are bounded as the exchange rates were: definitions,
+  suggestions and the weather and Wikipedia extensions over https only
+  and refused past a size; a calendar served over https follows no
+  redirect away from it.
 
 ## 0.3.0 (2026-10-07)
 

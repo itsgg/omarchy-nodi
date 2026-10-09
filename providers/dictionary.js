@@ -75,7 +75,11 @@ var provider = {
     // URL itself (--variable %NODI_Q), so it is in no argument.
     define: {
       argv: function(word) {
-        return ["/usr/bin/curl", "-sS", "--max-time", "6", "-A", "Nodi (https://github.com/itsgg/omarchy-nodi)",
+        // Its body at most the read's 4 MB, over https only, no redirect
+        // followed: -q first, so no ~/.curlrc turns one on (codex's review,
+        // 2026-10-09), as the currency rates' (the marketplace's review
+        // asked it of a rates download, 2026-09-23).
+        return ["/usr/bin/curl", "-q", "-sS", "--max-time", "6", "--max-filesize", "4194304", "--proto", "=https", "-A", "Nodi (https://github.com/itsgg/omarchy-nodi)",
                 "--variable", "%NODI_Q", "--expand-url", "https://en.wiktionary.org/api/rest_v1/page/definition/{{NODI_Q:url}}"]
       },
       environment: function(word) { return { NODI_Q: String(word) } },

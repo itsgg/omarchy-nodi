@@ -32,6 +32,11 @@ Everything Nodi reads, writes, starts and sends, and when.
   keyword of yours does so only with `"suggest": true`.
 - Under `pkg` it asks pacman and, through yay, the AUR; under `define`,
   Wiktionary (en.wiktionary.org's REST API) for the word typed.
+- What it downloads itself is bounded: over https only, following no
+  redirect, and refused past a size (the rates 256 KB, a definition
+  4 MB, suggestions 64 KB, the weather and Wikipedia extensions 1 MB and
+  2 MB an answer); a calendar 20 MB, following a redirect only to
+  https when the address is https.
 - It goes online for exchange rates (open.er-api.com, once the service
   says its next rates are due, daily in practice, or every ten minutes
   while that fails), for `prs` (through `gh`), to describe apps, if
