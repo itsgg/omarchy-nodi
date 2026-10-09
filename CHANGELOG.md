@@ -49,6 +49,9 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   replaces (a calendar's copy, the rates, the packages list, Gemini's
   settings) is written under a name of its own first, never one a link
   could stand at.
+- Ctrl+B and Ctrl+F move a letter as you see one, an emoji or a Tamil
+  letter whole; a query holding half of one no longer fails and leaves
+  the last query's rows for Enter.
 
 ## 0.3.0 (2026-10-07)
 
