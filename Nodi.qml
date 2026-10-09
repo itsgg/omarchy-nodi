@@ -243,6 +243,10 @@ Item {
     // (Cursor 2026-10-07).
     root.selectedIndex = 0
     root.opened = true
+    // prefs.json is read again at each open: a hand edit is taken, a fix
+    // of one with an error too, and one that broke it stops the saves
+    // before any writes over it (codex's review, 2026-10-09).
+    if (root.prefsLoaded) prefsFile.reload()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -894,6 +898,19 @@ Item {
   // kept in ~/.local/state/nodi/prefs.json.
   property var prefs: Prefs.empty()
   property bool prefsLoaded: false
+  // Why prefs.json is no prefs, "" when it is (Prefs.problem): while it is
+  // not, nothing is written over it, and each open reads it again.
+  property string prefsBroken: ""
+  property string prefsWarned: ""
+  // The text last read or written: a read at an open that finds the same
+  // does nothing more.
+  property string prefsText: ""
+  function warnPrefs(why) {
+    if (root.prefsWarned === why) return
+    root.prefsWarned = why
+    Quickshell.execDetached(["notify-send", "-a", "Nodi", "prefs.json has an error",
+      why + ". Nothing you set from Ctrl+K is saved over it until it is fixed: " + root.stateDir + "/prefs.json"])
+  }
   // The row an alias is being made for: the field takes the word, Enter
   // saves it, Esc gives up.
   property var aliasRow: null
@@ -1001,7 +1018,8 @@ Item {
     var rowKeys = function(p) { var o = {}; for (var c in p.hotkeys) o[c] = p.hotkeys[c].key; return JSON.stringify(o) }
     var keysChanged = rowKeys(root.prefs) !== rowKeys(next)
     root.prefs = next
-    if (root.prefsLoaded) prefsFile.setText(Prefs.serialize(next))
+    if (root.prefsBroken) root.warnPrefs(root.prefsBroken)
+    else if (root.prefsLoaded) { root.prefsText = Prefs.serialize(next); prefsFile.setText(root.prefsText) }
     if (keysChanged) root.ensureHotkey()
   }
 
@@ -1374,8 +1392,22 @@ Item {
     // what it shows is noted as reached then (Cursor 2026-10-07). The
     // rows' hotkeys and the window rules are bound from them: a pass made
     // before they were read bound neither.
-    onLoaded: { root.prefs = Prefs.load(text()); root.prefsLoaded = true; root.noteQueued(); root.ensureHotkey(); root.applyRules(); if (root.opened) root.recompute() }
-    onLoadFailed: { root.prefsLoaded = true; root.noteQueued(); root.ensureHotkey(); root.applyRules(); if (root.opened) root.recompute() }
+    onLoaded: {
+      var r = Prefs.reread({ loaded: root.prefsLoaded, text: root.prefsText, broken: root.prefsBroken }, text())
+      // Read again at an open and as it was: nothing to do.
+      if (r.act === "none") return
+      root.prefsBroken = r.act === "broken" ? r.why : ""
+      if (r.act === "broken") root.warnPrefs(r.why)
+      else { root.prefsWarned = ""; root.prefsText = r.text; root.prefs = r.prefs }
+      root.prefsLoaded = true; root.noteQueued(); root.ensureHotkey(); root.applyRules(); if (root.opened) root.recompute() }
+    // No file (none yet, or one with an error deleted): what is held stands,
+    // and the next change is saved.
+    onLoadFailed: {
+      var first = !root.prefsLoaded
+      root.prefsBroken = ""; root.prefsWarned = ""; root.prefsText = ""
+      root.prefsLoaded = true
+      if (first) { root.noteQueued(); root.ensureHotkey(); root.applyRules(); if (root.opened) root.recompute() }
+    }
   }
 
   // ---------------------------------------------------------------- keys

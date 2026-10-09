@@ -119,3 +119,30 @@ test("hotkeys are read by their canonical combo: a hand-written spelling is the 
   assert.deepEqual(plain(Object.keys(p.hotkeys)), ["SUPER + F"], "spelled canonically; a key that is only a modifier is not kept");
   assert.equal(P.hotkeyOf(p, "app:firefox"), "SUPER + F");
 });
+
+test("a prefs.json that does not parse is a problem, never empty prefs to write over (2026-10-09)", () => {
+  const P = load("lib/Prefs.js");
+  const good = P.serialize(P.withAlias(P.empty(), "ff", "app:firefox", { title: "Firefox", run: { kind: "app", id: "firefox" } }) || P.empty());
+  assert.equal(P.problem(good), "");
+  assert.equal(P.problem(""), "", "no file yet is none");
+  assert.equal(P.problem("  \n"), "");
+  assert.notEqual(P.problem(good.replace(/\}\s*$/, ",}")), "", "a trailing comma");
+  assert.notEqual(P.problem("{"), "");
+  assert.equal(P.problem("[]"), "it holds no object");
+  assert.equal(P.problem("null"), "it holds no object");
+  assert.equal(P.problem("3"), "it holds no object");
+});
+
+test("a read of prefs.json: the same text again does nothing, a broken one stops the saves, a fixed one is taken (codex's review, 2026-10-09)", () => {
+  const P = load("lib/Prefs.js");
+  const good = P.serialize(P.empty());
+  assert.equal(P.reread({ loaded: false, text: "", broken: "" }, good).act, "take", "the first read");
+  assert.equal(P.reread({ loaded: true, text: good, broken: "" }, good).act, "none", "read again at an open, unchanged");
+  const edited = good.replace(/\}\s*$/, ',"hidden":["app:x"]}');
+  const took = plain(P.reread({ loaded: true, text: good, broken: "" }, edited));
+  assert.equal(took.act, "take", "a hand edit is taken");
+  const broke = plain(P.reread({ loaded: true, text: good, broken: "" }, good.replace(/\}\s*$/, ",}")));
+  assert.equal(broke.act, "broken", "a hand edit that broke it stops the saves");
+  assert.ok(broke.why);
+  assert.equal(P.reread({ loaded: true, text: good, broken: "Unexpected token" }, good).act, "take", "fixed back as it was: taken again");
+});
