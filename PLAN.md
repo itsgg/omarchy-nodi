@@ -135,7 +135,7 @@ A provider never builds a shell string from data. A row's `run` is one of:
 | `shell` | `script` | `bash -c` on text the user or Omarchy wrote: a keyword's `run`, a menu `action` |
 | `app` | desktop id, action index | launches through `uwsm-app`, as Omarchy does |
 | `window` | Hyprland address (hex only) | focuses it |
-| `open` | URL or path | `xdg-open` |
+| `open` | URL or path | `gio open` |
 | `summon` | plugin id, payload | `omarchy-shell shell summon` |
 | `copy` | text | `wl-copy --` |
 

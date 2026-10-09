@@ -77,7 +77,8 @@ Item {
       }
       if (phase !== "done" && phase !== "error") return
       if (phase === "error") test.failures.push("error: " + ask.error)
-      if (ask.answer !== "ok") test.failures.push("the stand-in said: " + ask.answer)
+      // The tool he refused is said at the answer's end (2026-10-10).
+      if (ask.answer !== "ok\n\n(Refused: Bash)") test.failures.push("the stand-in said: " + JSON.stringify(ask.answer))
       if (JSON.stringify(test.ran) !== JSON.stringify(["menu:system.lock"])) test.failures.push("ran " + JSON.stringify(test.ran))
       if (test.proposals !== 3) test.failures.push("proposals " + test.proposals + ": " + test.phases.join(","))
       var said = ask.statuses.join(" | ")

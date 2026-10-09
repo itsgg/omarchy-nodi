@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { load, plain } from "./load.mjs";
+import { execFileSync } from "node:child_process";
 import { Engine, config, services, run, top } from "./fixtures.mjs";
 
 const D = load("providers/dev.js");
@@ -43,7 +44,12 @@ test("tmux sessions, SSH hosts, man and tldr", () => {
   assert.equal(t[0].remember, false, "a session id is not replayed after tmux restarts");
   assert.deepEqual(plain(D.parseSsh('Host "build"\nHost=web\nHost db # production\nHost *.corp !bad ok\n#Host gone\nHost "two words"')),
                    ["build", "web", "db", "ok", "two words"], "ssh_config's quotes, = and comments");
-  assert.deepEqual(plain(top("tldr tar").run.argv.slice(-3)), ["tldr", "--", "tar"]);
+  // The page and then a key: its terminal closed as tldr exited (2026-10-10).
+  const tl = plain(top("tldr tar").run.argv);
+  assert.deepEqual(tl.slice(-4, -2).concat(tl.slice(-2)), ["-c", tl[tl.length - 3], "nodi-tldr", "tar"]);
+  assert.match(tl[tl.length - 3], /^tldr -- "\$1"; .*read -rsn1$/, "the page as an argument, never in the script, then a key");
+  const ran = execFileSync("/usr/bin/bash", ["-c", tl[tl.length - 3].replace("tldr -- ", "printf %s "), "nodi-tldr", "-rf; x"], { input: "k" }).toString();
+  assert.ok(ran.startsWith("-rf; x\nAny key closes"), ran);
   assert.ok(!run("man ls; reboot").some(r => r.key && r.key.indexOf("man:") === 0), "a page name is a name, nothing more");
 });
 

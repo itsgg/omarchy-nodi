@@ -119,3 +119,17 @@ test("a sign-in asked for by its method; a turn's end Ask has no words for says 
   assert.deepEqual(plain(JSON.parse(A.authenticate(7, "chatgpt"))), { jsonrpc: "2.0", id: 7, method: "authenticate", params: { methodId: "chatgpt" } });
   assert.equal(A.stopped("something_new"), "");
 });
+
+test("an answer ends with the tools he refused, the note bounded and under the cap (Cursor's review, 2026-10-10)", () => {
+  const A = load("lib/Acp.js");
+  assert.equal(A.withRefused("I'll run the command.\n\n", ["Run command"], 1000), "I'll run the command.\n\n(Refused: Run command)");
+  assert.equal(A.withRefused("", ["Bash"], 1000), "(Refused: Bash)", "nothing said: the note alone");
+  assert.equal(A.withRefused("ok", [], 1000), "ok", "none refused: as it was");
+  const many = A.withRefused("ok", ["a", "b", "c", "d", "e"], 1000);
+  assert.equal(many, "ok\n\n(Refused: a, b, c and 2 more)");
+  const long = A.withRefused("x".repeat(990), ["T".repeat(500)], 1000);
+  assert.ok(long.length <= 1000, long.length);
+  assert.ok(long.endsWith("(Refused: " + "T".repeat(80) + ")"));
+  assert.ok(A.withRefused("😀".repeat(600), ["Bash"], 1000).length <= 1000);
+  assert.ok(!/[\uD800-\uDBFF]\n/.test(A.withRefused("a" + "😀".repeat(600), ["Bash"], 1000)), "no half a character before the note");
+});

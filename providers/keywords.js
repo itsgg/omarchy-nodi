@@ -9,7 +9,7 @@
 //
 // `open` takes every placeholder snippets do ({argument name=..},
 // {clipboard}, {date}, {uuid}, lib/Placeholders.js), what you type and the
-// clipboard URL-encoded, and goes to xdg-open. In `run`, what you type is
+// clipboard URL-encoded, and goes to gio open. In `run`, what you type is
 // the command's "$1" and is never written into it, so nothing typed can
 // change the command; it uses "$1" as a script does. Nodi once wrote {q}
 // into the command, quoted for where it stood, and a quoting lexer could
