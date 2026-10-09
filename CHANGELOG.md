@@ -7,18 +7,28 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 
 ## Unreleased
 
+## 0.4.0 (2026-10-09)
+
+The bar
 - A row run from the bar that has keys of its own (an Omarchy menu
   action's binding, a binding under `keys `, a hotkey you gave it) shows
   them in Omarchy's on-screen display as the bar closes, the first three
   times; `"teach": false` turns it off.
 - When nothing matches, Enter on "Ask: ..." asks at once; Tab still only
-  writes `ask ` before the query. Which fallback you pick is logged, by
-  its key, for `make picks`.
+  writes `ask ` before the query. With the agent Ask holds not installed
+  (its program not on your login PATH), no Ask is offered, and `ask `
+  says what is missing before an Enter.
+- `in` searches `~/Documents` unless `"files": { "contents" }` names
+  other folders; the default named a `~/Work` few have, and a search
+  with none of its folders there says so.
+
+Security and privacy
 - Claude's and Codex's ACP adapters install from lockfiles shipped in
   `lib/adapters` (`npm ci --ignore-scripts`), every package at a pinned
   version and hash, and only at the Enter that asks the first question;
-  typing `ask ` no longer installs anything, and the row says its Enter
-  will. An adapter installed before this is installed again once.
+  typing `ask ` installs nothing, and the row says its Enter will. An
+  adapter installed before this is installed again once, and an adapter
+  installed at a new version removes its older ones.
 - Private text is in no program's arguments, which every user can read:
   copies and pastes (clipboard entries, the selection, snippets,
   answers), notes, `in` searches, `define` words, suggestion queries,
@@ -32,15 +42,11 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   then what your login profile sets. An answer is cut at a million
   characters, a line the agent writes at 4 MB, and an agent that writes
   over 64 MB to the bar in a session is stopped.
-- Removing or disabling Nodi turns off the window rules set from
-  Ctrl+K, releases a row's hotkey changed a moment before, and stops an
-  agent that ignores TERM. The README says how to remove Nodi and what
-  it leaves.
 - `nodi mcp`'s `run` takes only rows whose command no word of the
   agent's reaches (apps, windows, Omarchy's menu and toggles, the
-  desktop, saved desktops, keybindings, plugins; not a reminder); an agent
-  proposes anything else, and it runs on your Enter. An agent's search
-  starts none of your script filters or inline scripts.
+  desktop, saved desktops, keybindings, plugins; not a reminder); an
+  agent proposes anything else, and it runs on your Enter. An agent's
+  search starts none of your script filters or inline scripts.
 - Downloads are bounded as the exchange rates were: definitions,
   suggestions and the weather and Wikipedia extensions over https only
   and refused past a size; a calendar served over https follows no
@@ -49,28 +55,31 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   replaces (a calendar's copy, the rates, the packages list, Gemini's
   settings) is written under a name of its own first, never one a link
   could stand at.
+- The log of rows run from a query, with what was typed for each, and
+  the fallbacks picked, is kept only with `"picks": true`, for working
+  on Nodi's ranking.
+- `nodi pick` refuses more than 8 MB of rows as it reads them; `nodi
+  mcp` reads a message 16 MB at most, and Ask's tool server 64 KB, a
+  longer one refused unread.
+
+Fixed
+- Removing or disabling Nodi turns off the window rules set from
+  Ctrl+K, releases a row's hotkey changed a moment before, and stops an
+  agent that ignores TERM.
 - Ctrl+B and Ctrl+F move a letter as you see one, an emoji or a Tamil
   letter whole; a query holding half of one no longer fails and leaves
   the last query's rows for Enter.
 - A prefs.json that does not parse is said in a notification and never
   written over, so a hand edit's typo loses no alias, favourite, hotkey
-  or rule; the bar reads the file again at each open, taking a hand
-  edit or a fix.
+  or rule; the bar reads the file again at each open.
 - A date typed as ISO writes it, 2026-10-09, answers with the date,
   not 2,007.
-- An adapter installed at a new version removes its older ones, which
-  were left behind at about 60 MB each.
-- The log of rows run from a query, with what was typed for each, is kept
-  only with `"picks": true`, for working on Nodi's ranking.
-- `in` searches `~/Documents` unless `"files": { "contents" }` names
-  other folders; the default named a `~/Work` few have.
-- With the agent Ask holds not installed (its program not on your login
-  PATH), a query nothing matches offers no Ask, and `ask ` says what is
-  missing before an Enter.
-- `nodi pick` refuses more than 8 MB of rows as it reads them, rather
-  than keeping all of them in the runtime directory first; `nodi mcp`
-  reads a message 16 MB at most, and Ask's tool server 64 KB, a longer
-  one refused unread.
+
+Documentation
+- The README says how to remove Nodi and what it leaves, credits
+  Saikomantisu's Command Bar, and the repository has a preview for the
+  marketplace. The guide's example hotkey is one Omarchy leaves free,
+  with how to give Nodi Super+Space.
 
 ## 0.3.0 (2026-10-07)
 
