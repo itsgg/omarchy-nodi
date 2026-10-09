@@ -27,7 +27,7 @@ Item {
   // not this answer's.
   property int seq: 0
 
-  // spec: { keyword, title, question, timeoutMs, argv } (answers.js spec).
+  // spec: { keyword, title, question, timeoutMs, argv, env } (answers.js spec).
   function start(spec) {
     answer.seq++
     if (reader.busy) reader.cancel()
@@ -38,7 +38,7 @@ Item {
     answer.error = ""
     answer.phase = "waiting"
     reader.timeoutMs = spec.timeoutMs
-    reader.run(spec.argv, { seq: answer.seq })
+    reader.run(spec.argv, { seq: answer.seq, env: spec.env })
   }
 
   function stop() {

@@ -21,7 +21,7 @@ function read(p, param) {
   const src = F.provider.sources[p.step ? "filter-step" : p.list ? "filter-list" : "filter"];
   const argv = src.argv(param);
   let out = "", ok = true;
-  try { out = execFileSync(argv[0], argv.slice(1), { env: { PATH: "/usr/bin:/bin" } }).toString(); } catch (e) { ok = false; out = String(e.stdout || ""); }
+  try { out = execFileSync(argv[0], argv.slice(1), { env: { PATH: "/usr/bin:/bin", ...src.environment(param) } }).toString(); } catch (e) { ok = false; out = String(e.stdout || ""); }
   return src.parse(out, ok, param);
 }
 const run = (q, extra) => Engine.run(q, cfg, services(Object.assign({ filter: read }, extra || {})));
@@ -68,7 +68,7 @@ test("what it may print: lines that are not rows are skipped; actions map to Nod
   assert.deepEqual(plain(rows[0].run), { kind: "exec", argv: ["a", "b c"] });
   assert.deepEqual(plain(rows[1].run), { kind: "open", target: "https://x.test/a" });
   assert.deepEqual(plain(rows[2].run), { kind: "copy", text: "text" });
-  assert.deepEqual(plain(rows[3].run), { kind: "exec", argv: ["omarchy-menu-emoji-insert", "hi"] });
+  assert.deepEqual(plain(rows[3].run), { kind: "paste", text: "hi" });
   assert.equal(rows[4].complete, "x more "); assert.equal(rows[4].run, null);
   assert.equal(rows[5].run, null);
   assert.equal(rows[6].confirm, true); assert.equal(rows[6].badge, "3"); assert.equal(rows[6].image, "/a/b.png");
@@ -99,9 +99,11 @@ test("while a run is on its way the rows before stay; the first time, it says it
 });
 
 test("the program gets the query as its last argument and NODI_QUERY, under its own deadline", () => {
-  const argv = F.provider.sources.filter.argv(JSON.stringify({ keyword: "n", command: ["prog", "--flag"], query: "a b; $(x)", timeoutMs: 3000 }));
-  assert.deepEqual(plain(argv), ["/usr/bin/timeout", "-k", "0.5", "3", "/usr/bin/env", "NODI_QUERY=a b; $(x)",
-    "NODI_WINDOW_ADDRESS=", "NODI_WINDOW_CLASS=", "NODI_WINDOW_TITLE=", "NODI_WINDOW_PID=", "NODI_WINDOW_WORKSPACE=", "prog", "--flag", "a b; $(x)"]);
+  const param = JSON.stringify({ keyword: "n", command: ["prog", "--flag"], query: "a b; $(x)", timeoutMs: 3000, window: { title: "secret.pdf" } });
+  assert.deepEqual(plain(F.provider.sources.filter.argv(param)), ["/usr/bin/timeout", "-k", "0.5", "3", "prog", "--flag", "a b; $(x)"]);
+  assert.deepEqual(plain(F.provider.sources.filter.environment(param)), { NODI_QUERY: "a b; $(x)",
+    NODI_WINDOW_ADDRESS: "", NODI_WINDOW_CLASS: "", NODI_WINDOW_TITLE: "secret.pdf", NODI_WINDOW_PID: "", NODI_WINDOW_WORKSPACE: "" },
+    "the query and the window in the environment, the title in no argument (the marketplace's review, 2026-10-08)");
   assert.equal(F.provider.sources.filter.supersede, true, "a new keystroke ends the run before it");
   assert.equal(F.provider.sources.filter.sessionPath, true, "the session's PATH, for programs in ~/.local/bin");
 });
@@ -110,7 +112,8 @@ test("only well-formed filters count", () => {
   assert.equal(F.list([{ keyword: "a b", command: ["x"] }, { keyword: "a", command: "x" }, { keyword: "a", command: [] },
                        { keyword: "a", command: [""] }, { keyword: "a", command: ["x", 1] }, { keyword: "ok", command: ["x"] }, null]).length, 1);
   assert.equal(F.list(undefined).length, 0);
-  assert.equal(F.list([{ keyword: "a", command: ["FOO=1", "prog"] }, { keyword: "b", command: ["-i", "prog"] }]).length, 0, "nothing env would read as its own");
+  assert.equal(F.list([{ keyword: "b", command: ["-i", "prog"] }]).length, 0, "nothing timeout would read as its own option");
+  assert.equal(F.list([{ keyword: "a", command: ["FOO=1", "prog"] }]).length, 1, "a program named with = runs as named: no env(1) reads it now");
 });
 
 test("rows keep distinct keys: by id, else by place", () => {
@@ -153,7 +156,8 @@ test("a list is read once, with no query, and found as you type under its keywor
   assert.ok(!asked.some(a => a.startsWith("filter:")), "no run on a keystroke");
   const argv = F.provider.sources["filter-list"].argv(asked[0].slice("filter-list:".length));
   assert.deepEqual(plain(argv.slice(-1)), [SCRIPT], "no query argument");
-  assert.ok(argv.includes("NODI_QUERY=") && argv.includes("NODI_WINDOW_ADDRESS="), "nothing of the query or the window");
+  const env = plain(F.provider.sources["filter-list"].environment(asked[0].slice("filter-list:".length)));
+  assert.deepEqual([env.NODI_QUERY, env.NODI_WINDOW_ADDRESS, env.NODI_WINDOW_TITLE], ["", "", ""], "nothing of the query or the window");
 });
 
 test("with root, three of a list's rows in any search, ranked as things to open, from the second letter", () => {

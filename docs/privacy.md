@@ -5,6 +5,16 @@ Everything Nodi reads, writes, starts and sends, and when.
 - It starts programs the way Omarchy's menu does: through a login shell,
   with arguments that are never read as shell. A paste focuses the window
   the bar opened over first, then types into it.
+- Text that may be private never goes in a program's arguments, which
+  any user of the machine can read: what it copies or pastes (a
+  clipboard entry, the selection, a snippet, an answer), a note, the
+  words of an `in` search, a `define` word or a suggestion's query, the
+  window's title a script filter is told of, and the title of a row
+  whose command it watches go in the program's environment, its own
+  alone, and are unset before what it starts. A script filter or answer
+  of yours still gets the query as its last argument, as its contract
+  says ([Extending](extend.md)), and "Continue in your agent" hands the
+  question to Omarchy's `omarchy-agent-prompt` as its argument.
 - A command a row runs that fails is reported in a notification, "<row>
   failed": a command of Nodi's own rows or a script filter's with the last
   line of errors it wrote (one that fails without a word, or a program

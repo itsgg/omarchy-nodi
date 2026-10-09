@@ -14,19 +14,20 @@ const mine = rows => rows.filter(r => r.provider === "notes");
 test("note: one dated line added to the notes file, made if missing", () => {
   const row = mine(run("note call the  bank", {}))[0];
   assert.deepEqual([row.title, row.subtitle], ["Note: call the bank", "Adds a dated line to ~/Documents/notes.md"]);
-  assert.deepEqual(plain(row.run.args), ["/home/u/Documents/notes.md", "call the bank"]);
+  assert.deepEqual(plain([row.run.args, row.run.text]), [["/home/u/Documents/notes.md"], "call the bank"], "the note in the environment, never an argument");
   const dir = mkdtempSync(join(tmpdir(), "nodi-notes-"));
   try {
     const file = join(dir, "deep/notes.md");
-    execFileSync("/usr/bin/bash", ["-c", N.ADD, "nodi", file, "call the bank"]);
-    execFileSync("/usr/bin/bash", ["-c", N.ADD, "nodi", file, "--not an option"]);
+    const add = (f, text) => execFileSync("/usr/bin/bash", ["-c", N.ADD, "nodi", f], { env: { PATH: "/usr/bin", NODI_TEXT: text } });
+    add(file, "call the bank");
+    add(file, "--not an option");
     const lines = readFileSync(file, "utf8").split("\n");
     assert.match(lines[0], /^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} call the bank$/);
     assert.match(lines[1], /^- \d{4}-\d{2}-\d{2} \d{2}:\d{2} --not an option$/, "a leading dash is text");
     assert.equal(execFileSync("/usr/bin/bash", ["-c", N.READ, "nodi", join(dir, "none.md")]).toString(), "", "no file yet: nothing");
     const bare = join(dir, "bare.md");
     writeFileSync(bare, "no newline at the end");
-    execFileSync("/usr/bin/bash", ["-c", N.ADD, "nodi", bare, "next"]);
+    add(bare, "next");
     assert.match(readFileSync(bare, "utf8"), /^no newline at the end\n- \d{4}-\d{2}-\d{2} \d{2}:\d{2} next\n$/, "never glued to the last line (Sonnet 2026-10-06)");
   } finally { rmSync(dir, { recursive: true, force: true }); }
   const other = Engine.run("note x", Object.assign({}, config, { notes: { file: "~/notes/inbox.md" } }), services({}));

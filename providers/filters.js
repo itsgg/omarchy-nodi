@@ -93,21 +93,31 @@ function timeoutOf(f) { return Math.min(10000, Math.max(500, Number(f.timeoutMs)
 function list(settings) {
   if (!Array.isArray(settings)) return []
   return settings.filter(function(f) {
-    // The program is the first word as it is: env(1) would read one with
-    // "=" as a variable and one starting with "-" as an option of its own.
+    // The program is the first word as it is: timeout(1), which starts
+    // it, would read one starting with "-" as an option of its own.
     return f && typeof f.keyword === "string" && /^\S+$/.test(f.keyword) && Array.isArray(f.command) && f.command.length > 0
       && f.command.every(function(a) { return typeof a === "string" }) && f.command[0] !== ""
-      && f.command[0].indexOf("=") === -1 && f.command[0].charAt(0) !== "-"
+      && f.command[0].charAt(0) !== "-"
   })
 }
 
 // The window you came from (ctx.window, lib/Sources.js windowContext) as
-// the program's environment, each "" where it is not known.
+// the program's environment, each "" where it is not known. Handed to the
+// read as its environment, never as env(1)'s arguments: a window's title
+// can be private, and every user can read a process's arguments (the
+// marketplace's review, 2026-10-08).
 function windowEnv(w) {
   w = w || {}
-  return ["NODI_WINDOW_ADDRESS=" + String(w.address || ""), "NODI_WINDOW_CLASS=" + String(w["class"] || ""),
-          "NODI_WINDOW_TITLE=" + String(w.title || ""), "NODI_WINDOW_PID=" + String(w.pid || ""),
-          "NODI_WINDOW_WORKSPACE=" + String(w.workspace || "")]
+  return { NODI_WINDOW_ADDRESS: String(w.address || ""), NODI_WINDOW_CLASS: String(w["class"] || ""),
+           NODI_WINDOW_TITLE: String(w.title || ""), NODI_WINDOW_PID: String(w.pid || ""),
+           NODI_WINDOW_WORKSPACE: String(w.workspace || "") }
+}
+
+function merged(a, b) {
+  var out = {}
+  for (var k in a) out[k] = a[k]
+  for (var j in b) out[j] = b[j]
+  return out
 }
 
 function escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
@@ -129,7 +139,7 @@ function actionOf(a) {
   if (Array.isArray(a.exec)) return { run: Run.exec(a.exec) }
   if (typeof a.open === "string") return { run: Run.open(a.open) }
   if (typeof a.copy === "string" && a.copy) return { run: Run.copy(a.copy), copy: a.copy }
-  if (typeof a.paste === "string" && a.paste) return { run: Run.exec(["omarchy-menu-emoji-insert", a.paste]), copy: a.paste }
+  if (typeof a.paste === "string" && a.paste) return { run: Run.paste(a.paste), copy: a.paste }
   if (typeof a.query === "string") return { complete: a.query }
   if (typeof a.next === "string") return { next: a.next.slice(0, 4096) }
   return {}
@@ -268,10 +278,16 @@ var shown = Object.create(null)
 // half a second: the reader's own timeout kills this one at a second, and
 // one that ignored TERM then lived on (Fable 2026-10-04). A list is read
 // once for every query: no query, and no window.
+// The program under its own deadline, the query its last argument, as a
+// script filter's contract has it (docs/extend.md).
 function argvOf(param) {
   var p = JSON.parse(param)
-  return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000), "/usr/bin/env", "NODI_QUERY=" + (p.list ? "" : p.query)]
-    .concat(windowEnv(p.list ? null : p.window), p.command, p.list ? [] : [p.query])
+  return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000)].concat(p.command, p.list ? [] : [p.query])
+}
+
+function envOf(param) {
+  var p = JSON.parse(param)
+  return merged({ NODI_QUERY: p.list ? "" : p.query }, windowEnv(p.list ? null : p.window))
 }
 
 function parseOf(textOut, ok, param) {
@@ -434,6 +450,7 @@ var provider = {
       // source serves every filter and a run is keyed by what it ran.
       // Its own deadline inside the reader's, so each filter keeps its own.
       argv: argvOf,
+      environment: envOf,
       parse: parseOf,
       // The same query's rows stand for 3 s: its arrival recomputes the bar,
       // which asks again, and a shorter life read it again for ever. Rows
@@ -455,6 +472,7 @@ var provider = {
     // 2026-10-06). A list stands for its refresh.
     "filter-list": {
       argv: argvOf,
+      environment: envOf,
       parse: parseOf,
       maxAgeMs: function(param) { return JSON.parse(param).refreshMs },
       // Kept in the cache for its refresh, however many reads come after
@@ -475,10 +493,14 @@ var provider = {
       argv: function(param) {
         var p = JSON.parse(param)
         var s = p.step
-        var env = ["NODI_QUERY=", "NODI_PICK=" + s.pick, "NODI_INFO=" + s.info, "NODI_DATA=" + s.data, "NODI_STEP=" + s.depth]
-        if (p.format === "rofi") env = env.concat(["ROFI_RETV=" + s.retv, "ROFI_INFO=" + s.info, "ROFI_DATA=" + s.data])
-        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000), "/usr/bin/env"].concat(env, windowEnv(s.window), p.command,
-          p.format === "rofi" && s.depth > 0 ? [s.pick] : [])
+        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000)].concat(p.command, p.format === "rofi" && s.depth > 0 ? [s.pick] : [])
+      },
+      environment: function(param) {
+        var p = JSON.parse(param)
+        var s = p.step
+        var env = { NODI_QUERY: "", NODI_PICK: String(s.pick), NODI_INFO: String(s.info), NODI_DATA: String(s.data), NODI_STEP: String(s.depth) }
+        if (p.format === "rofi") env = merged(env, { ROFI_RETV: String(s.retv), ROFI_INFO: String(s.info), ROFI_DATA: String(s.data) })
+        return merged(env, windowEnv(s.window))
       },
       parse: function(textOut, ok, param) {
         var p = JSON.parse(param)

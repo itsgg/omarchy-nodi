@@ -25,7 +25,8 @@ var DEFAULT_MS = 120000
 var MAX_MS = 600000
 
 // The run for what is typed, or null when it names no answer or asks
-// nothing: { keyword, title, question, timeoutMs, argv }.
+// nothing: { keyword, title, question, timeoutMs, argv, env }, the query
+// and the window in the environment as a filter's are (filters.js).
 function spec(query, settings, window) {
   var hit = Filters.filterFor(query, settings)
   if (!hit || !hit.query) return null
@@ -35,7 +36,8 @@ function spec(query, settings, window) {
     title: f.title || f.keyword,
     question: hit.query,
     timeoutMs: Math.min(MAX_MS, Math.max(1000, Number(f.timeoutMs) || DEFAULT_MS)),
-    argv: ["/usr/bin/env", "NODI_QUERY=" + hit.query].concat(Filters.windowEnv(window), f.command, [hit.query])
+    argv: f.command.concat([hit.query]),
+    env: Filters.merged({ NODI_QUERY: hit.query }, Filters.windowEnv(window))
   }
 }
 
@@ -91,7 +93,7 @@ var provider = {
     var rows = []
     if (text) {
       rows.push({ key: key + "paste", title: "Paste the answer", subtitle: said + text.length + " characters", icon: "󰆒", score: 98, copy: text,
-                  remember: false, run: Run.exec(["omarchy-menu-emoji-insert", text]), actionLabel: "Paste" })
+                  remember: false, run: Run.paste(text), actionLabel: "Paste" })
       rows.push({ key: key + "copy", title: "Copy the answer", subtitle: "Clipboard", icon: "󰆏", score: 97, copy: text, remember: false, run: Run.copy(text) })
     }
     rows.push({ key: key + "again", title: text ? "Ask again" : (a.phase === "stopped" ? "Stopped before it said anything; ask again" : "No answer; ask again"),

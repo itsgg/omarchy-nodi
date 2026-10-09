@@ -109,7 +109,7 @@ test("a case is changed here and pasted over the selection", () => {
   assert.equal(by["kebab-case"].copy, "hello-world-wide-web-app");
   assert.equal(by["camelCase"].copy, "helloWorldWideWebApp");
   assert.equal(run("case ", stale("one. two! three"))[3].copy, "One. Two! Three", "sentence case");
-  assert.deepEqual(plain(by["UPPER CASE"].run), { kind: "exec", argv: ["omarchy-menu-emoji-insert", "HELLO WORLD-WIDE WEBAPP"] });
+  assert.deepEqual(plain(by["UPPER CASE"].run), { kind: "paste", text: "HELLO WORLD-WIDE WEBAPP" });
   assert.equal(by["UPPER CASE"].actionLabel, "Paste");
   assert.deepEqual(plain(run("case snake", stale("a b")).map(r => r.title)), ["snake_case"], "filtered by what follows");
   assert.equal(top("uppercase", fresh("abc")).copy, "ABC", "a case by its name, at root");

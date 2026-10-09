@@ -95,7 +95,7 @@ test("a snippet saved filled in keeps its copy; one whose text changed runs the 
                    run: { kind: "exec", argv: ["omarchy-menu-emoji-insert", "Thanks,\nG"] }, confirm: false };
   const svc = services({ prefs: Prefs.empty(), history: {} });
   assert.equal(Engine.resolve("snippet:mt", filled, cfg, svc), null, "waiting for its argument, it does not run, so the copy stands");
-  assert.deepEqual(plain(Engine.resolve("snippet:sig", sigOld, cfg, svc).run.argv), ["omarchy-menu-emoji-insert", "Regards,\nG"]);
+  assert.deepEqual(plain(Engine.resolve("snippet:sig", sigOld, cfg, svc).run), { kind: "paste", text: "Regards,\nG" });
 });
 
 test("a saved row on the home has no pane and no argument line, and stays managed", () => {

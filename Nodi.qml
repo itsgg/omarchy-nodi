@@ -748,7 +748,7 @@ Item {
     // a pick's choice ranks nothing.
     if (key && query && !root.pickSession) root.logPick(PickLog.entry(Date.now(), root.trail, query, key, root.rows))
     root.finish()
-    if (undoable && run.kind === "exec") undoer.run(argv, name || (snap && snap.title) || "")
+    if (undoable && run.kind === "exec" && Array.isArray(argv)) undoer.run(argv, name || (snap && snap.title) || "")
     else Quickshell.execDetached(argv)
     if (run.kind === "app") launchFeedback.begin(name || (snap && snap.title) || run.id)
     if (key) root.remember(key, query, snap)
@@ -1183,7 +1183,11 @@ Item {
     }
     var s = a ? a.s : null
     var remember = a ? a.remember : false
-    var argv = s ? Run.command(s.run, root.appAction, String(s.title || "")) : null
+    // Watched by its title unless the Undoer runs it and says so itself,
+    // as execute() has it: the Undoer takes an argv, and a watched run is
+    // a command and its environment since its title left the arguments
+    // (2026-10-09).
+    var argv = s ? Run.command(s.run, root.appAction, s.undoable && s.run.kind === "exec" ? "" : String(s.title || "")) : null
     if (!argv) return "unknown row"
     // A row that asks before it runs is run from the bar only: `nodi run`
     // names any remembered row, where a hotkey or a link is never given one.
@@ -1192,7 +1196,7 @@ Item {
     // The bar is not open: what is focused now is what a launch replaces,
     // not what was focused when the bar last opened (codex 2026-10-04).
     if (s.run.kind === "app") launchFeedback.opened()
-    if (s.undoable && s.run.kind === "exec") undoer.run(argv, s.title)
+    if (s.undoable && s.run.kind === "exec" && Array.isArray(argv)) undoer.run(argv, s.title)
     else Quickshell.execDetached(argv)
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     if (remember) root.remember(k, "", s)

@@ -57,17 +57,17 @@ test("a snippet by its keyword: Enter pastes through Omarchy's emoji insert, Ctr
   const s = top("sig", {}, cfg);
   assert.equal(s.title, "Signature"); assert.equal(s.badge, "sig");
   assert.equal(s.subtitle, "Regards, ...");
-  assert.deepEqual(plain(s.run.argv), ["omarchy-menu-emoji-insert", "Regards,\nGanesh"]);
+  assert.deepEqual(plain(s.run), { kind: "paste", text: "Regards,\nGanesh" });
   assert.equal(s.copy, "Regards,\nGanesh");
   assert.deepEqual(plain(s.actions.map(a => a.label)), ["Copy", "Type it out"]);
-  assert.deepEqual(plain(s.actions[1].run.args), ["Regards,\nGanesh"], "typed text is an argument, never shell");
+  assert.deepEqual([s.actions[1].run.args, s.actions[1].run.text], [undefined, "Regards,\nGanesh"], "typed text is in the environment, never shell or an argument");
   assert.equal(top("signature", {}, cfg).title, "Signature", "by its name");
 });
 
 test("arguments after the keyword; one missing fills the keyword in instead of pasting", () => {
   const m = top("mt Ravi", {}, cfg);
   assert.equal(m.subtitle, "Meet Ravi at 3pm");
-  assert.deepEqual(plain(m.run.argv.slice(-1)), ["Meet Ravi at 3pm"]);
+  assert.equal(m.run.text, "Meet Ravi at 3pm");
   assert.equal(m.remember, false, "a filled-in snippet is a moment");
   const bare = top("mt", {}, cfg);
   assert.equal(bare.subtitle, "who, when (3pm)"); assert.equal(bare.hint, "mt <who> [when]");
@@ -81,7 +81,7 @@ test("the clipboard as it is now, read only when a snippet asks for it", () => {
   assert.ok(asked.indexOf("clipboard-text") === -1, "no read for a snippet without it");
   assert.equal(top("cl", { asked }, cfg).subtitle, "Reading the clipboard...");
   assert.ok(asked.indexOf("clipboard-text") !== -1);
-  assert.deepEqual(plain(top("cl", { clipboardText: "copied\ntext" }, cfg).run.argv.slice(-1)), ["> copied\ntext"]);
+  assert.equal(top("cl", { clipboardText: "copied\ntext" }, cfg).run.text, "> copied\ntext");
   assert.equal(top("cl", { clipboardText: "" }, cfg).copy, "> ");
 });
 

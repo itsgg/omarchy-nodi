@@ -1,6 +1,7 @@
 // Packages and a dictionary (ROADMAP 65).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { urlOf } from "./curl.mjs";
 import { load, plain } from "./load.mjs";
 import { run } from "./fixtures.mjs";
 
@@ -59,7 +60,8 @@ test("define: Wiktionary's senses as plain text, English first, a row each, Ente
   assert.equal(rows[0].copy, "An unsought, unintended & fortunate discovery.");
   assert.match(rows[0].preview.markdown, /> It was pure serendipity\./);
   assert.equal(run("define xyzzy", { define: [] }).find(r => r.provider === "dictionary").title, "No definition of \"xyzzy\"");
-  assert.match(D.provider.sources.define.argv("வணக்கம்").at(-1), /\/page\/definition\/%E0%AE/, "the word encoded");
+  assert.ok(!D.provider.sources.define.argv("வணக்கம்").some(a => a.includes("வணக்கம்")), "the word in no argument");
+  assert.match(urlOf(D.provider.sources.define, "வணக்கம்"), /^https:\/\/en\.wiktionary\.org\/api\/rest_v1\/page\/definition\/%E0%AE[^/]*$/, "the word encoded, by curl");
   assert.equal(D.plain("a&#39;b &lt;c&gt;"), "a'b <c>");
   assert.equal(D.plain("x&#x2014;y &mdash; &amp;lt;"), "x\u2014y \u2014 &lt;", "hex, named, and &amp; once (Sonnet 2026-10-06)");
   assert.equal(D.md("*a* _b_ # c"), "\\*a\\* \\_b\\_ \\# c", "the pane's Markdown shows a sense as it is");

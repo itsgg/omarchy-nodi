@@ -71,11 +71,14 @@ var provider = {
   help: [{ id: "dictionary", title: "Dictionary", icon: ICON, about: "A word's senses from Wiktionary, English first; Enter copies one",
            examples: [{ q: "define serendipity" }, { q: "define வணக்கம்", note: "Any language Wiktionary has" }] }],
   sources: {
+    // The word reaches curl in the environment, which it encodes into the
+    // URL itself (--variable %NODI_Q), so it is in no argument.
     define: {
       argv: function(word) {
         return ["/usr/bin/curl", "-sS", "--max-time", "6", "-A", "Nodi (https://github.com/itsgg/omarchy-nodi)",
-                "https://en.wiktionary.org/api/rest_v1/page/definition/" + encodeURIComponent(String(word))]
+                "--variable", "%NODI_Q", "--expand-url", "https://en.wiktionary.org/api/rest_v1/page/definition/{{NODI_Q:url}}"]
       },
+      environment: function(word) { return { NODI_Q: String(word) } },
       parse: function(text, ok) {
         if (!ok) throw "Wiktionary did not answer"
         var data

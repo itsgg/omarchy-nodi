@@ -81,15 +81,20 @@ test("in reads ripgrep's JSON as it is written: any case, the first line, once a
     writeFileSync(join(dir, "w/odd\n/etc/passwd"), "budget\n", { flag: "w" });
   } catch (e) { /* a name with a newline may not be made here */ }
   try {
-    const argv = F.provider.sources.contents.argv(JSON.stringify({ q: "budget", dirs: [join(dir, "w")] }));
-    const out = execFileSync(argv[0], argv.slice(1)).toString();
+    const C = F.provider.sources.contents;
+    const go = p => execFileSync(C.argv(p)[0], C.argv(p).slice(1), { env: { PATH: "/usr/bin", ...C.environment(p) } }).toString();
+    const param = JSON.stringify({ q: "budget", dirs: [join(dir, "w")] });
+    assert.ok(!C.argv(param).includes("budget"), "the words are in no argument (the marketplace's review, 2026-10-08)");
+    assert.deepEqual(plain(C.environment(param)), { NODI_Q: "budget" });
+    const out = go(param);
     const got = plain(F.provider.sources.contents.parse(out, true));
     assert.deepEqual(got.filter(h => h.path.endsWith("plan.md")), [{ path: join(dir, "w/plan.md"), line: 2, text: "The Budget for q4" }]);
     assert.ok(!got.some(h => h.path === "/etc/passwd"), "a name with a newline is never another path");
-    const gone = F.provider.sources.contents.argv(JSON.stringify({ q: "budget", dirs: [join(dir, "w"), join(dir, "not-there")] }));
-    assert.ok(plain(F.provider.sources.contents.parse(execFileSync(gone[0], gone.slice(1)).toString(), true)).some(h => h.path.endsWith("plan.md")),
+    assert.ok(plain(C.parse(go(JSON.stringify({ q: "budget", dirs: [join(dir, "w"), join(dir, "not-there")] })), true)).some(h => h.path.endsWith("plan.md")),
               "a folder that is not there is left out, the search goes on (Sonnet 2026-10-06)");
-    const miss = F.provider.sources.contents.argv(JSON.stringify({ q: "zzqx-none", dirs: [join(dir, "w"), join(dir, "not-there")] }));
-    assert.deepEqual(plain(F.provider.sources.contents.parse(execFileSync(miss[0], miss.slice(1)).toString(), true)), [], "no match is an answer, exit 0");
+    assert.deepEqual(plain(C.parse(go(JSON.stringify({ q: "zzqx-none", dirs: [join(dir, "w"), join(dir, "not-there")] })), true)), [], "no match is an answer, exit 0");
+    assert.deepEqual(plain(C.parse(go(JSON.stringify({ q: "-e budget", dirs: [join(dir, "w")] })), true)), [], "words that look like an option are words");
+    assert.deepEqual(plain(C.environment(JSON.stringify({ q: "intro\nnothing\n", dirs: [] }))), { NODI_Q: "intro nothing" }, "one line, so one pattern (codex's review, 2026-10-09)");
+    assert.deepEqual(plain(C.parse(go(JSON.stringify({ q: "intro\nnothing", dirs: [join(dir, "w")] })), true)), [], "not intro or nothing");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
