@@ -46,6 +46,7 @@ started).
 | `"providers"` | What Nodi searches, in order; where two take the same word, the earlier wins |
 | `"fallbacks"` | What a query nothing answers offers: `"keywords"` (your searches, Google's first), `"find"` (files), `"ask"` (your agent) |
 | `"teach"` | `false` stops [showing a row's keys](keys.md) after you run it from the bar |
+| `"picks"` | `true` keeps the last 1000 rows run from a query, with the queries typed for each, in `~/.cache/nodi/picks-log.json`, for `make picks` and `make replay` when working on Nodi's ranking |
 | `"keywords"` | Searches and commands by a word of yours (below); they merge with the defaults by keyword |
 | `"snippets"` | Text pasted by a word of yours (below) |
 | `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts` |
@@ -103,6 +104,7 @@ What `config.default.json` holds, as it holds it:
 | `"providers"` | `a list of 39 (config.default.json)` |
 | `"fallbacks"` | `["keywords","find","ask"]` |
 | `"teach"` | `true` |
+| `"picks"` | `false` |
 | `"ask"` | `{"agent":"","model":"","actions":true}` |
 | `"apps"` | `{"describe":false}` |
 | `"math"` | `{"precision":10}` |
@@ -110,7 +112,7 @@ What `config.default.json` holds, as it holds it:
 | `"emoji"` | `{"onEnter":"paste"}` |
 | `"time"` | `{"zones":["UTC","America/New_York","Europe/London"],"clock24":true}` |
 | `"clipboard"` | `{"limit":30}` |
-| `"files"` | `{"limit":30,"root":true,"contents":["~/Work","~/Documents"]}` |
+| `"files"` | `{"limit":30,"root":true,"contents":["~/Documents"]}` |
 | `"snippets"` | `[]` |
 | `"scripts"` | `{"dirs":["~/.config/omarchy/nodi/scripts"]}` |
 | `"filters"` | `[]` |

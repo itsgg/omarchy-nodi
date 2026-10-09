@@ -178,7 +178,7 @@ var provider = {
   name: "Folders",
   icon: ICON,
   help: [{ id: "chooser", title: "File dialogs", icon: ICON, about: "Over a Save or Open dialog, folders lead; Enter types the path in",
-           examples: [{ q: "downloads", note: "Over a file dialog: the folder, typed in" }, { q: "~/Work/", note: "Its folders, each typed in" }] }],
+           examples: [{ q: "downloads", note: "Over a file dialog: the folder, typed in" }, { q: "~/Documents/", note: "Its folders, each typed in" }] }],
   sources: {
     "chooser-folders": {
       argv: function() { return ["/usr/bin/bash", "-c", FOLDERS] },

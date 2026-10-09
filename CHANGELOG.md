@@ -60,6 +60,13 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   not 2,007.
 - An adapter installed at a new version removes its older ones, which
   were left behind at about 60 MB each.
+- The log of rows run from a query, with what was typed for each, is kept
+  only with `"picks": true`, for working on Nodi's ranking.
+- `in` searches `~/Documents` unless `"files": { "contents" }` names
+  other folders; the default named a `~/Work` few have.
+- With the agent Ask holds not installed (its program not on your login
+  PATH), a query nothing matches offers no Ask, and `ask ` says what is
+  missing before an Enter.
 
 ## 0.3.0 (2026-10-07)
 

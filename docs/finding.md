@@ -142,7 +142,7 @@ Recent files by name, any file under home, and any folder by its path.
 - `f report`: Recent files with report in the name
 - `find report`: Every file under home with report in its name
 - `find img cat`: Images only; also doc, video, audio, dir
-- `in budget`: Files in ~/Work and ~/Documents that hold the word
+- `in budget`: Files in ~/Documents, or the folders you set, that hold the word
 - `~/`: Your home folder; Tab goes into a folder
 
 ### Developer tools
@@ -289,7 +289,7 @@ Your next meeting first, Enter joining it; from an iCal address set in nodi.json
 Over a Save or Open dialog, folders lead; Enter types the path in.
 
 - `downloads`: Over a file dialog: the folder, typed in
-- `~/Work/`: Its folders, each typed in
+- `~/Documents/`: Its folders, each typed in
 
 ### Notes
 

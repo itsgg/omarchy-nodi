@@ -506,3 +506,14 @@ test("files Nodi writes are written beside, under names of their own, then moved
     assert.deepEqual(left, [], "nothing left behind");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
+
+test("with the agent's program not installed, no Ask fallback, and `ask ` says so before an Enter (2026-10-09)", () => {
+  assert.deepEqual(["claude", "codex", "gemini"].map(G.program), ["claude", "codex", "gemini"]);
+  assert.equal(G.program({ command: ["my-agent", "acp"] }), "my-agent");
+  assert.equal(G.program("nonesuch"), "");
+  const ask = { phase: "idle", question: "", answer: "", agent: "Claude", model: "haiku", missing: "claude" };
+  assert.ok(!plain(run("qqzzxxvv", { ask })).some(r => r.key === "fallback:ask"), "no Ask among the fallbacks");
+  assert.ok(plain(run("qqzzxxvv", { ask: { ...ask, missing: "" } })).some(r => r.key === "fallback:ask"), "installed: offered");
+  assert.equal(plain(run("ask what is this", { ask }))[0].subtitle, "claude is not on your login PATH: install it, or name another agent in nodi.json");
+  assert.equal(plain(run("ask ", { ask }))[0].subtitle, "claude is not on your login PATH: install it, or name another agent in nodi.json", "said at `ask ` itself");
+});

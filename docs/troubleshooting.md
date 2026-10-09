@@ -25,7 +25,10 @@ bar. Most often the agent is not installed or not signed in: run it once
 in a terminal. For Claude and Codex, Node.js and `npm` must be on your
 login PATH for the first question, which installs the agent's adapter
 (`npm ci` from the lockfile in `lib/adapters`); if that failed,
-`~/.local/share/nodi/agents/*.log` says why.
+`~/.local/share/nodi/agents/*.log` says why. With the agent's own
+program (`claude`, `codex`, `gemini`, or your own command) not on your
+login PATH, `ask ` says so before you press Enter, and a query nothing
+matches offers no Ask.
 [Ask](ask.md) says what each agent needs.
 
 ## A preview shows no colours, or no picture

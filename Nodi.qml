@@ -247,6 +247,8 @@ Item {
     // of one with an error too, and one that broke it stops the saves
     // before any writes over it (codex's review, 2026-10-09).
     if (root.prefsLoaded) prefsFile.reload()
+    // An agent not there is looked for again: one installed since is found.
+    if (root.agentMissing) agentProbe.look()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -524,7 +526,10 @@ Item {
   property var pickLog: []
   property bool pickLogLoaded: false
 
+  // Only with "picks": true: the queries he typed, kept for make picks and
+  // make replay, are no one else's to keep by default.
   function logPick(e) {
+    if (root.config.picks !== true) return
     root.pickLog = PickLog.add(root.pickLog, e)
     if (root.cacheReady && root.pickLogLoaded) pickLogFile.setText(PickLog.serialize(root.pickLog))
   }
@@ -534,7 +539,7 @@ Item {
     path: root.cacheDir + "/picks-log.json"
     printErrors: false
     atomicWrites: true
-    onLoaded: { root.pickLog = PickLog.parse(text()).concat(root.pickLog).slice(-PickLog.MAX); root.pickLogLoaded = true }
+    onLoaded: { if (root.config.picks === true) root.pickLog = PickLog.parse(text()).concat(root.pickLog).slice(-PickLog.MAX); root.pickLogLoaded = true }
     onLoadFailed: root.pickLogLoaded = true
   }
 
@@ -597,7 +602,8 @@ Item {
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error,
              agent: askSession.agentName, model: askSession.modelName, status: askSession.status, activity: askSession.activity,
-             proposal: root.proposed(), context: askSession.context, capturing: windowShot.active, install: askSession.install },
+             proposal: root.proposed(), context: askSession.context, capturing: windowShot.active, install: askSession.install,
+             missing: root.agentMissing ? root.agentProgram : "" },
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
       window: root.cameFrom,
@@ -1742,7 +1748,12 @@ Item {
   function userConfigRead(text) {
     var r = Config.read(text)
     if (r.error) root.configError(r.error)
-    else { root.userConfig = r.config; root.userConfigGood = true; root.configWarned = "" }
+    else {
+      root.userConfig = r.config; root.userConfigGood = true; root.configWarned = ""
+      // His settings read whole, and no "picks": true among them: a log
+      // kept before goes, as none is kept now (codex's review, 2026-10-09).
+      if (root.config.picks !== true) { root.pickLog = []; Quickshell.execDetached(["/usr/bin/rm", "-f", "--", root.cacheDir + "/picks-log.json"]) }
+    }
     root.configLoaded("user")
   }
 
@@ -1848,6 +1859,28 @@ Item {
     id: answerSession
     env: ({ PATH: Quickshell.env("PATH") || "" })
     onPhaseChanged: if (root.opened) root.recompute()
+  }
+
+  // Whether the agent Ask holds is installed: its program on his login
+  // PATH, asked once at the start and when the agent changes. Not there,
+  // the Ask fallback is not offered and `ask ` says so before an Enter
+  // (2026-10-09: with no agent, every query nothing matched ended in an
+  // Ask that failed).
+  readonly property string agentProgram: Agents.program(Agents.chosen(root.config.ask && root.config.ask.agent, root.omarchyAgent))
+  property bool agentMissing: false
+  onAgentProgramChanged: agentProbe.look()
+  onAgentMissingChanged: if (root.opened) root.recompute()
+  Reader {
+    id: agentProbe
+    timeoutMs: 5000
+    // The session's PATH, as Ask's agent has it (Ask.qml environment), then
+    // the login shell's: found here is found there.
+    extraEnvironment: ({ PATH: Quickshell.env("PATH") || "" })
+    function look() {
+      if (!root.agentProgram) { root.agentMissing = false; return }
+      agentProbe.run(["/usr/bin/bash", "-lc", 'command -v -- "$1" >/dev/null 2>&1 && echo yes || echo no', "nodi-agent-probe", root.agentProgram], root.agentProgram)
+    }
+    onFinished: function(text, ok, tag) { if (tag === root.agentProgram) root.agentMissing = ok && String(text).trim() === "no" }
   }
 
   // Omarchy's default coding agent (omarchy-default-agent), which Ask holds
@@ -2430,6 +2463,7 @@ Item {
     root.refreshAppearance()
     // Each his alone (0700), made so or made so now: they hold what he
     // typed, pinned and set (codex's review, 2026-10-09).
+    agentProbe.look()
     cacheMaker.run(["/usr/bin/install", "-d", "-m", "700", root.cacheDir, root.stateDir, root.cacheDir + "/ask", root.dataDir])
     appsDebounce.restart()
     requests.request("omarchy-commands")
