@@ -96,5 +96,12 @@ test("in reads ripgrep's JSON as it is written: any case, the first line, once a
     assert.deepEqual(plain(C.parse(go(JSON.stringify({ q: "-e budget", dirs: [join(dir, "w")] })), true)), [], "words that look like an option are words");
     assert.deepEqual(plain(C.environment(JSON.stringify({ q: "intro\nnothing\n", dirs: [] }))), { NODI_Q: "intro nothing" }, "one line, so one pattern (codex's review, 2026-10-09)");
     assert.deepEqual(plain(C.parse(go(JSON.stringify({ q: "intro\nnothing", dirs: [join(dir, "w")] })), true)), [], "not intro or nothing");
+    assert.deepEqual(plain(C.parse(go(JSON.stringify({ q: "budget", dirs: [join(dir, "not-there")] })), true)), [{ noFolder: true }],
+                     "no folder there: said, not read as no file holding it (codex's review, 2026-10-09)");
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("in, with no folder of its own there: says so, never that no file holds the words (codex's review, 2026-10-09)", () => {
+  const rows = plain(run("in budget", { contents: [{ noFolder: true }] })).filter(r => r.provider === "files");
+  assert.deepEqual(rows.map(r => [r.title, r.subtitle]), [["No folder to search", "~/Documents is not there: name others under \"files\": { \"contents\": [...] }"]]);
 });

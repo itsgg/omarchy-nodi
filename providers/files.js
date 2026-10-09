@@ -66,7 +66,7 @@ function ofKind(path, isDir, kind) {
 // match (1) is an answer, a timeout (124) or an error (2) is not.
 // A folder that is not there is left out: ripgrep fails the whole search
 // for one (Sonnet 2026-10-06: no ~/Documents made every miss a failure).
-var CONTENTS = 'q=${NODI_Q-}; unset NODI_Q; d=(); for x in "$@"; do [ -d "$x" ] && d+=("$x"); done; [ "${#d[@]}" -gt 0 ] && [ -n "$q" ] || exit 0'
+var CONTENTS = 'q=${NODI_Q-}; unset NODI_Q; d=(); for x in "$@"; do [ -d "$x" ] && d+=("$x"); done; [ "${#d[@]}" -gt 0 ] || { echo \'{"type":"nodi-no-folder"}\'; exit 0; }; [ -n "$q" ] || exit 0'
   + "\n" + 'timeout 2 rg --ignore-case --fixed-strings --json --max-count 1 --max-columns 200 --max-columns-preview --no-messages -f <(printf "%s\\n" "$q") -- "${d[@]}" | head -n 120'
   + "\n" + 's=${PIPESTATUS[0]}; [ "$s" -le 1 ] || [ "$s" -eq 141 ] && exit 0; exit "$s"'
 
@@ -340,12 +340,15 @@ function rootRows(raw, ctx, home) {
 // "in budget": files that hold the words, the first line that does.
 function contentRows(q, ctx, home) {
   if (q.length < 3) return [{ title: "Search inside files", subtitle: "Three letters or more", score: 40, copy: "", hint: "in <words>" }]
-  var dirs = ((ctx.settings && Array.isArray(ctx.settings.contents)) ? ctx.settings.contents : ["~/Work", "~/Documents"])
+  var dirs = ((ctx.settings && Array.isArray(ctx.settings.contents)) ? ctx.settings.contents : ["~/Documents"])
     .map(function(d) { return expand(String(d), home) }).filter(function(d) { return d.charAt(0) === "/" })
   // None to search: ripgrep would read its input until the deadline.
   if (!dirs.length) return [{ title: "No folder to search", subtitle: "Name some under \"files\": { \"contents\": [...] }", score: 40, copy: "", remember: false }]
   var got = ctx.request ? ctx.request("contents", JSON.stringify({ q: q, dirs: dirs })) : { state: "pending" }
   if (!Array.isArray(got.value)) return [{ title: got.state === "error" ? "The search failed" : "Searching for " + q + "...", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", "), score: 40, copy: "" }]
+  if (got.value.length === 1 && got.value[0].noFolder)
+    return [{ title: "No folder to search", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", ") + (dirs.length > 1 ? " are" : " is") + " not there: name others under \"files\": { \"contents\": [...] }",
+              score: 40, copy: "", remember: false }]
   if (!got.value.length) return [{ title: "No file holds \"" + q + "\"", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", "), score: 40, copy: "" }]
   return got.value.map(function(h, i) {
     var row = fileRow(h.path, h.path.split("/").pop(), false, 97 - i * 0.01, home)
@@ -440,6 +443,8 @@ var provider = {
         for (var i = 0; i < lines.length && out.length < LIMIT; i++) {
           var o
           try { o = JSON.parse(lines[i]) } catch (e) { continue }
+          // None of the folders is there (CONTENTS): said, not read as no match.
+          if (o && o.type === "nodi-no-folder") return [{ noFolder: true }]
           if (!o || o.type !== "match" || !o.data || !o.data.path || typeof o.data.path.text !== "string") continue
           var path = o.data.path.text
           if (path.charAt(0) !== "/" || /[\u0000-\u001f]/.test(path)) continue
@@ -489,7 +494,7 @@ var provider = {
       examples: [{ q: "f ", note: "Recent files, newest first" }, { q: "f report", note: "Recent files with report in the name" },
                  { q: "find report", note: "Every file under home with report in its name" },
                  { q: "find img cat", note: "Images only; also doc, video, audio, dir" },
-                 { q: "in budget", note: "Files in ~/Work and ~/Documents that hold the word" },
+                 { q: "in budget", note: "Files in ~/Documents, or the folders you set, that hold the word" },
                  { q: "~/", note: "Your home folder; Tab goes into a folder" }] }
   ],
   match: function(query, ctx) {

@@ -34,7 +34,8 @@ rank-update:
 opens:
 	@node tools/opens.mjs
 
-# How his picks went, from the log Nodi keeps (lib/PickLog.js): how many
+# How his picks went, from the log Nodi keeps with "picks": true in
+# nodi.json (lib/PickLog.js): how many
 # came first, the picked row's median place and the letters typed.
 picks:
 	@node tools/picks.mjs

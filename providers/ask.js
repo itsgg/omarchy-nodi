@@ -64,7 +64,8 @@ var provider = {
                       nodi: "askDeny", actionLabel: "Refuse", remember: false }
       return other ? [denyRow, allowRow] : [allowRow, denyRow]
     }
-    if (!q) return [{ title: "Ask " + name, subtitle: "Question", score: 40, copy: "", remember: false, hint: "ask <question>" }]
+    if (!q) return [{ title: "Ask " + name, subtitle: a.missing ? a.missing + " is not on your login PATH: install it, or name another agent in nodi.json" : "Question",
+                      score: 40, copy: "", remember: false, hint: "ask <question>" }]
     // Nothing would happen on Enter: say why (Fable 2026-10-06).
     if (a.capturing) return [{ key: "ask:shot", title: "Taking a picture of the window...", subtitle: q, icon: "󰹑", score: 98, copy: "", remember: false }]
     var running = a.phase === "waiting" || a.phase === "streaming"
@@ -73,7 +74,9 @@ var provider = {
     if (a.question !== q || a.phase === "idle") {
       // The first question installs the agent's adapter: say so before
       // the Enter that does it (components/Ask.qml).
-      var rows = [{ key: "ask:new", title: "Ask " + who + ": " + q, subtitle: a.install ? "Enter installs " + a.install + " from npm first, once" : name, icon: "󰚩", score: 98,
+      var rows = [{ key: "ask:new", title: "Ask " + who + ": " + q,
+                    subtitle: a.missing ? a.missing + " is not on your login PATH: install it, or name another agent in nodi.json"
+                            : a.install ? "Enter installs " + a.install + " from npm first, once" : name, icon: "󰚩", score: 98,
                     copy: q, nodi: "ask", actionLabel: "Ask", remember: false }]
       var sel = ctx.selection || {}
       var ab = Selection.about(sel)
