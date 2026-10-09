@@ -13,8 +13,11 @@ import { root } from "./load.mjs";
 const NODI = join(root, "bin/nodi");
 
 // FAKE: "ok" answers every call; pick=<answer> is what the pick hears
-// ("pick 2", "cancel", or "none" for no answer at all); alive=<yes|no>;
-// runRow=<reply>; down makes every call fail as an unreachable shell does.
+// ("pick 2", "cancel", or "none" for no answer at all), FAKE_ANSWER_ON_ALIVE
+// one written as pickAlive is asked, and FAKE_PICKREPLY what the pick call itself
+// answers ("ok" unless set); alive=<yes|no>; runRow=<reply>; down makes
+// every call fail as an unreachable shell does; FAKE_EMPTY=error has Ask's
+// call answer as a function that threw.
 const FAKE = `#!/usr/bin/bash
 printf '%s\\n' "$*" >> "$FAKE_LOG"
 [ "$FAKE_DOWN" = 1 ] && { echo "omarchy-shell is not running" >&2; exit 1; }
@@ -26,7 +29,11 @@ case "$2" in
       runProposed) echo "\${FAKE_RUNPROPOSED:-ok}" ;;
       search) printf '%s\\n' "\${FAKE_SEARCH:-[]}" ;;
       describeRow) printf '%s\\n' "\${FAKE_DESCRIBE:-unknown row}" ;;
-      pickAlive) echo "$FAKE_ALIVE" ;;
+      pickAlive)
+        # FAKE_ANSWER_ON_ALIVE: the answer lands as the bar says the pick is
+        # gone, between nodi's two reads, at no time of its own.
+        [ -n "$FAKE_ANSWER_ON_ALIVE" ] && printf '%s\\n' "$FAKE_ANSWER_ON_ALIVE" > "$(cat "$FAKE_LOG.dir")/answer"
+        echo "$FAKE_ALIVE" ;;
       askMcp)
         # As the facade, one argument: { token, line }. Ask answers: an echo
         # of the message's id, "" for a notification.
@@ -36,16 +43,18 @@ case "$2" in
         [ "$(printf '%s' "$5" | /usr/bin/jq -r .token)" = "$FAKE_TOKEN" ] || { echo unknown; exit 0; }
         [ "$FAKE_EMPTY" = 1 ] && exit 0
         [ "$FAKE_EMPTY" = ok ] && { echo ok; exit 0; }
+        [ "$FAKE_EMPTY" = error ] && { echo error; exit 0; }
         printf '%s' "$line" | /usr/bin/jq -c 'if has("id") then {jsonrpc: "2.0", id: .id, result: {seen: .method}} else empty end' ;;
       pick)
         dir=$(printf '%s' "$5" | /usr/bin/jq -r .dir)
+        printf '%s' "$dir" > "$FAKE_LOG.dir"
         printf '%s\\n' "$5" > "$FAKE_LOG.req"
         cp "$dir/rows" "$FAKE_LOG.rows"
         stat -c %a "$dir" > "$FAKE_LOG.mode"
         if [ "$FAKE_PICK" != none ]; then
           ( sleep 0.3; [ -p "$dir/answer" ] && printf '%s\\n' "$FAKE_PICK" > "$dir/answer" ) >/dev/null 2>&1 &
         fi
-        echo ok ;;
+        echo "\${FAKE_PICKREPLY:-ok}" ;;
     esac ;;
 esac
 `;
@@ -361,5 +370,58 @@ test("nodi mcp --ask hands each message to Ask whole and prints its answer; one 
     r = nodi(t, ["mcp", "--ask"], { input: lines[0] + "\n" });
     assert.equal(r.status, 2);
     assert.match(r.err, /NODI_ASK_SESSION/);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi --help and -h print what the command does, from its own header", () => {
+  const t = setup();
+  try {
+    for (const flag of ["--help", "-h"]) {
+      const r = nodi(t, [flag]);
+      assert.equal(r.status, 0, flag);
+      assert.match(r.out, /^nodi: Nodi from a terminal or a script/, flag);
+      assert.match(r.out, /\n  nodi run <key> /);
+      assert.ok(!/^#/m.test(r.out), "the comment marks taken off");
+      assert.equal(r.log, "", "the bar is not asked");
+    }
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("pick: an answer that comes as the bar closes is still taken", () => {
+  const t = setup();
+  try {
+    // The first wait (2 s) ends, and the answer lands as the bar says the
+    // pick is gone: taken by the second read. Not timed against the waits,
+    // which a loaded machine stretches (Cursor's review, 2026-10-10).
+    const r = nodi(t, ["pick"], { input: "alpha\nbeta\n", pick: "none", alive: "no", env: { FAKE_ANSWER_ON_ALIVE: "pick 1" } });
+    assert.deepEqual([r.status, r.out], [0, "beta\n"], r.err);
+    assert.match(r.log, /pickAlive/);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp: propose and approve when the bar refuses the question say it could not ask him", () => {
+  const t = setup();
+  try {
+    const describe = JSON.stringify({ key: "k", title: "K", subtitle: "", command: "k", risk: "", asks: "" });
+    let r = mcp(t, [call(1, "propose", { key: "k" })], { describe, env: { FAKE_PICKREPLY: "busy" } });
+    assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["The bar could not ask him", true]);
+    r = mcp(t, [call(1, "approve", { tool_name: "Bash", input: { command: "ls" } })], { env: { FAKE_PICKREPLY: "busy" } });
+    assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "deny", message: "The bar could not ask him." });
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp --ask: under 64 KB in letters but past it in bytes, a message is refused with its id; one the shell failed on says so", () => {
+  const t = setup();
+  try {
+    // 30,000 Tamil letters: within read_line's 65,536 characters, over the
+    // 64 KB the one IPC argument holds.
+    const big = JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "search", arguments: { query: "த".repeat(30000) } } });
+    let r = nodi(t, ["mcp", "--ask"], { input: big + "\n", env: { NODI_ASK_SESSION: "t0k" } });
+    const refused = JSON.parse(r.out);
+    assert.deepEqual([refused.id, refused.error.code, refused.error.message], [9, -32602, "Too long: a message is 64 KB at most"]);
+    assert.ok(!/askMcp/.test(r.log), "never sent to the shell");
+    r = nodi(t, ["mcp", "--ask"], { input: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list" }) + "\n",
+                                    env: { NODI_ASK_SESSION: "t0k", FAKE_EMPTY: "error" } });
+    assert.deepEqual(JSON.parse(r.out).error, { code: -32603, message: "Nodi failed to answer; the shell's log says why" });
   } finally { rmSync(t, { recursive: true, force: true }); }
 });

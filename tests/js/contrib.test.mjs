@@ -86,6 +86,30 @@ test("obsidian: a vault's notes newest first, front matter left out, Enter openi
   } finally { h.done(); }
 });
 
+test("obsidian: a note it cannot read is listed without its text; a vault past 900 KB of rows is cut there", () => {
+  const h = home();
+  try {
+    const vault = join(h.dir, "v");
+    mkdirSync(vault);
+    writeFileSync(join(vault, "locked.md"), "secret");
+    chmodSync(join(vault, "locked.md"), 0o000);
+    let rows = Filters.parse(h.run("obsidian", [vault]), {});
+    chmodSync(join(vault, "locked.md"), 0o600);
+    assert.deepEqual(plain(rows.map(r => [r.title, r.preview.markdown])), [["locked", ""]]);
+    // A thousand notes of 800 letters: more rows than the 900 KB a list may print.
+    const body = "x".repeat(800);
+    for (let i = 0; i < 1000; i++) writeFileSync(join(vault, "n" + String(i).padStart(4, "0") + ".md"), body);
+    const out = h.run("obsidian", [vault]);
+    const printed = out.split("\n").filter(Boolean).length;
+    assert.ok(Buffer.byteLength(out) <= 900 * 1024, "within its budget: " + Buffer.byteLength(out));
+    assert.ok(printed < 1000, "cut before the end: " + printed + " rows printed");
+    // Cut where the next row would not fit, not anywhere under the budget
+    // (Cursor's review, 2026-10-10).
+    const longest = Math.max(...out.split("\n").map(l => Buffer.byteLength(l) + 1));
+    assert.ok(Buffer.byteLength(out) > 900 * 1024 - longest, "filled to within a row: " + Buffer.byteLength(out) + ", rows up to " + longest);
+  } finally { h.done(); }
+});
+
 test("issues: assigned issues with their labels; gh's failure said as a row", () => {
   const h = home();
   try {
@@ -120,6 +144,11 @@ test("containers: running first, stop asked twice, a shell and the logs in a ter
     assert.deepEqual(plain(rows[1].actions.map(a => a.label)), ["Start", "Copy its id"]);
     h.stub("docker", 'echo "permission denied while trying to connect to the Docker daemon socket" >&2; exit 1\n');
     assert.match(plain(Filters.parse(h.run("containers"), {})[0].subtitle), /^You are not in the docker group/);
+    h.stub("docker", 'echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2; exit 1\n');
+    const down = Filters.parse(h.run("containers"), {})[0];
+    assert.deepEqual(plain([down.title, down.subtitle]), ["No containers to show", "Docker is not running: sudo systemctl start docker"]);
+    h.stub("docker", "exit 1\n");
+    assert.equal(plain(Filters.parse(h.run("containers"), {})[0].subtitle), "docker gave no reason");
   } finally { h.done(); }
 });
 
@@ -150,5 +179,8 @@ test("wikipedia and weather: Markdown from what the sites send, and nothing aske
       + "Humidity 60%, wind 17 km/h, rain 0.0 mm\n\n| Day | Low | High | Sky |\n|---|---|---|---|\n"
       + "| 2026-10-07 | 28°C | 31°C | Sunny |\n| 2026-10-08 | 27°C | 30°C | Sunny |\n");
     assert.equal(h.run("weather", ["zzzzqqx"]), "wttr.in knows no place called *zzzzqqx*.\n");
+    // Any other status: wttr.in's trouble, said, and the answer failed.
+    h.stub("curl", 'out=; prev=; for a; do [ "$prev" = -o ] && out=$a; prev=$a; done; : > "$out"; printf 503\n');
+    assert.throws(() => h.run("weather", ["chennai"]), e => e.status === 1 && /wttr\.in did not answer \(503\)\./.test(String(e.stderr)));
   } finally { h.done(); }
 });
