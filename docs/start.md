@@ -11,9 +11,16 @@ omarchy plugin add https://github.com/itsgg/omarchy-nodi --enable
 Super+Period opens it; `omarchy-shell shell toggle io.github.itsgg.nodi
 '{"query": ":"}'` opens it with text typed, for a binding or a script.
 Another key goes in
-`~/.config/omarchy/extensions/nodi.json` as `"hotkey": "SUPER + SPACE"`
+`~/.config/omarchy/extensions/nodi.json` as `"hotkey": "SUPER + SEMICOLON"`
 ([Settings](settings.md)); a key something else already holds is left
-alone, and a notification says "Nodi has no hotkey" and why.
+alone, and a notification says "Nodi has no hotkey" and why. Super+Space
+is Omarchy's menu: to give it to Nodi, move the menu first, in
+`~/.config/hypr/bindings.lua`, then set `"hotkey": "SUPER + SPACE"`:
+
+```lua
+hl.unbind("SUPER + SPACE")
+o.bind("ALT + SPACE", "Omarchy menu", "omarchy-menu toggle")
+```
 
 `omarchy plugin update io.github.itsgg.nodi` updates it, showing what
 changed first ([CHANGELOG](../CHANGELOG.md) says what each version
