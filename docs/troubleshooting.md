@@ -22,8 +22,9 @@ held by something else, a notification said so when the bar loaded, and
 An answer that cannot come ends with the reason the agent gave, in the
 bar. Most often the agent is not installed or not signed in: run it once
 in a terminal. For Claude and Codex, Node.js and `npm` must be on your
-login PATH for the first question, which installs the agent's adapter;
-if that failed, `~/.local/share/nodi/agents/*.log` says why.
+login PATH for the first question, which installs the agent's adapter
+(`npm ci` from the lockfile in `lib/adapters`); if that failed,
+`~/.local/share/nodi/agents/*.log` says why.
 [Ask](ask.md) says what each agent needs.
 
 ## A preview shows no colours, or no picture

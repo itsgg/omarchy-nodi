@@ -14,6 +14,11 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 - When nothing matches, Enter on "Ask: ..." asks at once; Tab still only
   writes `ask ` before the query. Which fallback you pick is logged, by
   its key, for `make picks`.
+- Claude's and Codex's ACP adapters install from lockfiles shipped in
+  `lib/adapters` (`npm ci --ignore-scripts`), every package at a pinned
+  version and hash, and only at the Enter that asks the first question;
+  typing `ask ` no longer installs anything, and the row says its Enter
+  will. An adapter installed before this is installed again once.
 
 ## 0.3.0 (2026-10-07)
 

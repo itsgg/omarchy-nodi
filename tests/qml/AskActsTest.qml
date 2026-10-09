@@ -22,13 +22,13 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 15
+  property int remaining: 18
   readonly property string fake: String(Qt.resolvedUrl("fake-agent.py")).replace(/^file:\/\//, "")
   readonly property string nodi: String(Qt.resolvedUrl("../../bin/nodi")).replace(/^file:\/\//, "")
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
   // bin/nodi's omarchy-shell, a stand-in that reaches this instance.
   readonly property var toolEnv: ({ OMARCHY_PATH: String(Qt.resolvedUrl("fake-omarchy")).replace(/^file:\/\//, ""), NODI_TEST_SHELL: Quickshell.shellDir, NODI_TEST_TARGET: "nodiAskTest" })
-  readonly property var sessions: [ask, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed]
+  readonly property var sessions: [ask, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed, consent, own75, readyThenFails]
 
   function finished() {
     if (--test.remaining > 0) return
@@ -385,7 +385,86 @@ Item {
     }
   }
 
+  // An adapter not yet installed (lib/Agents.js ends with 75 unless
+  // NODI_INSTALL=1, and says "nodi: adapter ready" before it runs one):
+  // before any start the rows say an Enter installs it; warmed while a
+  // question is typed, nothing installs, nothing fails, and typing on
+  // starts nothing more; the question asked installs it, is answered, and
+  // the rows stop saying so.
+  Ask {
+    id: consent
+    acts: true
+    program: ["/usr/bin/bash", "-c", '[ "${NODI_INSTALL-}" = 1 ] || { echo "nodi: fake@1 is not installed" >&2; exit 75; }; echo "nodi: adapter ready" >&2; exec "$0" claude', test.fake]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int starts: 0
+    property bool typed: false
+    onStartedChanged: {
+      if (started) { starts++; return }
+      if (typed || starts !== 1) return
+      typed = true
+      // Once its exit is handled, as a keystroke after it would be.
+      Qt.callLater(function() {
+        if (consent.phase !== "idle" || consent.error) test.failures.push("a warm with nothing installed failed: " + consent.phase + " " + consent.error)
+        if (!consent.install) test.failures.push("after a warm that did not install, the rows no longer say an Enter installs")
+        consent.warm()
+        if (consent.starts !== 1) test.failures.push("typing on started " + consent.starts + " sessions")
+        consent.send("say ok")
+      })
+    }
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || answer !== "ok" || install !== "" || starts !== 2)
+        test.failures.push("asked after a warm that did not install: " + phase + " " + error + answer + " install " + JSON.stringify(install) + " starts " + starts)
+      test.finished()
+    }
+  }
+
+  // An agent of the adapter's that exits 75 for its own reasons, not the
+  // launch script's word for "not installed": a warm that ends so is not
+  // taken for an adapter to install, and the question fails, saying why
+  // (not "adapter ready", the launch script's word before it), started
+  // once, not again and again.
+  Ask {
+    id: own75
+    program: ["/usr/bin/bash", "-c", 'echo "nodi: adapter ready" >&2; echo "out of quota" >&2; exit 75']
+    workDir: test.dir
+    property int starts: 0
+    onStartedChanged: {
+      if (started) { starts++; return }
+      if (starts !== 1) return
+      Qt.callLater(function() {
+        if (own75.notInstalled !== "") test.failures.push("an agent's own exit 75 was taken for an adapter not installed")
+        own75.send("say ok")
+      })
+    }
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "error" || !/out of quota/.test(error) || starts !== 2)
+        test.failures.push("an agent's own exit 75: " + phase + " " + JSON.stringify(error) + " starts " + starts)
+      test.finished()
+    }
+  }
+
+  // Installed, then the session fails: the rows do not go on saying an
+  // Enter installs it.
+  Ask {
+    id: readyThenFails
+    program: ["/usr/bin/bash", "-c", 'echo "nodi: adapter ready" >&2; echo "nodi: no session" >&2; exit 1']
+    workDir: test.dir
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "error" || install !== "") test.failures.push("ready, then a failed session: " + phase + " install " + JSON.stringify(install))
+      test.finished()
+    }
+  }
+
   function start() {
+    if (!consent.install) test.failures.push("before any start, the rows do not say an Enter installs")
+    consent.warm()
+    own75.warm()
+    readyThenFails.send("say ok")
     signHang.send("sign in first")
     installed.send("say ok")
     signWarm.warm()

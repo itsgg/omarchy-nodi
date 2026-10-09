@@ -54,13 +54,15 @@ test("what the agent is told: the bar's rules, its tools only with actions, the 
 });
 
 test("Claude over ACP: its adapter pinned, his own claude, nothing of his settings, and only the bar's search unasked (ROADMAP 84)", () => {
-  const s = plain(G.spec("claude", "/d", "", "x", ["nodi"]));
+  const s = plain(G.spec("claude", "/d", "", "x", ["nodi"], "/p/lib/adapters"));
   assert.equal(s.name, "Claude");
   assert.equal(s.model, "haiku", "haiku unless set");
   assert.deepEqual(s.argv.slice(0, 2), ["/usr/bin/bash", "-lc"], "a login shell, for his PATH and the agent's sign-in");
   const rest = s.argv.slice(4);
   assert.deepEqual(rest.slice(0, 3), ["--which", "CLAUDE_CODE_EXECUTABLE", "claude"]);
-  assert.deepEqual(rest.slice(3), ["npm", "/d/agents/_agentclientprotocol_claude-agent-acp@0.86.0", "@agentclientprotocol/claude-agent-acp", "0.86.0", "claude-agent-acp"]);
+  assert.deepEqual(rest.slice(3), ["npm", "/d/agents/_agentclientprotocol_claude-agent-acp@0.86.0", "/p/lib/adapters/claude-agent-acp",
+                                   "@agentclientprotocol/claude-agent-acp", "0.86.0", "claude-agent-acp"]);
+  assert.equal(s.adapter, "@agentclientprotocol/claude-agent-acp 0.86.0");
   assert.deepEqual(s.env, { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", ANTHROPIC_MODEL: "haiku" });
   const m = plain(G.spec("claude", "/d", "sonnet", "Be brief.", ["nodi"]).meta(true));
   assert.equal(m.systemPrompt, "Be brief.", "replaces Claude Code's own prompt");
@@ -74,9 +76,10 @@ test("Claude over ACP: its adapter pinned, his own claude, nothing of his settin
 });
 
 test("Codex: its adapter on his own codex, read-only, no shell, apps or web, the instructions its own (ROADMAP 84)", () => {
-  const s = plain(G.spec("codex", "/d", "", "Be brief.", ["nodi"]));
+  const s = plain(G.spec("codex", "/d", "", "Be brief.", ["nodi"], "/p/lib/adapters"));
   assert.deepEqual(s.argv.slice(4, 7), ["--which", "CODEX_PATH", "codex"]);
-  assert.deepEqual(s.argv.slice(7), ["npm", "/d/agents/_agentclientprotocol_codex-acp@2.1.1", "@agentclientprotocol/codex-acp", "2.1.1", "codex-acp"]);
+  assert.deepEqual(s.argv.slice(7), ["npm", "/d/agents/_agentclientprotocol_codex-acp@2.1.1", "/p/lib/adapters/codex-acp",
+                                     "@agentclientprotocol/codex-acp", "2.1.1", "codex-acp"]);
   assert.equal(s.env.INITIAL_AGENT_MODE, "read-only");
   const c = JSON.parse(s.env.CODEX_CONFIG);
   assert.deepEqual(c, { developer_instructions: "Be brief.", web_search: "disabled", project_doc_max_bytes: 0,
@@ -91,6 +94,7 @@ test("Gemini: no built-in tool, only the servers given, no GEMINI.md, no hooks",
   assert.deepEqual(JSON.parse(gem.argv[7]), { tools: { core: [] }, mcp: { allowed: ["nodi", "github"] }, context: { fileName: "NODI_NONE.md" },
                                               hooksConfig: { enabled: false }, model: { name: "gemini-3.8-flash" } });
   assert.deepEqual(gem.argv.slice(8), ["exec", "gemini", "--acp"]);
+  assert.equal(gem.adapter, "", "Gemini is its own program, nothing installed");
   assert.deepEqual([gem.instructs, gem.mode], [false, ""], "the instructions with the first prompt");
   assert.deepEqual(plain(G.known()).sort(), ["claude", "codex", "gemini"], "Cursor reads files unasked (AgentsLiveTest, 2026-10-07)");
   assert.equal(G.spec("cursor-agent", "/d", ""), null);
@@ -133,7 +137,7 @@ test("which agent Ask holds: nodi.json's, else Omarchy's default when Ask knows 
 // node_modules/.bin/x after a pause, logging its start and end.
 const FAKE_NPM = `#!/usr/bin/bash
 prefix=$3
-echo "start $$" >> "$NPM_LOG"
+echo "start $$ $*" >> "$NPM_LOG"
 sleep "\${NPM_SLEEP:-0.4}"
 mkdir -p "$prefix/node_modules/.bin"
 printf '#!/usr/bin/bash\\necho ran "$@"\\n' > "$prefix/node_modules/.bin/x"
@@ -142,20 +146,25 @@ echo "end $$" >> "$NPM_LOG"
 `;
 
 test("an adapter installs once, under a lock: two starts at once, and one ended midway (Fable 2026-10-07)", async () => {
-  const { mkdtempSync, writeFileSync, chmodSync, readFileSync, existsSync, rmSync } = await import("node:fs");
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, rmSync } = await import("node:fs");
   const { spawn } = await import("node:child_process");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const t = mkdtempSync(join(tmpdir(), "nodi-launch-"));
   try {
     writeFileSync(join(t, "npm"), FAKE_NPM); chmodSync(join(t, "npm"), 0o755);
-    const env = { PATH: t + ":/usr/bin:/bin", NPM_LOG: join(t, "log"), HOME: t };
+    const env = { PATH: t + ":/usr/bin:/bin", NPM_LOG: join(t, "log"), HOME: t, NODI_INSTALL: "1" };
     const dir = join(t, "agents/pkg@1");
-    const start = (extra = {}) => spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "npm", dir, "pkg", "1", "x", "hello"], { env: { ...env, ...extra } });
+    const lock = join(t, "lock");
+    mkdirSync(lock); writeFileSync(join(lock, "package.json"), "{}\n"); writeFileSync(join(lock, "package-lock.json"), "{\"v\": 1}\n");
+    const start = (extra = {}) => spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "npm", dir, lock, "pkg", "1", "x", "hello"], { env: { ...env, ...extra } });
     const done = p => new Promise(r => { let out = ""; p.stdout.on("data", d => out += d); p.on("close", code => r({ code, out })); });
     const [a, b] = await Promise.all([done(start()), done(start())]);
     assert.deepEqual([a.code, a.out, b.code, b.out], [0, "ran hello\n", 0, "ran hello\n"]);
-    assert.equal(readFileSync(join(t, "log"), "utf8").split("\n").filter(l => l.startsWith("start")).length, 1, "installed once");
+    const starts = readFileSync(join(t, "log"), "utf8").split("\n").filter(l => l.startsWith("start"));
+    assert.equal(starts.length, 1, "installed once");
+    assert.match(starts[0], / ci --prefix \S+ --ignore-scripts --omit=optional /, "the shipped lock's tree, no install scripts");
+    assert.equal(readFileSync(join(dir, "package-lock.json"), "utf8"), "{\"v\": 1}\n", "the shipped lock beside what it installed");
     // Ended midway: its npm stops, nothing passes for installed, the next installs afresh.
     rmSync(dir, { recursive: true }); rmSync(join(t, "log"));
     const slow = start({ NPM_SLEEP: "5" });
@@ -168,6 +177,80 @@ test("an adapter installs once, under a lock: two starts at once, and one ended 
     const again = await done(start());
     assert.deepEqual([again.code, again.out], [0, "ran hello\n"]);
   } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("an adapter installs only when asked to, and again when the shipped lock is not the one installed (the marketplace's review, 2026-10-09)", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-consent-"));
+  try {
+    writeFileSync(join(t, "npm"), FAKE_NPM); chmodSync(join(t, "npm"), 0o755);
+    const dir = join(t, "agents/pkg@1"), lock = join(t, "lock");
+    mkdirSync(lock); writeFileSync(join(lock, "package.json"), "{}\n"); writeFileSync(join(lock, "package-lock.json"), "{\"v\": 1}\n");
+    const go = (extra = {}) => spawnSync("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "npm", dir, lock, "pkg", "1", "x", "hello"],
+                                         { encoding: "utf8", env: { PATH: t + ":/usr/bin:/bin", NPM_LOG: join(t, "log"), HOME: t, NPM_SLEEP: "0", ...extra } });
+    const typed = go();
+    assert.deepEqual([typed.status, typed.stderr], [75, "nodi: pkg@1 is not installed\n"], "typing installs nothing");
+    assert.ok(!existsSync(join(t, "log")), "npm never ran");
+    assert.ok(!existsSync(dir));
+    assert.equal(go({ NODI_INSTALL: "0" }).status, 75, "NODI_INSTALL=0 is no install either");
+    const asked = go({ NODI_INSTALL: "1" });
+    assert.deepEqual([asked.status, asked.stdout], [0, "ran hello\n"]);
+    assert.match(asked.stderr, /^nodi: installing pkg@1\nnodi: adapter ready\n$/, "ready, said before it runs");
+    assert.equal(go().stderr, "nodi: adapter ready\n");
+    assert.deepEqual([go().status, go().stdout], [0, "ran hello\n"], "installed: run without asking again");
+    // A new lock ships (or the tree was installed from another): not the
+    // tree reviewed, so not run, and installed again when asked.
+    writeFileSync(join(lock, "package-lock.json"), "{\"v\": 2}\n");
+    assert.equal(go().status, 75, "a tree from another lock is not run");
+    assert.equal(go({ NODI_INSTALL: "1" }).status, 0);
+    assert.equal(readFileSync(join(t, "log"), "utf8").split("\n").filter(l => l.startsWith("start")).length, 2);
+    assert.equal(readFileSync(join(dir, "package-lock.json"), "utf8"), "{\"v\": 2}\n");
+    // No lockfile shipped: refused, never a bare install.
+    rmSync(dir, { recursive: true }); rmSync(join(lock, "package-lock.json"));
+    const bare = go({ NODI_INSTALL: "1" });
+    assert.deepEqual([bare.status, bare.stderr.trim().split("\n").pop()], [1, "nodi: no lockfile for pkg in " + lock]);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("the shipped lockfiles are the versions Ask names: exact, every package from the registry with its hash, none with an install script", async () => {
+  const { readFileSync } = await import("node:fs");
+  const root = new URL("../../", import.meta.url).pathname;
+  for (const id of ["claude", "codex"]) {
+    const s = plain(G.spec(id, "/d", "", "x", [], root + "lib/adapters"));
+    const [pkg, ver] = s.adapter.split(" ");
+    const dir = s.argv[s.argv.indexOf("npm") + 2];
+    const pj = JSON.parse(readFileSync(dir + "/package.json", "utf8"));
+    const lock = JSON.parse(readFileSync(dir + "/package-lock.json", "utf8"));
+    assert.deepEqual(pj.dependencies, { [pkg]: ver }, id + ": package.json pins the adapter exactly");
+    assert.deepEqual(lock.packages[""].dependencies, { [pkg]: ver }, id + ": the lock agrees with package.json");
+    assert.equal(lock.packages["node_modules/" + pkg].version, ver);
+    for (const [k, v] of Object.entries(lock.packages)) {
+      if (!k) continue;
+      assert.match(v.resolved || "", /^https:\/\/registry\.npmjs\.org\//, id + ": " + k + " from the registry");
+      assert.match(v.integrity || "", /^sha512-/, id + ": " + k + " has its hash");
+      assert.ok(!v.hasInstallScript, id + ": " + k + " has an install script");
+    }
+    // Whole: every dependency a locked package needs resolves, as Node
+    // resolves it, to a locked package (its own node_modules, then each
+    // folder above), unless it is optional or a peer; `npm ci` refuses a
+    // lock with one missing.
+    const where = (from, dep) => {
+      for (let at = from; ; at = at.slice(0, Math.max(0, at.lastIndexOf("/node_modules/")))) {
+        const k = (at ? at + "/" : "") + "node_modules/" + dep;
+        if (lock.packages[k]) return k;
+        if (!at) return null;
+      }
+    };
+    for (const [k, v] of Object.entries(lock.packages)) {
+      const optional = new Set(Object.keys(v.optionalDependencies || {}));
+      for (const dep of Object.keys(v.dependencies || {})) {
+        if (optional.has(dep)) continue;
+        assert.ok(where(k, dep), id + ": " + (k || "the root") + " needs " + dep + ", which the lock does not hold");
+      }
+    }
+  }
 });
 
 test("the launch script: an adapter installed once, then run; his own agent found on his PATH", () => {
@@ -258,4 +341,14 @@ test("an agent that needs him signed in asks in the bar (ROADMAP 84)", () => {
   assert.deepEqual(rows.map(r => [r.title, r.actionLabel]), [["Sign in to Codex: Sign in with ChatGPT", "Sign in"], ["Not now", "Refuse"]]);
   const Pane = load("lib/Pane.js");
   assert.equal(plain(Pane.choose({ proposal: prop.ask.proposal })).title, "Sign in to Codex: Sign in with ChatGPT");
+});
+
+test("before the first question installs the adapter, the rows that ask say so (the marketplace's review, 2026-10-09)", () => {
+  const ask = { phase: "idle", question: "", answer: "", agent: "Claude", model: "haiku", install: "@agentclientprotocol/claude-agent-acp 0.86.0" };
+  const rows = plain(run("ask what is this", { ask }));
+  assert.equal(rows[0].key, "ask:new");
+  assert.equal(rows[0].subtitle, "Enter installs @agentclientprotocol/claude-agent-acp 0.86.0 from npm first, once");
+  assert.equal(plain(run("ask what is this", { ask: { ...ask, install: "" } }))[0].subtitle, "Claude Haiku", "installed: the agent and its model");
+  const fb = plain(run("qqzzxxvv", { ask })).find(r => r.key === "fallback:ask");
+  assert.equal(fb.subtitle, "Enter installs @agentclientprotocol/claude-agent-acp 0.86.0 from npm first, once");
 });

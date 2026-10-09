@@ -20,8 +20,10 @@ Nodi (நொடி) is Tamil for an instant.
 ## Requirements
 
 Omarchy 4. For `ask` and the actions on selected text, a coding agent,
-signed in: [Claude Code](https://claude.com/claude-code) and Node.js 22
-by default, or Codex or Gemini CLI ([Ask](docs/ask.md)).
+signed in: [Claude Code](https://claude.com/claude-code) with Node.js 22
+and npm by default, or Codex or Gemini CLI ([Ask](docs/ask.md)). The
+first question installs Claude's or Codex's ACP adapter from npm, at the
+versions `lib/adapters` locks, with no install scripts.
 
 ## Install
 
