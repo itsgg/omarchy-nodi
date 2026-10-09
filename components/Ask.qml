@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 import Quickshell.Io
 import "../lib/Acp.js" as Acp
 import "../lib/AskTools.js" as AskTools
@@ -58,6 +59,43 @@ Item {
   // A test's stand-in agent: its command, run as it is; else the agent's.
   property var program: null
 
+  // What the agent is started with: nothing of the shell's environment but
+  // these, by name, and what nodi.json adds ("ask": { "environment": [...] },
+  // `passed`): the session (its PATH, which the login shell the agent starts
+  // in adds to from his profile), the proxy and certificates a network
+  // needs, and the variables the three agents read their sign-in and
+  // provider from. Nothing that decides what a program loads (LD_PRELOAD,
+  // NODE_OPTIONS, PYTHONPATH, BASH_ENV) is passed unless he names it (the
+  // marketplace's review, 2026-09-16). The login shell then adds what his
+  // profile sets, which is his to set.
+  readonly property var sessionNames: ["HOME", "USER", "LOGNAME", "SHELL", "PATH", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES",
+    "LC_TIME", "LC_NUMERIC", "TZ", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_CONFIG_DIRS",
+    "XDG_DATA_DIRS", "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "WAYLAND_DISPLAY", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS",
+    "HYPRLAND_INSTANCE_SIGNATURE", "OMARCHY_PATH", "BROWSER", "EDITOR", "TERMINAL", "MISE_DATA_DIR", "MISE_CONFIG_DIR",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "no_proxy", "all_proxy",
+    "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR"]
+  readonly property var agentNames: ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CONFIG_DIR",
+    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "ANTHROPIC_VERTEX_PROJECT_ID", "CLOUD_ML_REGION",
+    "CLAUDE_CODE_OAUTH_TOKEN", "AWS_PROFILE", "AWS_REGION", "AWS_DEFAULT_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+    "OPENAI_API_KEY", "OPENAI_BASE_URL", "CODEX_HOME",
+    "GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION", "GOOGLE_GENAI_USE_VERTEXAI"]
+  property var passed: []
+  function environment() {
+    var env = {}
+    var names = ask.sessionNames.concat(ask.agentNames, (ask.passed || []).filter(function(n) { return /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(n)) }))
+    for (var i = 0; i < names.length; i++) {
+      var v = Quickshell.env(String(names[i]))
+      if (v !== null && v !== undefined && String(v) !== "") env[names[i]] = String(v)
+    }
+    return env
+  }
+
+  // An answer is at most this many characters (lib/Acp.js capped): past it
+  // the turn is cancelled, any request of the agent's refused, and the
+  // answer says it was cut.
+  property int answerMax: 1000000
+  property bool cut: false
+
   // What the agent is told, and the MCP servers it is given by name: some
   // agents take both at their start (lib/Agents.js).
   readonly property bool named: ask.acts && Object.keys(ask.mcp || {}).length > 0
@@ -81,7 +119,7 @@ Item {
   // What a session starts with: a change (another agent or model, actions,
   // servers) restarts an idle session, so the next question has it (Fable
   // 2026-10-06: an added server waited for a fresh conversation).
-  readonly property string launchKey: JSON.stringify([ask.agent, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer, ask.adaptersDir])
+  readonly property string launchKey: JSON.stringify([ask.agent, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer, ask.adaptersDir, ask.passed])
   // The adapter an npm agent runs from, as a key: "" for an agent that is
   // its own program (Gemini, his own).
   readonly property string adapterKey: ask.spec && ask.spec.adapter ? JSON.stringify([ask.spec.adapter, ask.dataDir, ask.adaptersDir]) : ""
@@ -164,7 +202,7 @@ Item {
       // An adapter is installed for a question asked, never while one is
       // typed (lib/Agents.js).
       // Said either way: one inherited from the shell is not his Enter.
-      var env = Object.assign({}, ask.spec ? ask.spec.env : {})
+      var env = Object.assign(ask.environment(), ask.spec ? ask.spec.env : {})
       ask.startInstalls = ask.busy()
       env.NODI_INSTALL = ask.startInstalls ? "1" : "0"
       proc.environment = env
@@ -245,6 +283,7 @@ Item {
     var text = p.text + (p.image && !image ? "\n\n(The picture could not be sent: " + ask.agentName + " takes none.)" : "")
     ask.calls = ({})
     ask.afterTool = false
+    ask.cut = false
     var preface = ask.instructed ? "" : ask.instructions
     ask.instructed = true
     ask.turn = ask.toAgent("prompt", function(id) { return Acp.prompt(id, ask.sessionId, text, image, preface) })
@@ -487,7 +526,7 @@ Item {
     var p = m.params || {}
     var tc = p.toolCall && typeof p.toolCall === "object" ? p.toolCall : {}
     var refuse = function() { proc.write(Acp.result(m.id, Acp.choose(p.options, false))) }
-    if (ask.recycling || p.sessionId !== ask.sessionId) { refuse(); return }
+    if (ask.recycling || ask.cut || p.sessionId !== ask.sessionId) { refuse(); return }
     var call = Acp.mergeCall(ask.calls[tc.toolCallId], tc)
     var input = call.rawInput === undefined || call.rawInput === null ? {} : call.rawInput
     // Kept with what the request carries, its input often first here.
@@ -512,13 +551,22 @@ Item {
     if (ask.recycling || !params || params.sessionId !== ask.sessionId || ask.turn === null) return
     var u = Acp.update(params)
     if (u.kind === "text") {
-      if (!u.text) return
+      if (!u.text || ask.cut) return
       var fresh = u.messageId !== "" && u.messageId !== ask.lastMessage
       if (u.messageId !== "") ask.lastMessage = u.messageId
-      if (ask.answer && (ask.afterTool || fresh) && !/\n\s*$/.test(ask.answer)) ask.answer += "\n\n"
+      var sep = ask.answer && (ask.afterTool || fresh) && !/\n\s*$/.test(ask.answer) ? "\n\n" : ""
       ask.afterTool = false
       if (ask.activity === "thinking") ask.activity = ""
-      ask.answer += u.text
+      var c = Acp.capped(ask.answer, sep, u.text, ask.answerMax)
+      if (c.cut) {
+        // Past the most an answer holds: what fits, a word that it was
+        // cut, the turn cancelled, and a request waiting refused; anything
+        // it still says or asks is dropped or refused.
+        ask.answer = c.text + "\n\n(Cut here: the answer ran past " + ask.answerMax + " characters.)"
+        ask.cut = true
+        if (ask.proposal) ask.deny()
+        proc.write(Acp.cancel(ask.sessionId))
+      } else ask.answer = c.text
       if (ask.phase === "waiting") ask.phase = "streaming"
     } else if (u.kind === "thought") {
       if (!ask.answer && !ask.activity) ask.activity = "thinking"
@@ -568,7 +616,8 @@ Item {
       ask.allowed = ""
       return ask.runner ? ask.runner(k) : "The bar cannot run rows here."
     }
-    var why = !ask.shown ? "The bar is closed; he sees what you say when he asks again, and can run it then."
+    var why = ask.cut ? "The answer ran past what the bar holds and was cancelled."
+            : !ask.shown ? "The bar is closed; he sees what you say when he asks again, and can run it then."
             : ask.proposal ? "One run at a time: he has not answered the last one."
             : ask.checker ? ask.checker(k) : ""
     if (why) return "Not run: " + why
@@ -585,6 +634,8 @@ Item {
   Process {
     id: proc
     stdinEnabled: true
+    // Only what `environment()` names, and the agent's own (warm).
+    clearEnvironment: true
     workingDirectory: ask.workDir
     // A session being recycled may still print the end of the answer it
     // was giving; that is not the next question's (codex 2026-10-04).

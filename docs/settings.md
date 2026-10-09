@@ -51,7 +51,7 @@ started).
 | `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts` |
 | `"filters"` | [Script filters](extend.md#script-filters), and the ones that [come with Nodi](extend.md#extensions-that-come-with-nodi) |
 | `"answers"` | [Answers](extend.md#answers): a program's answer, streamed beside the list |
-| `"ask"` | [Ask](ask.md): `"agent"` (`"claude"`, `"codex"`, `"gemini"`, or one of your own by its `"command"`; Omarchy's default agent unless set), `"model"` (the agent's own name for it; `haiku` for Claude unless set, which also describes apps), `"actions"` (`false` keeps the agent to answers, without the bar's rows), `"mcpServers"` (servers its answers may use, each call on your Enter) |
+| `"ask"` | [Ask](ask.md): `"agent"` (`"claude"`, `"codex"`, `"gemini"`, or one of your own by its `"command"`; Omarchy's default agent unless set), `"model"` (the agent's own name for it; `haiku` for Claude unless set, which also describes apps), `"actions"` (`false` keeps the agent to answers, without the bar's rows), `"mcpServers"` (servers its answers may use, each call on your Enter), `"environment"` (names of variables of yours the agent is given, past those Ask passes) |
 | `"apps"` | `"describe"`: a few words from Claude for an app with no description of its own |
 | `"math"` | `"precision"`: significant digits in an answer (10) |
 | `"currency"` | `"home"`: your currency, what a bare amount converts to; `"favorites"`: the ones shown with it |
