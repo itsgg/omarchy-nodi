@@ -52,6 +52,10 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 - Ctrl+B and Ctrl+F move a letter as you see one, an emoji or a Tamil
   letter whole; a query holding half of one no longer fails and leaves
   the last query's rows for Enter.
+- A prefs.json that does not parse is said in a notification and never
+  written over, so a hand edit's typo loses no alias, favourite, hotkey
+  or rule; the bar reads the file again at each open, taking a hand
+  edit or a fix.
 
 ## 0.3.0 (2026-10-07)
 

@@ -8,6 +8,7 @@
 | A row's hotkey is taken | A key you gave a row from Ctrl+K is bound to something else now. Give the row another from Ctrl+K. |
 | nodi.json has an error | Your settings file does not parse, or holds no object of settings; the notification says why, and where for a typo. Nothing in it applies until it does: the last settings that worked are kept, or the defaults, if none has worked since the shell started. |
 | (a row's name) failed | A command a row ran exited with an error: the text is the last line it wrote, a script command's exit status if it wrote none, or why an action that can be undone failed. A command of a menu row or a script filter's that fails without a word, or a program you close, says nothing. |
+| prefs.json has an error | `~/.local/state/nodi/prefs.json`, where what you set from Ctrl+K is kept, does not parse (often a hand edit's trailing comma). Nothing is saved over it until it is fixed, so nothing in it is lost; the bar reads it again at each open. |
 | Window rule not kept | Nodi keeps fifty window rules at most, fewer for very long app names; take one back in `?mine`. |
 
 ## Nothing opens on the key
