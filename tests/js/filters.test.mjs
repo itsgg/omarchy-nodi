@@ -127,7 +127,10 @@ test("a program that ignores TERM is ended when a newer keystroke replaces it", 
   const { tmpdir } = await import("node:os");
   const Sources = load("lib/Sources.js");
   const dir = mkdtempSync(join(tmpdir(), "nodi-filter-"));
-  const p = { keyword: "s", command: ["/usr/bin/bash", "-c", 'trap "" TERM; sleep 1.5; : > "$0/survived"', dir], query: "q", timeoutMs: 3000 };
+  // Five seconds to the mark, read at 6 s, so the kill has room while other
+  // test files run beside this one (2026-10-09: at 1.5 s it lost, now and
+  // then, to the CPU the Ask launch tests take).
+  const p = { keyword: "s", command: ["/usr/bin/bash", "-c", 'trap "" TERM; sleep 5; : > "$0/survived"', dir], query: "q", timeoutMs: 8000 };
   const argv = Sources.limited(F.provider.sources.filter.argv(JSON.stringify(p)), 10000, 1048576);
   const wrapper = spawn(argv[0], argv.slice(1), { stdio: "ignore" });
   await new Promise(r => setTimeout(r, 300));
@@ -139,7 +142,7 @@ test("a program that ignores TERM is ended when a newer keystroke replaces it", 
     spawn("/usr/bin/pkill", ["-TERM", "-P", String(wrapper.pid)]);
     await new Promise(r => setTimeout(r, 50));
   }
-  await new Promise(r => setTimeout(r, 2200));
+  await new Promise(r => setTimeout(r, 5700));
   assert.equal(existsSync(join(dir, "survived")), false, "it was killed before it could finish");
 });
 
