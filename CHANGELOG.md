@@ -67,6 +67,10 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 - With the agent Ask holds not installed (its program not on your login
   PATH), a query nothing matches offers no Ask, and `ask ` says what is
   missing before an Enter.
+- `nodi pick` refuses more than 8 MB of rows as it reads them, rather
+  than keeping all of them in the runtime directory first; `nodi mcp`
+  reads a message 16 MB at most, and Ask's tool server 64 KB, a longer
+  one refused unread.
 
 ## 0.3.0 (2026-10-07)
 

@@ -118,6 +118,20 @@ test("pick prints the chosen line as it was read, and leaves nothing behind", ()
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
+test("pick keeps at most what the bar reads: past 8 MB it is refused, nothing asked, nothing left (codex's review, 2026-10-09)", () => {
+  const t = setup();
+  try {
+    const r = nodi(t, ["pick"], { input: "x".repeat(8388609), pick: "pick 0" });
+    assert.equal(r.status, 2, r.err);
+    assert.match(r.err, /more than 8 MB of rows/);
+    assert.ok(!/call \S+ pick /.test(r.log), "the bar was not asked");
+    assert.deepEqual(readdirSync(join(t, "run")), [], "nothing left in the runtime directory");
+    // Exactly 8 MB, in short lines: kept, asked, the first picked.
+    const fits = nodi(t, ["pick"], { input: "a\n".repeat(4194304), pick: "pick 0" });
+    assert.deepEqual([fits.status, fits.out], [0, "a\n"], fits.err);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
 test("pick with --json says so; Escape is exit 1 with nothing printed", () => {
   const t = setup();
   try {
@@ -196,6 +210,19 @@ test("nodi mcp: the handshake, the tools, and what it does not know", () => {
     assert.deepEqual(ids.replies.map(x => [x.id, x.error ? x.error.code : "ok"]), [[false, "ok"], [null, -32601]], "ids as given (Fable 2026-10-06)");
     const last = nodi(t, ["mcp"], { input: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "ping" }) });
     assert.equal(JSON.parse(last.out).id, 9, "a last line without its newline is read");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp reads a line at most 16 MB at a time: a longer one is refused, never held whole, and the next answered (codex's review, 2026-10-09)", () => {
+  const t = setup();
+  try {
+    const ping = id => ({ jsonrpc: "2.0", id, method: "ping" });
+    const r = mcp(t, [ping(1), "x".repeat(16777300), ping(2), "y".repeat(300000)]);
+    assert.deepEqual(r.byId[1].result, {});
+    assert.deepEqual(r.byId[2].result, {}, "the message after it answered");
+    const said = r.replies.filter(x => x.id === null).map(x => x.error.message);
+    assert.deepEqual(said, ["Too long: a message is 16 MB at most", "parse error"],
+                     "the line past 16 MB refused unread; a 300 KB one, within the cap, read and found no JSON");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
