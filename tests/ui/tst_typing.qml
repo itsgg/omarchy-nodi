@@ -31,5 +31,21 @@ Item {
       seen = fake.calls.filter(function(c) { return c[0] === "queryChanged" }).map(function(c) { return c[1] })
       compare(seen[seen.length - 1], "acb", "typed in the middle, read in the middle")
     }
+
+    // Naming an alias, the empty field asks for a word, not a search
+    // (2026-10-10, driven live: it suggested "uuid" there).
+    function test_alias_placeholder_asks_for_a_word() {
+      var ph = findChild(card, "placeholder")
+      verify(ph !== null)
+      // The field empty, as the alias prompt opens it: the words are seen
+      // (Cursor's review, 2026-10-10).
+      card.input.text = ""
+      tryVerify(function() { return ph.visible }, 1000, "the placeholder shows over an empty field")
+      fake.aliasRow = null
+      compare(ph.text, fake.placeholder)
+      fake.aliasRow = { title: "CHANGELOG.md" }
+      compare(ph.text, "A word for CHANGELOG.md")
+      fake.aliasRow = null
+    }
   }
 }
