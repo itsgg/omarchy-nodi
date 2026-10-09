@@ -208,6 +208,19 @@ test("an adapter installs only when asked to, and again when the shipped lock is
     assert.equal(go({ NODI_INSTALL: "1" }).status, 0);
     assert.equal(readFileSync(join(t, "log"), "utf8").split("\n").filter(l => l.startsWith("start")).length, 2);
     assert.equal(readFileSync(join(dir, "package-lock.json"), "utf8"), "{\"v\": 2}\n");
+    // Once a version is in place, the same adapter's others go, and only those.
+    for (const old of ["agents/pkg@0", "agents/other@1", "agents/pkg@2"]) mkdirSync(join(t, old), { recursive: true });
+    writeFileSync(join(t, "agents/pkg@0.log"), "old log\n");
+    // pkg@2's lock is held, as an install of it would hold it: kept.
+    const { spawn } = await import("node:child_process");
+    const holder = spawn("/usr/bin/flock", [join(t, "agents/pkg@2.lock"), "sleep", "5"], { stdio: "ignore" });
+    await new Promise(r => setTimeout(r, 300));
+    writeFileSync(join(lock, "package-lock.json"), "{\"v\": 3}\n");
+    assert.equal(go({ NODI_INSTALL: "1" }).status, 0);
+    holder.kill();
+    const { readdirSync } = await import("node:fs");
+    assert.deepEqual(readdirSync(join(t, "agents")).sort(), ["other@1", "pkg@1", "pkg@1.lock", "pkg@1.log", "pkg@2", "pkg@2.lock"],
+                     "the old version's tree and log gone, one installing kept, another adapter's kept");
     // No lockfile shipped: refused, never a bare install.
     rmSync(dir, { recursive: true }); rmSync(join(lock, "package-lock.json"));
     const bare = go({ NODI_INSTALL: "1" });
