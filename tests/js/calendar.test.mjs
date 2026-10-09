@@ -272,6 +272,12 @@ test("calendar: the meeting under way and the next within the hour lead the empt
 test("calendar: off until a feed is set, its mode and command too", () => {
   eq(mine(Engine.home(config, services({ calendar: data, history: {}, reminders: [] }))), []);
   eq(mine(Engine.run("cal ", config, services({ calendar: data }))), []);
+  // Off, its help says how to turn it on and fills in nothing that does
+  // nothing (2026-10-10, driven live).
+  const off = Engine.run("?calendar", config, services());
+  eq(off.map(r => [r.title, r.complete || ""]), [["Calendar", ""]]);
+  assert.ok(off[0].subtitle.indexOf("\"calendar\": { \"ics\"") !== -1, off[0].subtitle);
+  eq(Engine.run("?calendar", cfg, services()).map(r => r.complete), ["cal ", "cal standup"], "on: cal with its space, so it lists");
   assert.equal(Engine.mode("cal 5", config), null, "\"cal ...\" is anyone's while it is off (Sonnet 2026-10-06)");
   assert.equal(Engine.mode("cal 5", cfg).label, "Calendar");
   const offRows = Engine.run("schedule", config, services({ calendar: data }));

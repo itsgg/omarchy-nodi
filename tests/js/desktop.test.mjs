@@ -34,6 +34,18 @@ test("audio: the outputs and inputs, the current marked, set by Omarchy's comman
   assert.deepEqual(plain(outs.map(r => r.title)), ["SolarBeatz", "Speakers"]);
   assert.equal(outs[0].badge, "Current");
   assert.deepEqual(plain(outs[1].run.argv), ["omarchy-audio-output-set-default", "52", "alsa_output.pci.analog-stereo"]);
+  // The kind's word typed whole names every device, over a file of the
+  // same name; a word still being typed stays a keyword.
+  const all = run("output", { desktop, found: { q: "output", list: [{ path: "/home/u/fixtures/output", name: "output", dir: false }] } });
+  const at = k => all.findIndex(r => r.key === k);
+  assert.ok(at("output:bluez_output.41_42") >= 0 && at("output:bluez_output.41_42") < at("file:/home/u/fixtures/output"), "a device over a file named output");
+  assert.ok(at("file:/home/u/fixtures/output") >= 0, "the file is there");
+  assert.equal(rows("outp").find(r => r.key === "output:bluez_output.41_42").tier, "keyword");
+  // What a device is used for stays a keyword: "recording" is the screen
+  // recorder's before a microphone's (Cursor's review, 2026-10-10).
+  assert.equal(rows("recording").find(r => r.key === "input:alsa_input.pci.analog-stereo").tier, "keyword");
+  assert.equal(rows("headphones").find(r => r.key === "output:bluez_output.41_42").tier, "keyword");
+  assert.equal(rows("mic").find(r => r.key === "input:alsa_input.pci.analog-stereo").tier, "exact");
   const mic = rows("microphone")[0];
   assert.deepEqual(plain(mic.run.argv), ["omarchy-audio-input-set-default", "61", "alsa_input.pci.analog-stereo"]);
 });

@@ -202,7 +202,7 @@ var provider = {
   icon: "󰀻",
   help: [
     { id: "apps", title: "Open an app", about: "Type part of an app's name, its initials, or what it does",
-      examples: ["firefox", "term", "brave new window"] }
+      examples: ["chromium", "term", "chromium new window"] }
   ],
   match: function(query, ctx) {
     var q = Match.normalise(query)
@@ -228,7 +228,7 @@ var provider = {
       if (t) hits.push({ app: apps[i], t: t, s: Score.score(t, "app", Score.habit(history["app:" + apps[i].id], nowMs)) })
     }
 
-    // "brave new window": the app's name, then one of its actions.
+    // "chromium new window": the app's name, then one of its actions.
     var actionHits = []
     if (qw.length > 1) {
       for (var a = 0; a < apps.length; a++) {

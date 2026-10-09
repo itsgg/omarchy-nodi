@@ -103,7 +103,7 @@ var provider = {
     { id: "windows", title: "Switch window", about: "Type an app or a window title. w and a space lists them all",
       examples: [{ q: "w ", note: "Every other open window, most recent first" },
                  { q: "w github", hint: "Windows with github in the title" },
-                 { q: "brave", hint: "Brave's windows first, then Brave to open a new one" }] }
+                 { q: "chromium", hint: "Chromium's windows first, then Chromium to open a new one" }] }
   ],
   match: function(query, ctx) {
     var known = described(ctx.windows || [], ctx.apps || [])

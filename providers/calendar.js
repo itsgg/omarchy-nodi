@@ -222,8 +222,14 @@ var provider = {
   commands: function(ctx) {
     return param(ctx.settings) ? [{ title: "My schedule", keywords: "calendar agenda meetings events today schedule cal", text: "The next eight days of your calendar", complete: "cal " }] : []
   },
-  help: [{ id: "calendar", title: "Calendar", icon: ICON, about: "Your next meeting first, Enter joining it; from an iCal address set in nodi.json",
-           examples: [{ q: "cal", note: "The next eight days" }, { q: "cal standup", note: "Events that hold the word" }] }],
+  // Off, it says how to turn it on: its examples did nothing, and `cal`
+  // filled in found Omacalc (2026-10-10, driven live).
+  help: function(ctx) {
+    if (!param(ctx.settings)) return [{ id: "calendar", title: "Calendar", icon: ICON, examples: [],
+                                        about: "Off until your calendar's iCal address is set: \"calendar\": { \"ics\": \"...\" } in nodi.json" }]
+    return [{ id: "calendar", title: "Calendar", icon: ICON, about: "Your next meeting first, Enter joining it; from an iCal address set in nodi.json",
+              examples: [{ q: "cal ", note: "The next eight days" }, { q: "cal standup", note: "Events that hold the word" }] }]
+  },
   sources: {
     calendar: {
       argv: function(p, env) { return env && env.pluginDir ? ["/usr/bin/python3", "-I", env.pluginDir + "/lib/ics.py", env.cacheDir + "/calendar"] : null },

@@ -418,6 +418,10 @@ function tmuxRows(q, ctx, all) {
 function sshRows(q, ctx, all) {
   var got = ctx.request ? ctx.request("ssh") : { state: "pending" }
   var list = Array.isArray(got.value) ? got.value : []
+  // `ssh` with no host named in the config says where they are named: the
+  // folder ~/.ssh and SSHD stood in its place (2026-10-10, driven live).
+  if (all && Array.isArray(got.value) && !list.length)
+    return [{ key: "ssh:none", title: "No host in ~/.ssh/config", subtitle: "A Host line there names one", icon: "󰒋", score: 40, copy: "", remember: false }]
   var out = []
   for (var i = 0; i < list.length; i++) {
     var h = list[i]

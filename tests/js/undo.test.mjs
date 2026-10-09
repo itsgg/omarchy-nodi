@@ -46,7 +46,11 @@ test("the empty bar opens on them, above favourites; a query finds one by its ti
   assert.equal(home[0].section, "", "one undo has no header of its own");
   assert.equal(Engine.run("undo", config, services({ undo }))[0].title, "Recall the report");
   assert.equal(Engine.run("recall", config, services({ undo }))[0].title, "Recall the report");
-  assert.ok(!Engine.run("undo", config, services({ undo: [] })).some(r => r.provider === "undo"));
+  // None on offer: `undo` says so and runs nothing; files named undo stood
+  // in its place (2026-10-10, driven live).
+  const none = Engine.run("undo", config, services({ undo: [] })).filter(r => r.provider === "undo");
+  assert.deepEqual(plain(none.map(r => [r.title, r.run])), [["Nothing to undo", null]]);
+  assert.ok(!Engine.run("undo it", config, services({ undo: [] })).some(r => r.provider === "undo"), "only the word alone");
 });
 
 test("an exec row or action can be undoable, kept in its snapshot; a script filter's line says so", () => {

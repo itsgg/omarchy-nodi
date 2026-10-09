@@ -73,6 +73,11 @@ function openRow(d, q) {
            run: Run.shell(OPEN, [d.name]), tier: t, kind: "action", copy: "" }
 }
 
+function savedNames(prefs) {
+  var all = (prefs && prefs.desktops) || []
+  return all.length ? "Saved: " + all.map(function(d) { return d.name }).join(", ") : "None saved"
+}
+
 var provider = {
   id: "desktops",
   name: "Desktops",
@@ -101,10 +106,14 @@ var provider = {
     if (f) {
       var d0 = prefs && Prefs.desktopFor(prefs, f[1])
       return d0 ? [{ key: "desktop:forget:" + d0.name.toLowerCase(), title: "Forget desktop \"" + d0.name + "\"", subtitle: said(d0.apps), icon: ICON,
-                     nodi: "forgetDesktop", data: { name: d0.name }, actionLabel: "Forget", tier: "exact", kind: "action", remember: false, copy: "" }] : []
+                     nodi: "forgetDesktop", data: { name: d0.name }, actionLabel: "Forget", tier: "exact", kind: "action", remember: false, copy: "" }]
+                 : [{ key: "desktop:none", title: "No desktop named \"" + f[1] + "\"", subtitle: savedNames(prefs), icon: ICON, score: 40, copy: "", remember: false }]
     }
     var out = []
     var all = (prefs && prefs.desktops) || []
+    // `desktop` with none saved says how to save one: an unrelated row stood
+    // in its place (2026-10-10, driven live).
+    if (!all.length && /^desktops?$/i.test(q)) return [{ key: "desktop:none", title: "No desktop saved", subtitle: "save desktop <name> keeps which app is on which workspace", icon: ICON, score: 40, copy: "", remember: false }]
     for (var i = 0; i < all.length; i++) {
       var r = openRow(all[i], q)
       if (r) out.push(r)
