@@ -71,7 +71,9 @@ var provider = {
     if (running && a.question !== q)
       return [{ key: "ask:busy", title: who + " is still on: " + a.question, subtitle: "Ask when it has answered", icon: "󰚩", score: 98, copy: "", remember: false }]
     if (a.question !== q || a.phase === "idle") {
-      var rows = [{ key: "ask:new", title: "Ask " + who + ": " + q, subtitle: name, icon: "󰚩", score: 98,
+      // The first question installs the agent's adapter: say so before
+      // the Enter that does it (components/Ask.qml).
+      var rows = [{ key: "ask:new", title: "Ask " + who + ": " + q, subtitle: a.install ? "Enter installs " + a.install + " from npm first, once" : name, icon: "󰚩", score: 98,
                     copy: q, nodi: "ask", actionLabel: "Ask", remember: false }]
       var sel = ctx.selection || {}
       var ab = Selection.about(sel)

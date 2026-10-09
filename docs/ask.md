@@ -19,10 +19,15 @@ Nodi can hold it, else Claude.
 | `codex` | Codex, signed in; Node.js | Codex's ACP adapter, `@agentclientprotocol/codex-acp` 2.1.1, run on your own `codex`: read-only, its shell, apps and web search off, no project's AGENTS.md. |
 | `gemini` | Gemini CLI | Nodi's own settings for it, over yours: none of its built-in tools, no MCP server but the bar's and those you name, no GEMINI.md, no hooks. |
 
-The first time you type `ask ` with Claude or Codex, Nodi installs its
-adapter with `npm`, at the version above, into
-`~/.local/share/nodi/agents`, once: about 60 MB, and a minute or so,
-while the bar says so.
+The first question you ask with Claude or Codex installs its adapter,
+once, into `~/.local/share/nodi/agents`: about 60 MB for Claude's, and a
+minute or so, while the bar says so. Until then the row that asks says
+its Enter installs it; typing `ask ` installs nothing. What installs is
+the tree in Nodi's `lib/adapters/<adapter>/package-lock.json`, through
+`npm ci --ignore-scripts`: every package at the version the lock names
+and checked against its hash, none of their install scripts run. A tree
+installed from another lock is not run, and the next question installs
+it again.
 
 Omarchy's other agents are not offered. Cursor's agent read a file for a
 question without asking, and never saw the bar's tools (2026-10-07);

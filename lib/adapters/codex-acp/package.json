@@ -1,0 +1,7 @@
+{
+  "name": "nodi-codex-acp",
+  "private": true,
+  "dependencies": {
+    "@agentclientprotocol/codex-acp": "2.1.1"
+  }
+}

@@ -593,7 +593,7 @@ Item {
       prefs: root.prefs,
       ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error,
              agent: askSession.agentName, model: askSession.modelName, status: askSession.status, activity: askSession.activity,
-             proposal: root.proposed(), context: askSession.context, capturing: windowShot.active },
+             proposal: root.proposed(), context: askSession.context, capturing: windowShot.active, install: askSession.install },
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error },
       window: root.cameFrom,
@@ -1838,6 +1838,7 @@ Item {
     runner: root.askRun
     shown: root.opened
     onPhaseChanged: if (root.opened) root.recompute()
+    onInstallChanged: if (root.opened) root.recompute()
   }
 
   // ---------------------------------------------------------------- Ask acts

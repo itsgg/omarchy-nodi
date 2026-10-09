@@ -22,8 +22,10 @@ Item {
   property var agent: "claude"
   property string model: ""
   property string workDir: ""
-  // Where an adapter is installed (lib/Agents.js).
+  // Where an adapter is installed, and where the lockfiles that say what
+  // it is are (lib/Agents.js).
   property string dataDir: ""
+  property string adaptersDir: Qt.resolvedUrl("../lib/adapters").toString().replace(/^file:\/\//, "")
   // bin/nodi, whose `mcp --ask` serves the bar's tools to the agent, and
   // what it is started with besides its session (a test's stand-in shell).
   property string toolServer: ""
@@ -61,7 +63,7 @@ Item {
   readonly property bool named: ask.acts && Object.keys(ask.mcp || {}).length > 0
   readonly property string instructions: AskTools.instructions(ask.acts, ask.named)
   readonly property var serverNames: ask.acts ? (ask.toolServer ? [AskTools.SERVER] : []).concat(Object.keys(ask.mcp || {})) : []
-  readonly property var spec: Agents.spec(ask.agent, ask.dataDir, ask.model, ask.instructions, ask.serverNames)
+  readonly property var spec: Agents.spec(ask.agent, ask.dataDir, ask.model, ask.instructions, ask.serverNames, ask.adaptersDir)
   // What the bar says while it waits for words (providers/ask.js, the
   // pane): what the start is doing, else what the agent is doing.
   readonly property string status: ask.setup ? ask.setup
@@ -79,7 +81,21 @@ Item {
   // What a session starts with: a change (another agent or model, actions,
   // servers) restarts an idle session, so the next question has it (Fable
   // 2026-10-06: an added server waited for a fresh conversation).
-  readonly property string launchKey: JSON.stringify([ask.agent, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer])
+  readonly property string launchKey: JSON.stringify([ask.agent, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer, ask.adaptersDir])
+  // The adapter an npm agent runs from, as a key: "" for an agent that is
+  // its own program (Gemini, his own).
+  readonly property string adapterKey: ask.spec && ask.spec.adapter ? JSON.stringify([ask.spec.adapter, ask.dataDir, ask.adaptersDir]) : ""
+  // The adapter the launch script last said was installed ("nodi: adapter
+  // ready", lib/Agents.js), and the one a start found not installed: typing
+  // starts no other until a question is asked, which installs it. Until a
+  // start has said it is ready, the rows say the Enter that asks installs
+  // it (`install`), so no Enter installs unannounced, however soon after
+  // `ask ` it comes.
+  property string readyAdapter: ""
+  property string notInstalled: ""
+  readonly property string install: ask.adapterKey && ask.readyAdapter !== ask.adapterKey ? ask.spec.adapter : ""
+  // This start was allowed to install (NODI_INSTALL=1).
+  property bool startInstalls: false
   onLaunchKeyChanged: if (proc.running && !ask.busy() && !ask.recycling) ask.restart()
 
   // What the bar shows.
@@ -138,13 +154,20 @@ Item {
     // (Fable 2026-10-06: recycled at the send, it waited for a start).
     if (ask.stale()) ask.recycle()
     if (!ask.busy() && Date.now() - ask.failedAt < 10000) return
+    if (!ask.busy() && ask.adapterKey && ask.notInstalled === ask.adapterKey) return
     if (!proc.running && !ask.recycling && !ask.ending) {
       var argv = ask.program || (ask.spec && ask.spec.argv)
       if (!argv) { if (ask.busy()) ask.fail("Ask cannot hold the agent " + JSON.stringify(ask.agent) + ": it knows " + Agents.known().join(", ") + ", or one given by its command"); return }
       ask.resetSession()
       ask.token = ask.newToken()
       ask.stage = "init"
-      proc.environment = ask.spec ? ask.spec.env : {}
+      // An adapter is installed for a question asked, never while one is
+      // typed (lib/Agents.js).
+      // Said either way: one inherited from the shell is not his Enter.
+      var env = Object.assign({}, ask.spec ? ask.spec.env : {})
+      ask.startInstalls = ask.busy()
+      env.NODI_INSTALL = ask.startInstalls ? "1" : "0"
+      proc.environment = env
       proc.command = argv
       proc.running = true
       upGuard.since = Date.now()
@@ -575,6 +598,9 @@ Item {
         // apart, and an install is over once the agent answers.
         var inst = l.match(/^nodi: installing (.+)$/)
         if (inst && ask.stage === "init") ask.setup = "Installing " + inst[1] + ", once"
+        // The adapter is the shipped lock's tree, installed now or before:
+        // the rows stop saying an Enter installs it.
+        if (l === "nodi: adapter ready" && !ask.recycling) { ask.readyAdapter = ask.adapterKey; ask.notInstalled = "" }
         if (l.trim()) ask.errTail = (ask.errTail.split("\n").slice(-2).concat([l.slice(0, 300)])).join("\n")
       }
     }
@@ -597,10 +623,21 @@ Item {
     onExited: function(exitCode) {
       ask.started = false
       upGuard.stop()
-      var said = ask.errTail.split("\n").filter(function(l) { return /^nodi: /.test(l) })
+      // The launch script's word for why it stopped; not what it said on
+      // the way (installing, ready), which is no reason.
+      var said = ask.errTail.split("\n").filter(function(l) { return /^nodi: /.test(l) && !/^nodi: (installing .*|adapter ready)$/.test(l) })
       var last = ask.errTail.split("\n").filter(function(l) { return l.trim() !== "" })
       var why = said.length ? said[said.length - 1].slice(6) : last.length ? last[last.length - 1] : "exit " + exitCode
       ask.resetSession()
+      // Not installed, and not asked to install: nothing failed. A question
+      // asked meanwhile starts it again, to install. Only the launch
+      // script's own word for it, from a start not allowed to install: an
+      // agent that exits 75 for its own reasons fails as any other.
+      if (exitCode === 75 && ask.adapterKey && !ask.startInstalls && !ask.recycling && !ask.ending && said.length && /is not installed$/.test(said[said.length - 1])) {
+        ask.notInstalled = ask.adapterKey
+        if (ask.pending) ask.warm()
+        return
+      }
       // A recycled session's exit is expected, and a question asked since
       // waits in `pending` for the fresh one.
       if (ask.recycling) { ask.recycling = false; ask.warm(); return }

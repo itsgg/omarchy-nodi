@@ -22,8 +22,9 @@ Everything Nodi reads, writes, starts and sends, and when.
   while that fails), for `prs` (through `gh`), to describe apps, if
   turned on (through Claude Code's `claude` command), and under `ask`
   through the coding agent Ask holds ([Ask](ask.md)), which goes online
-  itself. The first `ask ` typed with Claude or Codex installs that
-  agent's ACP adapter from npm, once, into `~/.local/share/nodi/agents`; for Gemini,
+  itself. The first question asked with Claude or Codex installs that
+  agent's ACP adapter from npm, once, into `~/.local/share/nodi/agents`,
+  as the lockfile in `lib/adapters` names it, with no install scripts; for Gemini,
   Nodi writes its settings for it to `~/.local/share/nodi/gemini-settings.json`.
   The agent's session runs in `~/.cache/nodi/ask`, is offered no files
   and no terminal of Nodi's, and has no MCP servers but the bar's and
