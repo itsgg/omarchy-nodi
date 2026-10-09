@@ -66,7 +66,7 @@ function nodi(t, args, opts = {}) {
     FAKE_SEARCH: opts.search || "[]", FAKE_DESCRIBE: opts.describe || "unknown row", FAKE_RUNPROPOSED: opts.runProposed || "ok",
     FAKE_TOKEN: "t0k", ...(opts.env || {})
   };
-  const r = spawnSync(NODI, args, { env, input: opts.input || "", timeout: 15000 });
+  const r = spawnSync(NODI, args, { env, input: opts.input || "", timeout: opts.timeout || 15000 });
   return { status: r.status, out: r.stdout.toString(), err: r.stderr.toString(), log: (() => { try { return readFileSync(join(t, "log"), "utf8") } catch (e) { return "" } })() };
 }
 
@@ -217,7 +217,8 @@ test("nodi mcp reads a line at most 16 MB at a time: a longer one is refused, ne
   const t = setup();
   try {
     const ping = id => ({ jsonrpc: "2.0", id, method: "ping" });
-    const r = mcp(t, [ping(1), "x".repeat(16777300), ping(2), "y".repeat(300000)]);
+    // bash reads a pipe a byte at a time: 16 MB takes it about 15 s here.
+    const r = mcp(t, [ping(1), "x".repeat(16777300), ping(2), "y".repeat(300000)], { timeout: 120000 });
     assert.deepEqual(r.byId[1].result, {});
     assert.deepEqual(r.byId[2].result, {}, "the message after it answered");
     const said = r.replies.filter(x => x.id === null).map(x => x.error.message);

@@ -2,7 +2,7 @@
 // autocomplete, under what is typed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { urlOf } from "./curl.mjs";
+import { urlOf, needsEnvironment } from "./curl.mjs";
 import { load, plain } from "./load.mjs";
 import { run, config } from "./fixtures.mjs";
 
@@ -40,6 +40,7 @@ test("DuckDuckGo's answer read, and the request it is", () => {
   const a = src.argv("x");
   assert.deepEqual([a[1], a[a.indexOf("--max-filesize") + 1], a[a.indexOf("--proto") + 1], a.includes("-L")], ["-q", "65536", "=https", false], "no ~/.curlrc, at most its cap, over https, no redirect followed");
   assert.equal(urlOf(src, "a b&c"), "https://duckduckgo.com/ac/?type=list&q=a%20b%26c", "the words encoded, by curl, from the environment");
+  assert.ok(needsEnvironment(src, "a b&c"), "and from there only: none of it, encoded or not, in an argument");
   assert.equal(src.supersede, true, "each keystroke ends the read before it");
 });
 
