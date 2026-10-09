@@ -87,6 +87,13 @@ make reload   # install this tree and restart the shell
 [PLAN.md](PLAN.md) explains the design; [CHANGELOG.md](CHANGELOG.md)
 lists the releases.
 
+## Credits
+
+The calculator, units, currency, time zones, dates, emoji, processes and
+the matching of windows and apps began as ports from Saikomantisu's
+[Command Bar](https://github.com/Saikomantisu/omarchy-commandbar) (MIT),
+whose copyright [LICENSE](LICENSE) carries too.
+
 ## License
 
 [MIT](LICENSE)
