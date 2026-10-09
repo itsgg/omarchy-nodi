@@ -208,7 +208,8 @@ opens on it with its command; your Enter runs it, Escape refuses), and
 shows the tool and its input, and your Enter allows it. A key a search
 found runs as found for ten minutes; one question waits in the bar at a
 time, and a newer one takes its place, the older answered "not asked".
-A query or a key is 64 KB at most.
+A query or a key is 64 KB at most, a message 16 MB, read so: a longer
+one is refused unread.
 
 ```sh
 claude mcp add nodi -- nodi mcp

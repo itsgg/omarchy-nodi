@@ -86,7 +86,12 @@ pick() {
   # waits there for nobody (Fable 2026-10-06: set this late, a signal
   # while the rows were read left the directory).
   trap '"$ipc" shell call "$id" cancelPick "$rid" >/dev/null 2>&1; exit 1' TERM INT HUP
-  cat > "$dir/rows" || fail "could not read stdin"
+  # At most what the bar reads (8 MB, PickSession.qml), counted as it is
+  # written: past it the pick is refused before anything is kept (codex's
+  # review, 2026-10-09: the rows went whole into the runtime directory,
+  # memory, however many came).
+  head -c 8388609 > "$dir/rows" || fail "could not read stdin"
+  [ "$(stat -c %s -- "$dir/rows")" -le 8388608 ] || fail "more than 8 MB of rows"
   mkfifo -m 600 "$dir/answer" || fail "no FIFO for the answer"
   # Read and write: opening it so never waits for a writer, and Nodi's
   # write never waits for this reader.
@@ -231,14 +236,33 @@ mcp_call() {
   esac
 }
 
+# One line of stdin into `line`, read at most $1 characters at a time, so
+# no message is held whole past its cap (codex's review, 2026-10-09: a line
+# was read whole before any check). 0 a line, 1 the end of input, 3 a line
+# longer than $1 - 1, read to its end and dropped. A last line without its
+# newline is still a line.
+read_line() {
+  local max=$1 rest
+  line=""
+  if ! IFS= read -r -n "$max" line; then [ -n "$line" ] || return 1; fi
+  [ "${#line}" -lt "$max" ] && return 0
+  while IFS= read -r -n 65536 rest; do [ "${#rest}" -lt 65536 ] && break; done
+  line=""
+  return 3
+}
+
 mcp() {
-  local line kind method mid version asked
+  local line kind method mid version asked s
   version=$(jq -r '.version // "0"' "$(dirname -- "$(readlink -f -- "$0")")/../manifest.json" 2>/dev/null) || version=0
   # The client gone (its transport ends the server): a pick it left in the
   # bar goes too (Fable 2026-10-06).
   trap '[ -n "$MCP_PICK" ] && kill -TERM "$MCP_PICK" 2>/dev/null; exit 0' TERM INT HUP
-  # A last line without its newline is still read.
-  while IFS= read -r line || [ -n "$line" ]; do
+  # A message is 16 MB at most (an approve's input, a file written whole,
+  # can be large), a query or a key in it 64 KB (mcp_call).
+  while :; do
+    read_line 16777217; s=$?
+    [ $s -eq 1 ] && break
+    [ $s -eq 3 ] && { mcp_error null -32600 "Too long: a message is 16 MB at most"; continue; }
     [ -n "${line//[[:space:]]/}" ] || continue
     # "request", "note" (no id: answered by nothing) or "bad" (a batch, a
     # string), and the method; JSON that does not parse is -32700.
@@ -276,14 +300,19 @@ mcp() {
 # ended session left reaches nothing. A message the shell cannot take is
 # answered here, never left waiting.
 ask_relay() {
-  local line out mid why req
+  local line out mid why req s
   [ -n "${NODI_ASK_SESSION:-}" ] || fail "nodi mcp --ask is Ask's own: it needs NODI_ASK_SESSION"
   # A search or a run can pass omarchy-shell's two seconds, and a call
   # that ran would be said not to have reached the bar (Fable 2026-10-07).
   OMARCHY_SHELL_IPC_TIMEOUT=${OMARCHY_SHELL_IPC_TIMEOUT:-10s}
   export OMARCHY_SHELL_IPC_TIMEOUT
   trap 'exit 0' TERM INT HUP
-  while IFS= read -r line || [ -n "$line" ]; do
+  # A line past 64 KB could never go to the shell (below): it is read to
+  # its end and refused, never held whole.
+  while :; do
+    read_line 65537; s=$?
+    [ $s -eq 1 ] && break
+    [ $s -eq 3 ] && { mcp_error null -32602 "Too long: a message is 64 KB at most"; continue; }
     [ -n "${line//[[:space:]]/}" ] || continue
     # The shell's facade takes one argument (shell.qml call(id, method,
     # arg); Fable 2026-10-07: two were refused, every message with them):
