@@ -630,7 +630,13 @@ test("the zones whose offsets are read: every city's zone once, then the ones se
 
 test("time: a 12-hour clock when asked, a day back, and the zones still being read", () => {
   const twelve = Object.assign({}, config, { time: Object.assign({}, config.time, { clock24: false }) });
-  assert.equal(run("time in tokyo", {}, twelve)[0].title, "5:30 pm Tokyo");
+  // "Now" is the fixtures' local 14:00, so Tokyo's hour is the host's to
+  // say: the 12-hour answer is the 24-hour one's (CI runs in UTC, 2026-10-10).
+  // Where Tokyo is a day off Colombo (the Americas), with its "(+1 day)"
+  // (Cursor's review, 2026-10-10).
+  const [, hh, mm, day] = top("time in tokyo").title.match(/^(\d\d):(\d\d) Tokyo( \([+-]\d+ days?\))?$/);
+  const h = Number(hh);
+  assert.equal(run("time in tokyo", {}, twelve)[0].title, (h % 12 || 12) + ":" + mm + (h < 12 ? " am" : " pm") + " Tokyo" + (day || ""));
   assert.equal(run("3am lkt to pst", {}, twelve)[0].title, "2:30 pm Los Angeles (-1 day)");
   assert.equal(top("1am lkt to pst").title, "12:30 Los Angeles (-1 day)");
   assert.deepEqual(plain(run("time in tokyo", { zones: null }).slice(0, 1).map(r => [r.title, r.subtitle])), [["Looking up time zones...", "Time"]]);
