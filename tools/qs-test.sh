@@ -9,7 +9,10 @@
 # its own pid.
 set -euo pipefail
 PATH=/usr/bin:/bin
-export PATH
+# A variable of the shell's that no agent Ask starts may see unless named
+# (tests/qml/AskActsTest.qml closed).
+NODI_TEST_INHERITED=leak
+export PATH NODI_TEST_INHERITED
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 shell=${OMARCHY_PATH:-/usr/share/omarchy}/shell

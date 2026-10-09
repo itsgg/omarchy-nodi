@@ -1837,6 +1837,8 @@ Item {
     // "ask": { "actions": false } (ROADMAP 44).
     acts: !(root.config.ask && root.config.ask.actions === false)
     mcp: AskTools.servers(root.config.ask && root.config.ask.mcpServers)
+    // Variables of his the agent needs beyond those Ask passes (Ask.qml).
+    passed: Array.isArray(root.config.ask && root.config.ask.environment) ? root.config.ask.environment : []
     searcher: root.askSearch
     checker: root.askCheck
     runner: root.askRun

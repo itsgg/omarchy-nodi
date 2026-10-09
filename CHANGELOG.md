@@ -26,6 +26,12 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   commands go through the environment. A paste types as Omarchy's emoji
   insert does, with the text on a pipe; a pinned text sent to a device
   is written to the runtime directory rather than `/tmp`.
+- Ask's agent starts with a cleared environment: your session's
+  variables, a proxy and certificates, and the agents' own sign-in and
+  provider variables, plus any named under `"ask": { "environment" }`,
+  then what your login profile sets. An answer is cut at a million
+  characters, a line the agent writes at 4 MB, and an agent that writes
+  over 64 MB to the bar in a session is stopped.
 
 ## 0.3.0 (2026-10-07)
 

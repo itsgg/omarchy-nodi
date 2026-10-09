@@ -58,7 +58,8 @@ test("Claude over ACP: its adapter pinned, his own claude, nothing of his settin
   assert.equal(s.name, "Claude");
   assert.equal(s.model, "haiku", "haiku unless set");
   assert.deepEqual(s.argv.slice(0, 2), ["/usr/bin/bash", "-lc"], "a login shell, for his PATH and the agent's sign-in");
-  const rest = s.argv.slice(4);
+  assert.deepEqual(s.argv.slice(4, 7), ["--bounds", "67108864", "4194304"], "its output bounded, by arguments, not by anything in the environment");
+  const rest = s.argv.slice(7);
   assert.deepEqual(rest.slice(0, 3), ["--which", "CLAUDE_CODE_EXECUTABLE", "claude"]);
   assert.deepEqual(rest.slice(3), ["npm", "/d/agents/_agentclientprotocol_claude-agent-acp@0.86.0", "/p/lib/adapters/claude-agent-acp",
                                    "@agentclientprotocol/claude-agent-acp", "0.86.0", "claude-agent-acp"]);
@@ -77,8 +78,8 @@ test("Claude over ACP: its adapter pinned, his own claude, nothing of his settin
 
 test("Codex: its adapter on his own codex, read-only, no shell, apps or web, the instructions its own (ROADMAP 84)", () => {
   const s = plain(G.spec("codex", "/d", "", "Be brief.", ["nodi"], "/p/lib/adapters"));
-  assert.deepEqual(s.argv.slice(4, 7), ["--which", "CODEX_PATH", "codex"]);
-  assert.deepEqual(s.argv.slice(7), ["npm", "/d/agents/_agentclientprotocol_codex-acp@2.1.1", "/p/lib/adapters/codex-acp",
+  assert.deepEqual(s.argv.slice(7, 10), ["--which", "CODEX_PATH", "codex"]);
+  assert.deepEqual(s.argv.slice(10), ["npm", "/d/agents/_agentclientprotocol_codex-acp@2.1.1", "/p/lib/adapters/codex-acp",
                                      "@agentclientprotocol/codex-acp", "2.1.1", "codex-acp"]);
   assert.equal(s.env.INITIAL_AGENT_MODE, "read-only");
   const c = JSON.parse(s.env.CODEX_CONFIG);
@@ -90,10 +91,10 @@ test("Codex: its adapter on his own codex, read-only, no shell, apps or web, the
 
 test("Gemini: no built-in tool, only the servers given, no GEMINI.md, no hooks", () => {
   const gem = plain(G.spec("gemini", "/d", "gemini-3.8-flash", "x", ["nodi", "github"]));
-  assert.deepEqual(gem.argv.slice(4, 7), ["--file", "GEMINI_CLI_SYSTEM_SETTINGS_PATH", "/d/gemini-settings.json"]);
-  assert.deepEqual(JSON.parse(gem.argv[7]), { tools: { core: [] }, mcp: { allowed: ["nodi", "github"] }, context: { fileName: "NODI_NONE.md" },
+  assert.deepEqual(gem.argv.slice(7, 10), ["--file", "GEMINI_CLI_SYSTEM_SETTINGS_PATH", "/d/gemini-settings.json"]);
+  assert.deepEqual(JSON.parse(gem.argv[10]), { tools: { core: [] }, mcp: { allowed: ["nodi", "github"] }, context: { fileName: "NODI_NONE.md" },
                                               hooksConfig: { enabled: false }, model: { name: "gemini-3.8-flash" } });
-  assert.deepEqual(gem.argv.slice(8), ["exec", "gemini", "--acp"]);
+  assert.deepEqual(gem.argv.slice(11), ["exec", "gemini", "--acp"]);
   assert.equal(gem.adapter, "", "Gemini is its own program, nothing installed");
   assert.deepEqual([gem.instructs, gem.mode], [false, ""], "the instructions with the first prompt");
   assert.deepEqual(plain(G.known()).sort(), ["claude", "codex", "gemini"], "Cursor reads files unasked (AgentsLiveTest, 2026-10-07)");
@@ -118,7 +119,7 @@ test("after session/new: the mode Ask needs and the model asked for, or a start 
 
 test("an agent of his own: started as its command says, its instructions with the first prompt, nothing of it turned off", () => {
   const s = plain(G.spec({ name: "Helper", command: ["helper", "acp", "--quiet"], env: { HELPER_MODE: "bar", "bad name": "x", N: 3 } }, "/d", "", "x", ["nodi"]));
-  assert.deepEqual(s.argv.slice(4), ["exec", "helper", "acp", "--quiet"]);
+  assert.deepEqual(s.argv.slice(4), ["--bounds", "67108864", "4194304", "exec", "helper", "acp", "--quiet"], "bounded as the others are");
   assert.deepEqual([s.name, s.env, s.instructs, s.meta, s.mode, s.modelInMeta], ["Helper", { HELPER_MODE: "bar", N: "3" }, false, null, "", false]);
   assert.equal(G.spec({ command: ["/opt/x/bin/opencode", "acp"] }, "/d", "").name, "opencode", "named by its program when unnamed");
   for (const bad of [{}, { command: [] }, { command: "opencode acp" }, { command: [3] }, { command: [""] }, []])
@@ -351,4 +352,44 @@ test("before the first question installs the adapter, the rows that ask say so (
   assert.equal(plain(run("ask what is this", { ask: { ...ask, install: "" } }))[0].subtitle, "Claude Haiku", "installed: the agent and its model");
   const fb = plain(run("qqzzxxvv", { ask })).find(r => r.key === "fallback:ask");
   assert.equal(fb.subtitle, "Enter installs @agentclientprotocol/claude-agent-acp 0.86.0 from npm first, once");
+});
+
+test("what the agent writes is bounded before the shell reads it: a long line broken, too much stopped, each line as it comes (the marketplace's review, 2026-09-12)", async () => {
+  const { spawn } = await import("node:child_process");
+  const go = (bounds, script, env = {}) => spawnSync("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent"].concat(bounds ? ["--bounds"].concat(bounds) : [], ["exec", "/usr/bin/bash", "-c", script]),
+                                                  { encoding: "utf8", maxBuffer: 64 * 1048576, env: { PATH: "/usr/bin:/bin", ...env } });
+  const long = go(["100000", "10"], 'printf "%s\\n" 0123456789abcdefghijXYZ; echo short');
+  assert.equal(long.stdout, "0123456789\nabcdefghij\nXYZ\nshort\n", "no line past the cap reaches the shell");
+  const lot = go(["4000", "100"], 'while :; do echo "a line of the answer" || exit 9; done');
+  assert.equal(lot.stdout.length, 4000, "no more than the cap");
+  assert.match(lot.stderr, /^nodi: the agent wrote more than 4000 bytes, and was stopped$/m);
+  assert.notEqual(lot.status, 0, "the agent was stopped");
+  // One that writes too much, then waits: stopped, not left running with
+  // nothing reading it (codex's review, 2026-10-09).
+  const quiet = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "--bounds", "100", "100", "exec", "/usr/bin/bash", "-c", 'head -c 1000 /dev/zero | tr "\\0" a; echo; exec sleep 20'],
+                      { env: { PATH: "/usr/bin:/bin" } });
+  quiet.stdout.resume(); quiet.stderr.resume();
+  const t0 = Date.now();
+  const how = await new Promise(r => quiet.on("exit", (code, signal) => r({ code, signal, ms: Date.now() - t0 })));
+  assert.ok(how.ms < 10000, "stopped in " + how.ms + " ms, not after its sleep");
+  assert.equal(how.signal, "SIGTERM");
+  assert.equal(go(null, "head -c 5000000 /dev/zero | tr '\\0' a", { NODI_LINE_MAX: "100000000", NODI_OUT_MAX: "100000000" }).stdout.split("\n")[0].length, 4194304,
+               "the environment moves no bound");
+  const err = go(null, 'head -c 70000 /dev/zero | tr "\\0" e >&2; echo >&2');
+  assert.deepEqual(err.stderr.split("\n").map(l => l.length).slice(0, 2), [65536, 70000 - 65536], "stderr's lines at 64 KB");
+  // A line at a time: the first is read while the agent still runs.
+  const p = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "exec", "/usr/bin/bash", "-c", "echo first; sleep 3; echo second"], { env: { PATH: "/usr/bin:/bin" } });
+  const first = await new Promise(r => { const t0 = Date.now(); p.stdout.once("data", d => r([String(d), Date.now() - t0])); });
+  p.kill();
+  assert.equal(first[0], "first\n");
+  assert.ok(first[1] < 2500, "the first line came in " + first[1] + " ms, not held to the end");
+});
+
+test("an answer kept to its most characters: the separator counted, never half a character (codex's review, 2026-10-09)", () => {
+  const Acp = load("lib/Acp.js");
+  assert.deepEqual(plain(Acp.capped("abc", "", "def", 10)), { text: "abcdef", cut: false });
+  assert.deepEqual(plain(Acp.capped("x".repeat(9), "\n\n", "yz", 10)), { text: "x".repeat(9) + "\n", cut: true }, "the separator is in the count");
+  assert.deepEqual(plain(Acp.capped("x".repeat(8), "", "\u{1F525}\u{1F525}", 11)), { text: "x".repeat(8) + "\u{1F525}", cut: true }, "a pair kept whole or not at all");
+  assert.deepEqual(plain(Acp.capped("x".repeat(8), "", "\u{1F525}\u{1F525}", 9)), { text: "x".repeat(8), cut: true });
+  assert.equal(Acp.capped("x".repeat(10), "", "y", 10).text.length, 10);
 });

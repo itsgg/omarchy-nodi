@@ -139,3 +139,21 @@ is offered no files and no terminal of Nodi's. For Claude, Codex and
 Gemini, the table above says what of the agent's own is turned off. The
 session ends with the conversation, after thirty minutes with no
 question. [What it touches](privacy.md) has the whole list.
+
+It starts with none of the shell's environment but your session's
+(home, PATH, locale, the XDG folders, Wayland and D-Bus), a proxy and
+certificates if you set them, and the variables the three agents read
+their sign-in and provider from (`ANTHROPIC_*`, `CLAUDE_CONFIG_DIR`,
+Bedrock's and Vertex's, `OPENAI_API_KEY`, `CODEX_HOME`, `GEMINI_API_KEY`,
+`GOOGLE_*`). It starts in a login shell, so your profile then adds what
+it sets, as a terminal would. Name any other it needs:
+
+```jsonc
+"ask": { "environment": ["MY_PROXY_TOKEN"] }
+```
+
+An answer holds a million characters at most: past it the turn is
+cancelled, anything the agent asks for in it refused, and the answer
+says it was cut. A line the agent writes is broken at 4 MB, and an agent
+that writes over 64 MB of answers and messages in one session is
+stopped.

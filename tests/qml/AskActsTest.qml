@@ -22,13 +22,13 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 18
+  property int remaining: 21
   readonly property string fake: String(Qt.resolvedUrl("fake-agent.py")).replace(/^file:\/\//, "")
   readonly property string nodi: String(Qt.resolvedUrl("../../bin/nodi")).replace(/^file:\/\//, "")
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
   // bin/nodi's omarchy-shell, a stand-in that reaches this instance.
   readonly property var toolEnv: ({ OMARCHY_PATH: String(Qt.resolvedUrl("fake-omarchy")).replace(/^file:\/\//, ""), NODI_TEST_SHELL: Quickshell.shellDir, NODI_TEST_TARGET: "nodiAskTest" })
-  readonly property var sessions: [ask, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed, consent, own75, readyThenFails]
+  readonly property var sessions: [ask, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed, consent, own75, readyThenFails, flood, closed, named2]
 
   function finished() {
     if (--test.remaining > 0) return
@@ -460,7 +460,51 @@ Item {
     }
   }
 
+  // A long answer: cut at the most an answer holds, said so, the turn
+  // cancelled, and nothing it says after kept.
+  Ask {
+    id: flood
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    answerMax: 1000
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      var body = answer.split("\n\n(Cut here")[0]
+      if (phase !== "done" || body.length !== 1000 || !/\(Cut here: the answer ran past 1000 characters\.\)$/.test(answer) || /x$/.test(answer))
+        test.failures.push("a long answer: " + phase + " " + error + " length " + answer.length + " " + JSON.stringify(answer.slice(-60)))
+      test.finished()
+    }
+  }
+
+  // The agent's environment: none of the shell's but what Ask names
+  // (qs-test.sh exports NODI_TEST_INHERITED), the agent's own, and what
+  // nodi.json adds by name.
+  Ask {
+    id: closed
+    program: ["/usr/bin/bash", "-c", 'echo "nodi: inherited=${NODI_TEST_INHERITED-none} home=${HOME:+yes} path=${PATH:+yes} own=${CLAUDE_CODE_DISABLE_CLAUDE_MDS-none}" >&2; exit 1']
+    workDir: test.dir
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (error !== "Claude stopped: inherited=none home=yes path=yes own=1") test.failures.push("the agent's environment: " + JSON.stringify(error))
+      test.finished()
+    }
+  }
+  Ask {
+    id: named2
+    program: ["/usr/bin/bash", "-c", 'echo "nodi: inherited=${NODI_TEST_INHERITED-none}" >&2; exit 1']
+    workDir: test.dir
+    passed: ["NODI_TEST_INHERITED", "not a name"]
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (error !== "Claude stopped: inherited=leak") test.failures.push("a variable nodi.json names: " + JSON.stringify(error))
+      test.finished()
+    }
+  }
+
   function start() {
+    flood.send("say a lot")
+    closed.send("q")
+    named2.send("q")
     if (!consent.install) test.failures.push("before any start, the rows do not say an Enter installs")
     consent.warm()
     own75.warm()

@@ -22,6 +22,9 @@
 #                              come with the first prompt only, and a
 #                              picture it does not take does not come
 #   sign in first              session/new needs a sign-in, which he gives
+#   say a lot                  streams 100-byte chunks until it is told
+#                              session/cancel (at most 200), then ends the
+#                              turn cancelled, as an agent does
 # argv[1] names the session's agent ("claude", with _meta; "plain"
 # without); argv[2], "auth", makes session/new ask for a sign-in,
 # "authhang" one that never finishes, and "installing" says on stderr that
@@ -223,6 +226,20 @@ while True:
 
     if question == "sign in first":
         end(); continue
+
+    if question == "say a lot":
+        cancelled = False
+        for i in range(200):
+            answer("x" * 100, SID)
+            # A cancel Ask sends lands between chunks: read one if it waits.
+            import select
+            if select.select([sys.stdin], [], [], 0.01)[0]:
+                c = read()
+                if c and c.get("method") == "session/cancel": cancelled = True; break
+        # Never told to stop: the turn fails, so a test sees the cancel missing.
+        if cancelled: send({"jsonrpc": "2.0", "id": pid, "result": {"stopReason": "cancelled"}})
+        else: send({"jsonrpc": "2.0", "id": pid, "error": {"code": -32603, "message": "never cancelled"}})
+        continue
 
     # lock my screen
     tl = mcp("tools/list", {}, 1)
