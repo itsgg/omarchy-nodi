@@ -1183,6 +1183,10 @@ Item {
     }
     var s = a ? a.s : null
     var remember = a ? a.remember : false
+    // An agent's run at once takes only a row no word of its own reaches
+    // (AskTools.refusedAtOnce); any other it proposes.
+    var refused = agent === true && !proposed && s ? AskTools.refusedAtOnce(k, s.provider) : ""
+    if (refused) return refused
     // Watched by its title unless the Undoer runs it and says so itself,
     // as execute() has it: the Undoer takes an argv, and a watched run is
     // a command and its environment since its title left the arguments
@@ -1875,14 +1879,8 @@ Item {
   // only rows its search returned, and a new question starts it afresh.
   property var askRows: ({})
 
-  // The bar's ranking for a query, for an agent (Claude's search here,
-  // `nodi mcp`'s): eight rows at most that run something. Nodi's own rows
-  // (an undo, which Enter takes through the Undoer) are not an agent's
-  // (Fable 2026-10-06).
-  function agentRows(q) {
-    var rows = Engine.run(String(q || ""), root.config, root.services()).filter(function(r) { return !!r.run && !r.help && !r.nodi })
-    return rows.slice(0, 8)
-  }
+  // The bar's ranking for a query, for an agent (lib/Engine.js agentRows).
+  function agentRows(q) { return Engine.agentRows(q, root.config, root.services()) }
 
   // A row as an agent reads it; a row that asks says how.
   function agentData(r) {

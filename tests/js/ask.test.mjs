@@ -410,3 +410,42 @@ test("when Ask goes, its agent is stopped: TERM, then KILL if it is still the sa
   assert.equal(spawnSync(b[0], b.slice(1)).status, 0, "gone already: nothing to do");
   assert.equal(G.stopArgv(0), null); assert.equal(G.stopArgv(1), null, "never init"); assert.equal(G.stopArgv("x"), null);
 });
+
+test("an agent's run at once takes only rows no word of its own reaches; its search starts none of his programs (codex's reviews, 2026-10-09)", async () => {
+  const { Engine, config, services } = await import("./fixtures.mjs");
+  const Registry = load("providers/index.js");
+  const ids = [...new Set(Registry.all.map(p => p.id))];
+  const atOnce = ["apps", "windows", "menu", "system", "desktop", "desktops", "keys", "plugins"];
+  assert.ok(ids.length > 30, "every provider: " + ids.length);
+  for (const id of ids) assert.equal(A.refusedAtOnce(id + ":x", id) === "", atOnce.includes(id), id + (atOnce.includes(id) ? " runs at once" : " is proposed"));
+  for (const id of atOnce) assert.ok(ids.includes(id), id + " is a provider");
+  assert.match(A.refusedAtOnce("shell:rm -rf ~", "shell"), /command line; propose it/);
+  assert.match(A.refusedAtOnce("remind:15", "system"), /propose it/, "a reminder's message is the agent's words");
+  assert.equal(A.refusedAtOnce("remind:show", "system"), "");
+  assert.equal(A.refusedAtOnce("volume:60", "system"), "", "a number, clamped");
+  assert.match(A.refusedAtOnce("k", undefined), /propose it/);
+  const row = plain(run("> rm -rf ~", {}))[0];
+  assert.deepEqual([row.key, row.provider], ["shell:rm -rf ~", "shell"]);
+  // The reads an agent's search may not start: none reaches his request;
+  // every other does, with all its arguments ({ fetch: false } among them).
+  const calls = [];
+  const req = A.forAgent(function() { calls.push([...arguments]); return { state: "ready", value: [] }; });
+  for (const name of ["filter", "filter-list", "filter-step", "script-output"]) assert.equal(req(name, "p").state, "error", name);
+  assert.deepEqual(calls, [], "none of his programs asked for");
+  req("rates", "USD", { fetch: false });
+  assert.deepEqual(calls, [["rates", "USD", { fetch: false }]]);
+  assert.equal(A.forAgent(null)("define", "x").state, "pending");
+  // Engine.agentRows, which Nodi.qml's is (tools/hygiene.mjs): a filter
+  // that runs its query is never asked; his own search asks it.
+  const cfg = Object.assign({}, config, { filters: [{ keyword: "x", title: "X", command: ["bash", "-c"] },
+                                                  { keyword: "l", title: "L", command: ["bash", "-c"], list: true, root: true }] });
+  const asked = [];
+  const rows = plain(Engine.agentRows("x touch /tmp/pwn", cfg, services({ asked, filter: () => { throw new Error("started") } })));
+  Engine.agentRows("l touch", cfg, services({ asked, filter: () => { throw new Error("started") } }));
+  assert.ok(!asked.some(k => /^filter/.test(k)), "the filters were not asked: " + asked.join(" "));
+  assert.ok(!rows.some(r => r.provider === "filters"), "and offer nothing");
+  assert.ok(rows.length <= 8 && rows.every(r => r.run && !r.help && !r.nodi));
+  const his = [];
+  Engine.run("x touch /tmp/pwn", cfg, services({ asked: his, filter: () => [] }));
+  assert.ok(his.some(k => /^filter:/.test(k)), "his own search asks it, as before");
+});

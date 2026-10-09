@@ -36,6 +36,11 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   Ctrl+K, releases a row's hotkey changed a moment before, and stops an
   agent that ignores TERM. The README says how to remove Nodi and what
   it leaves.
+- `nodi mcp`'s `run` takes only rows whose command no word of the
+  agent's reaches (apps, windows, Omarchy's menu and toggles, the
+  desktop, saved desktops, keybindings, plugins; not a reminder); an agent
+  proposes anything else, and it runs on your Enter. An agent's search
+  starts none of your script filters or inline scripts.
 
 ## 0.3.0 (2026-10-07)
 

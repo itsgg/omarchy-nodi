@@ -198,7 +198,11 @@ pick took the bar before this one was answered.
 `nodi mcp` is the bar as an MCP server on stdin and stdout, for Claude
 Code or any other agent. Its tools: `search` the bar's rows (each with a
 key, what it runs, and whether it asks first), `run` one by its key
-(refusing a row that asks, as `nodi run` does), `propose` one (the bar
+(refusing a row that asks, as `nodi run` does, and any row but an app,
+a window, Omarchy's menu and toggles, the desktop's media and devices,
+a saved desktop, a keybinding or a plugin, whose commands no word of the
+agent's reaches, and of those not a reminder; a search starts none of your script
+filters or inline scripts), `propose` one (the bar
 opens on it with its command; your Enter runs it, Escape refuses), and
 `approve`, a permission prompt tool for a headless `claude -p`: the bar
 shows the tool and its input, and your Enter allows it. A key a search
