@@ -18,6 +18,10 @@
 //      Pick.answerArgv(...) or Agents.stopArgv(...) (constant scripts, their
 //      data as arguments, as releaseArgv's), or an array whose first
 //      element is a program's name, never a shell (review T5).
+//   5. An agent's search and its run at once go through what tests hold
+//      (tests/js/ask.test.mjs): Nodi.qml's agentRows is Engine.agentRows,
+//      and runKey asks AskTools.refusedAtOnce before an agent's run
+//      (codex's review, 2026-10-09: removing either passed every test).
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -123,6 +127,16 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
       if (!ok) problems.push(`${rel}:${i + 1}: execDetached with an argv that is neither Run.command's nor a named program: ${arg.slice(0, 60)}`);
     }
   });
+}
+
+// 5. Agents
+{
+  const src = read("Nodi.qml");
+  if (!/function agentRows\(q\) \{ return Engine\.agentRows\(q, root\.config, root\.services\(\)\) \}/.test(src))
+    problems.push("Nodi.qml: agentRows is not Engine.agentRows");
+  const body = (src.match(/function runKey\(key, confirmed, agent\) \{[\s\S]*?\n  \}\n/) || [""])[0];
+  if (!/agent === true && !proposed && s \? AskTools\.refusedAtOnce\(k, s\.provider\)/.test(body) || !/if \(refused\) return refused/.test(body))
+    problems.push("Nodi.qml: runKey does not refuse an agent's run at once through AskTools.refusedAtOnce");
 }
 
 if (problems.length) {

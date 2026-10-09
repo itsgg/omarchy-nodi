@@ -21,7 +21,12 @@ Everything Nodi reads, writes, starts and sends, and when.
   you close, is not reported); a script command with its last line or its
   exit status; an action that can be undone with why it failed.
 - `nodi mcp` runs only when an agent starts it, and runs a row only by
-  `run`, which the agent's own permissions gate, or by your Enter.
+  `run`, which the agent's own permissions gate, or by your Enter. `run`
+  takes only an app, a window, Omarchy's menu and toggles, the desktop's
+  media and devices, a saved desktop, a keybinding or a plugin, and not
+  a reminder; anything else, a command line after `>` among them, runs only
+  on your Enter. An agent's search, in the bar or through `nodi mcp`,
+  starts none of your script filters or inline scripts.
 - It sends what you type after `g`, `yt` or `wiki`, from the second letter,
   to DuckDuckGo's autocomplete (duckduckgo.com/ac) for suggestions; a
   keyword of yours does so only with `"suggest": true`.
