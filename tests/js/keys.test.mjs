@@ -184,3 +184,41 @@ test("Ctrl+R brings back an earlier query, newest first (ROADMAP 50)", () => {
   assert.deepEqual(plain(History.recentQueries(null)), []);
 });
 
+
+test("Ctrl+B and Ctrl+F move a letter as a reader sees one: an emoji, a Tamil letter, never inside (2026-10-09)", () => {
+  const K = load("lib/Keys.js");
+  const fire = "zq\u{1F525}";
+  assert.deepEqual(plain(K.edited("left", fire, fire.length, 0, 0)), { text: fire, at: 2 }, "back over the whole emoji");
+  assert.deepEqual(plain(K.edited("right", fire, 2, 0, 0)), { text: fire, at: 4 });
+  const nodi = "நொடி";
+  assert.equal(K.edited("left", nodi, nodi.length, 0, 0).at, 2, "back over டி, two code points, to where it starts");
+  assert.equal(K.edited("left", nodi, 2, 0, 0).at, 0);
+  assert.equal(K.edited("right", nodi, 0, 0, 0).at, 2);
+  assert.equal(K.edited("right", "ab", 2, 0, 0).at, 2, "at the end, the end");
+  assert.equal(K.edited("left", "ab", 0, 0, 0).at, 0);
+  assert.equal(K.edited("left", fire, 3, 0, 0).at, 2, "from inside a pair, to where it starts");
+});
+
+test("a query holding half of a pair answers as any other: no row's work throws on it, the fallbacks there (2026-10-09)", () => {
+  const rows = plain(run("zq\uD83Dx"));
+  assert.ok(rows.some(r => r.key === "fallback:ask"), "the fallbacks came: " + rows.map(r => r.key).join(" "));
+  assert.ok(rows.every(r => !/[\uD800-\uDFFF](?![\uDC00-\uDFFF])/.test(r.title)), "nothing shows the half");
+  const E = load("lib/Engine.js");
+  assert.equal(E.wellFormed("a\uD83Db\uDD25c\u{1F525}"), "a�b�c\u{1F525}", "halves made U+FFFD, a whole pair kept");
+  assert.deepEqual(plain(E.guarded("x", () => { throw new URIError("URI malformed") })), [], "a throw is no rows");
+});
+
+test("a selection collapses at a letter's edge, and a move over a long paste stays quick (codex's review, 2026-10-09)", () => {
+  const K = load("lib/Keys.js");
+  const fire = "\u{1F525}x";
+  assert.equal(K.edited("right", fire, 1, 0, 1).at, 2, "a selection ending inside the pair: after the whole emoji");
+  assert.equal(K.edited("left", fire, 1, 1, 3).at, 0, "starting inside it: before it");
+  assert.equal(K.edited("left", "abc", 2, 1, 2).at, 1, "at an edge already: there");
+  const long = "lorem ipsum \u{1F525} dolor ".repeat(6000);
+  const t0 = Date.now();
+  let at = long.length;
+  for (let i = 0; i < 50; i++) at = K.edited("left", long, at, 0, 0).at;
+  assert.ok(Date.now() - t0 < 500, "50 moves over " + long.length + " characters took " + (Date.now() - t0) + " ms");
+  assert.equal(long.slice(at).length > 0 && !/^[\uDC00-\uDFFF]/.test(long.slice(at)), true, "never inside a pair");
+  assert.equal(K.edited("left", "\u{1F525}", 2, 0, 0).at, 0);
+});
