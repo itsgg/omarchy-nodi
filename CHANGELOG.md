@@ -32,6 +32,10 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   then what your login profile sets. An answer is cut at a million
   characters, a line the agent writes at 4 MB, and an agent that writes
   over 64 MB to the bar in a session is stopped.
+- Removing or disabling Nodi turns off the window rules set from
+  Ctrl+K, releases a row's hotkey changed a moment before, and stops an
+  agent that ignores TERM. The README says how to remove Nodi and what
+  it leaves.
 
 ## 0.3.0 (2026-10-07)
 

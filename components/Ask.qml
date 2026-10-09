@@ -738,5 +738,12 @@ Item {
     onTriggered: if (proc.running && pid && proc.processId === pid) proc.signal(9)
   }
 
-  Component.onDestruction: if (proc.running) proc.signal(15)
+  // TERM and, if it is still there three seconds later, KILL: the
+  // killGuard's way, by a program of its own, as this goes with its timers.
+  Component.onDestruction: {
+    if (!proc.running) return
+    var argv = Agents.stopArgv(proc.processId)
+    if (argv) Quickshell.execDetached(argv)
+    else proc.signal(15)
+  }
 }

@@ -18,9 +18,12 @@ alone, and a notification says "Nodi has no hotkey" and why.
 `omarchy plugin update io.github.itsgg.nodi` updates it, showing what
 changed first ([CHANGELOG](../CHANGELOG.md) says what each version
 brought), and `omarchy plugin remove io.github.itsgg.nodi` removes it,
-releasing its key. What it keeps of yours stays until you delete it:
-`~/.local/state/nodi/prefs.json` (what you set on rows), `~/.cache/nodi/`
-(its caches) and `nodi.json` (your settings).
+releasing its key and the hotkeys you gave rows, turning off the window
+rules you set and stopping Ask's agent. What it keeps of yours
+stays until you delete it: `~/.local/state/nodi/prefs.json` (what you set
+on rows), `~/.cache/nodi/` (its caches), `~/.local/share/nodi/` (Ask's
+agent adapters) and `nodi.json` (your settings); the
+[README](../README.md#remove) has the command that deletes them.
 
 ## The first open
 

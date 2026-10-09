@@ -1641,10 +1641,12 @@ Item {
 
   // Unloading releases the key, unless another Nodi has taken this one's
   // place (lib/Hotkey.js releaseArgv says why and how).
+  // The window rules he set go too: turned off, as no rule (lib/WindowRules.js).
   Component.onDestruction: {
     if (root.captureRow) Quickshell.execDetached(["hyprctl", "eval", Hotkey.captureEndLua()])
-    var combos = [Hotkey.parseCombo(root.boundHotkey)].concat(Object.keys(root.prefs.hotkeys).map(Hotkey.parseCombo))
-    var argv = Hotkey.releaseArgv(combos, root.pluginId, (root.omarchyPath || "/usr/share/omarchy") + "/bin/omarchy-shell")
+    var combos = Hotkey.held(root.boundHotkey, root.prefs.hotkeys, root.boundRows)
+    var rules = root.prefs.rules && Object.keys(root.prefs.rules).length ? WindowRules.lua({}) : ""
+    var argv = Hotkey.releaseArgv(combos, root.pluginId, (root.omarchyPath || "/usr/share/omarchy") + "/bin/omarchy-shell", "", undefined, rules)
     if (argv) Quickshell.execDetached(argv)
   }
 

@@ -33,6 +33,30 @@ omarchy plugin add https://github.com/itsgg/omarchy-nodi --enable
 
 Update with `omarchy plugin update io.github.itsgg.nodi`.
 
+## Remove
+
+```sh
+omarchy plugin remove io.github.itsgg.nodi
+```
+
+That releases its hotkey and the hotkeys you gave rows, turns off the
+window rules you set from Ctrl+K, and stops Ask's agent. A key another
+binding shares stays until Hyprland reloads, as releasing it would
+release both. What it keeps of yours stays until you delete it: your
+settings
+(`~/.config/omarchy/extensions/nodi.json`), what you set on rows
+(`~/.local/state/nodi`), its caches (`~/.cache/nodi`) and Ask's agent
+adapters (`~/.local/share/nodi`, about 80 MB once Claude and Codex have
+been asked):
+
+```sh
+rm -rf ~/.config/omarchy/extensions/nodi.json ~/.local/state/nodi ~/.cache/nodi ~/.local/share/nodi
+```
+
+Pasting the clipboard in sequence and sending a pinned text leave a few
+files in `$XDG_RUNTIME_DIR` (`nodi-sequence`, `nodi-share.*.txt`), which
+go at logout.
+
 ## Usage
 
 | Type | To |
