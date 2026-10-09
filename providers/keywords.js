@@ -127,7 +127,9 @@ var provider = {
     suggest: {
       // The words reach curl in the environment, which it encodes into
       // the URL itself, so they are in no argument.
-      argv: function(q) { return ["/usr/bin/curl", "-sS", "--max-time", "3", "--variable", "%NODI_Q", "--expand-url", "https://duckduckgo.com/ac/?type=list&q={{NODI_Q:url}}"] },
+      // At most the read's 64 KB, over https only, no ~/.curlrc, as the
+      // dictionary's.
+      argv: function(q) { return ["/usr/bin/curl", "-q", "-sS", "--max-time", "3", "--max-filesize", "65536", "--proto", "=https", "--variable", "%NODI_Q", "--expand-url", "https://duckduckgo.com/ac/?type=list&q={{NODI_Q:url}}"] },
       environment: function(q) { return { NODI_Q: String(q) } },
       parse: function(text, ok) {
         if (!ok) throw "DuckDuckGo did not answer"

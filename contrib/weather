@@ -14,7 +14,9 @@ where=$(printf '%s' "$place" | jq -sRr 'gsub(" "; "+") | @uri | gsub("%2B"; "+")
 # said as that, not as wttr.in being down (Fable 2026-10-07).
 body=$(mktemp) || exit 1
 trap 'rm -f -- "$body"' EXIT
-code=$(curl -sS --max-time 10 -A "curl (Nodi)" -o "$body" -w '%{http_code}' "https://wttr.in/$where?format=j1") || { printf 'wttr.in did not answer.\n' >&2; exit 1; }
+# At most 1 MB, over https only: a body past it fails the request; -q
+# first, so no ~/.curlrc turns on a redirect.
+code=$(curl -q -sS --max-time 10 --max-filesize 1048576 --proto =https -A "curl (Nodi)" -o "$body" -w '%{http_code}' "https://wttr.in/$where?format=j1") || { printf 'wttr.in did not answer.\n' >&2; exit 1; }
 case $code in
   200) got=$(cat -- "$body") ;;
   404|500) printf 'wttr.in knows no place called *%s*.\n' "$q"; exit 0 ;;

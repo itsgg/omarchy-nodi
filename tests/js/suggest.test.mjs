@@ -37,6 +37,8 @@ test("DuckDuckGo's answer read, and the request it is", () => {
   assert.throws(() => src.parse("<html>", true));
   assert.throws(() => src.parse("", false));
   assert.ok(!src.argv("a b&c").some(a => a.includes("a b")), "the words in no argument");
+  const a = src.argv("x");
+  assert.deepEqual([a[1], a[a.indexOf("--max-filesize") + 1], a[a.indexOf("--proto") + 1], a.includes("-L")], ["-q", "65536", "=https", false], "no ~/.curlrc, at most its cap, over https, no redirect followed");
   assert.equal(urlOf(src, "a b&c"), "https://duckduckgo.com/ac/?type=list&q=a%20b%26c", "the words encoded, by curl, from the environment");
   assert.equal(src.supersede, true, "each keystroke ends the read before it");
 });

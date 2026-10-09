@@ -185,6 +185,39 @@ test("ics: a feed that fails says why; a copy answers, marked stale; a changed f
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("ics: a redirect is followed, but never from https to anything else (codex's review, 2026-10-09)", () => {
+  const out = execFileSync("/usr/bin/python3", ["-I", "-B", "-c", [
+    "import sys, json, urllib.request, urllib.error; sys.path.insert(0, sys.argv[1]); import ics",
+    "h = ics.HttpsOnly()",
+    "def go(a, b):",
+    "    try:",
+    "        r = h.redirect_request(urllib.request.Request(a), None, 302, 'Found', {}, b)",
+    "        return r.full_url if r else None",
+    "    except urllib.error.HTTPError as e:",
+    "        return 'refused: ' + e.msg",
+    "print(json.dumps([go('https://a.example/x', 'https://b.example/y'), go('https://a.example/x', 'http://b.example/y'),",
+    "  go('http://a.example/x', 'http://b.example/y'), go('http://a.example/x', 'ftp://b.example/y'),",
+    "  any(isinstance(x, ics.HttpsOnly) for x in ics.OPENER.handlers)]))"].join("\n"), join(root, "lib")]).toString();
+  assert.deepEqual(JSON.parse(out), ["https://b.example/y", "refused: a redirect away from https", "http://b.example/y",
+                                     "refused: a redirect to no web address", true]);
+});
+
+test("ics: a redirect to no web address, through the real opener, says so (codex's review, 2026-10-09)", () => {
+  const out = execFileSync("/usr/bin/python3", ["-I", "-B", "-c", [
+    "import sys, json, threading, tempfile, http.server; sys.path.insert(0, sys.argv[1]); import ics",
+    "class H(http.server.BaseHTTPRequestHandler):",
+    "    def log_message(self, *a): pass",
+    "    def do_GET(self):",
+    "        to = {'/file': 'file:///etc/hostname', '/ok': '/feed.ics'}.get(self.path)",
+    "        if to: self.send_response(302); self.send_header('Location', to); self.end_headers(); return",
+    "        b = b'BEGIN:VCALENDAR\\r\\nEND:VCALENDAR\\r\\n'; self.send_response(200); self.send_header('Content-Length', str(len(b))); self.end_headers(); self.wfile.write(b)",
+    "s = http.server.HTTPServer(('127.0.0.1', 0), H); threading.Thread(target=s.serve_forever, daemon=True).start()",
+    "u = 'http://127.0.0.1:%d' % s.server_port",
+    "d = tempfile.mkdtemp()",
+    "print(json.dumps([ics.fetch(u + '/file', d, 0)[1].get('error'), ics.fetch(u + '/ok', d + '/b', 0)[1].get('ok')]))"].join("\n"), join(root, "lib")]).toString();
+  assert.deepEqual(JSON.parse(out), ["a redirect to no web address", true], "refused with its reason; an http feed's own redirect still followed");
+});
+
 test("ics: Google's event page and calendar id, webcal as https", () => {
   const out = execFileSync("/usr/bin/python3", ["-I", "-B", "-c", [
     "import sys; sys.path.insert(0, sys.argv[1]); import ics, json",

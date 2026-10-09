@@ -61,6 +61,8 @@ test("define: Wiktionary's senses as plain text, English first, a row each, Ente
   assert.match(rows[0].preview.markdown, /> It was pure serendipity\./);
   assert.equal(run("define xyzzy", { define: [] }).find(r => r.provider === "dictionary").title, "No definition of \"xyzzy\"");
   assert.ok(!D.provider.sources.define.argv("வணக்கம்").some(a => a.includes("வணக்கம்")), "the word in no argument");
+  const d = D.provider.sources.define.argv("x");
+  assert.deepEqual([d[1], d[d.indexOf("--max-filesize") + 1], d[d.indexOf("--proto") + 1], d.includes("-L")], ["-q", "4194304", "=https", false], "no ~/.curlrc, at most its cap, over https, no redirect followed");
   assert.match(urlOf(D.provider.sources.define, "வணக்கம்"), /^https:\/\/en\.wiktionary\.org\/api\/rest_v1\/page\/definition\/%E0%AE[^/]*$/, "the word encoded, by curl");
   assert.equal(D.plain("a&#39;b &lt;c&gt;"), "a'b <c>");
   assert.equal(D.plain("x&#x2014;y &mdash; &amp;lt;"), "x\u2014y \u2014 &lt;", "hex, named, and &amp; once (Sonnet 2026-10-06)");
