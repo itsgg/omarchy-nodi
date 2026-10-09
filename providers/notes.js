@@ -16,8 +16,8 @@ var LIMIT = 20
 
 // The line, dated as it is added; the folder made if missing, and a file
 // that ends without a newline given one first (Sonnet 2026-10-06).
-var ADD = 'mkdir -p -- "$(dirname -- "$1")" || exit 1; [ -s "$1" ] && [ -n "$(tail -c 1 -- "$1")" ] && printf "\\n" >> "$1"'
-  + "\n" + 'printf -- "- %s %s\\n" "$(date "+%Y-%m-%d %H:%M")" "$2" >> "$1"'
+var ADD = 't=${NODI_TEXT-}; unset NODI_TEXT; mkdir -p -- "$(dirname -- "$1")" || exit 1; [ -s "$1" ] && [ -n "$(tail -c 1 -- "$1")" ] && printf "\\n" >> "$1"'
+  + "\n" + 'printf -- "- %s %s\\n" "$(date "+%Y-%m-%d %H:%M")" "$t" >> "$1"'
 
 // The file in Omarchy's default editor: a terminal editor at the line.
 var OPEN = 'e=$(cat "$HOME/.local/state/omarchy/defaults/editor" 2>/dev/null); case "${e:-nvim}" in *nvim|*vim|*nano|*micro) exec omarchy-launch-editor "+$2" "$1" ;; *) exec omarchy-launch-editor "$1" ;; esac'
@@ -87,7 +87,7 @@ var provider = {
       if (!file) return [{ title: "The notes file is no path", subtitle: "\"notes\": { \"file\": \"~/notes.md\" }", icon: ICON, score: 40, copy: "", remember: false }]
       if (!text) return [{ title: "Add a note", subtitle: "A dated line in " + tilde(file, home), icon: ICON, score: 40, copy: "", remember: false, hint: "note <text>" }]
       return [{ key: "note:add", title: "Note: " + text, subtitle: "Adds a dated line to " + tilde(file, home), icon: ICON, score: 98,
-                run: Run.shell(ADD, [file, text]), actionLabel: "Add", copy: text, remember: false }]
+                run: Run.shell(ADD, [file], text), actionLabel: "Add", copy: text, remember: false }]
     }
     var find = String(query).match(/^\s*notes\s+(.*)$/i)
     if (!find) return []

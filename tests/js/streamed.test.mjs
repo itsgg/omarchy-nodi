@@ -18,14 +18,15 @@ const window = { address: "0x5b8f", class: "foot", title: "vim", pid: "5438", wo
 
 test("Enter's run: the question last and as NODI_QUERY, the window as NODI_WINDOW_*, two minutes by default", () => {
   const s = plain(A.spec("a  why is it slow ", [helper], window));
-  assert.deepEqual(s.argv, ["/usr/bin/env", "NODI_QUERY=why is it slow", "NODI_WINDOW_ADDRESS=0x5b8f", "NODI_WINDOW_CLASS=foot",
-    "NODI_WINDOW_TITLE=vim", "NODI_WINDOW_PID=5438", "NODI_WINDOW_WORKSPACE=2", "my-ask", "--markdown", "why is it slow"]);
+  assert.deepEqual(s.argv, ["my-ask", "--markdown", "why is it slow"]);
+  assert.deepEqual(s.env, { NODI_QUERY: "why is it slow", NODI_WINDOW_ADDRESS: "0x5b8f", NODI_WINDOW_CLASS: "foot",
+    NODI_WINDOW_TITLE: "vim", NODI_WINDOW_PID: "5438", NODI_WINDOW_WORKSPACE: "2" }, "the window's title in no argument");
   assert.deepEqual([s.keyword, s.title, s.question, s.timeoutMs], ["a", "Assistant", "why is it slow", 120000]);
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 9e9 })]).timeoutMs, 600000, "ten minutes at most");
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 10 })]).timeoutMs, 1000);
   assert.equal(A.spec("a ", [helper]), null, "no question, no run");
   assert.equal(A.spec("b q", [helper]), null);
-  assert.equal(A.spec("a q", [Object.assign({}, helper, { command: ["X=1", "sh"] })]), null, "a command env(1) would misread is refused, as a filter's is");
+  assert.equal(A.spec("a q", [Object.assign({}, helper, { command: ["-i", "sh"] })]), null, "a command timeout would misread is refused, as a filter's is");
 });
 
 test("typing asks nothing; Enter on the one row asks", () => {
@@ -43,7 +44,7 @@ test("each phase of an answer, for the question it answers; another question is 
   assert.deepEqual([streaming.title, streaming.subtitle, streaming.copy, !!streaming.nodi], ["Answering...", "Esc stops it", "", false]);
   const done = run("a q", st("done", { text: "## Answer\n\nIt is the cache." }));
   assert.deepEqual(plain(done.map(r => r.title)), ["Paste the answer", "Copy the answer", "Ask again"]);
-  assert.equal(done[0].run.argv[0], "omarchy-menu-emoji-insert");
+  assert.equal(done[0].run.kind, "paste");
   assert.equal(done[1].run.text, "## Answer\n\nIt is the cache.");
   assert.equal(done[2].nodi, "answer");
   assert.equal(run("a q", st("stopped", { text: "half" }))[0].subtitle, "Stopped, 4 characters");

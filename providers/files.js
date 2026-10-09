@@ -59,12 +59,15 @@ function ofKind(path, isDir, kind) {
   return !isDir && KINDS[kind].indexOf(ext) !== -1
 }
 
-// ripgrep's search for `in`, the words then the folders as arguments: no
+// ripgrep's search for `in`, the folders as arguments and the words in
+// the environment (NODI_Q), handed to ripgrep as a pattern file from
+// printf, bash's own, so the words are in no process's arguments (the
+// marketplace's review, 2026-10-08: a phrase searched for is private): no
 // match (1) is an answer, a timeout (124) or an error (2) is not.
 // A folder that is not there is left out: ripgrep fails the whole search
 // for one (Sonnet 2026-10-06: no ~/Documents made every miss a failure).
-var CONTENTS = 'q=$1; shift; d=(); for x in "$@"; do [ -d "$x" ] && d+=("$x"); done; [ "${#d[@]}" -gt 0 ] || exit 0'
-  + "\n" + 'timeout 2 rg --ignore-case --fixed-strings --json --max-count 1 --max-columns 200 --max-columns-preview --no-messages -- "$q" "${d[@]}" | head -n 120'
+var CONTENTS = 'q=${NODI_Q-}; unset NODI_Q; d=(); for x in "$@"; do [ -d "$x" ] && d+=("$x"); done; [ "${#d[@]}" -gt 0 ] && [ -n "$q" ] || exit 0'
+  + "\n" + 'timeout 2 rg --ignore-case --fixed-strings --json --max-count 1 --max-columns 200 --max-columns-preview --no-messages -f <(printf "%s\\n" "$q") -- "${d[@]}" | head -n 120'
   + "\n" + 's=${PIPESTATUS[0]}; [ "$s" -le 1 ] || [ "$s" -eq 141 ] && exit 0; exit "$s"'
 
 // The find source's parameter: the kind, then the words, apart by a
@@ -426,8 +429,11 @@ var provider = {
     contents: {
       argv: function(param) {
         var p = JSON.parse(param)
-        return ["/usr/bin/bash", "-c", CONTENTS, "nodi-in", p.q].concat(p.dirs)
+        return ["/usr/bin/bash", "-c", CONTENTS, "nodi-in"].concat(p.dirs)
       },
+      // One line: in a pattern file a newline would make two patterns, and
+      // one search would find either (codex's review, 2026-10-09).
+      environment: function(param) { return { NODI_Q: String(JSON.parse(param).q).replace(/[\r\n]+/g, " ").trim() } },
       parse: function(text, ok) {
         var out = []
         var lines = String(text || "").split("\n")

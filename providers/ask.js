@@ -103,7 +103,7 @@ var provider = {
       // About the selection, the paste goes over it: the window still holds it (providers/selection.js).
       { key: "ask:paste", title: a.context === "selection" ? "Paste over the selection" : "Paste the answer", subtitle: answer.length + " characters",
         icon: "󰆒", score: 98, copy: answer, remember: false,
-        run: Run.exec(["omarchy-menu-emoji-insert", answer]), actionLabel: "Paste" },
+        run: Run.paste(answer), actionLabel: "Paste" },
       { key: "ask:copy", title: "Copy the answer", subtitle: "Clipboard", icon: "󰆏", score: 97, copy: answer, remember: false,
         run: Run.copy(answer) },
       { key: "ask:agent", title: "Continue in your agent", subtitle: q, icon: "󰆍", score: 96, copy: q, remember: false,

@@ -111,7 +111,7 @@ var CASES = [
 
 function pasteRow(key, title, text, extra) {
   var row = { key: key, title: title, subtitle: shown(text), icon: ICON, copy: text, remember: false,
-              run: Run.exec(["omarchy-menu-emoji-insert", text]), actionLabel: "Paste" }
+              run: Run.paste(text), actionLabel: "Paste" }
   for (var k in extra) row[k] = extra[k]
   return row
 }

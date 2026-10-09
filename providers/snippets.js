@@ -74,13 +74,13 @@ function env(ctx, clip) {
            selection: ctx.selection ? ctx.selection.text : "" }
 }
 
+// Typed key by key rather than pasted, the text on wtype's stdin, never
+// its argument (lib/Run.js).
+var TYPE = 't=${NODI_TEXT-}; unset NODI_TEXT; sleep 0.15; printf "%s" "$t" | exec wtype -'
+
 // Pasted, then the cursor moved back to where {cursor} was: one Left key
 // a character, as a field moves; at most 500.
-function pasteRun(text, back) {
-  if (!(back > 0)) return Run.exec(["omarchy-menu-emoji-insert", text])
-  return Run.pasting(Run.shell('omarchy-menu-emoji-insert "$1" || exit; sleep 0.1; n=$2; a=(); while [ "$n" -gt 0 ]; do a+=(-k Left); n=$((n-1)); done; exec wtype "${a[@]}"',
-                   [text, String(Math.min(500, back))]))
-}
+function pasteRun(text, back) { return Run.paste(text, back) }
 
 function row(s, typed, ctx, extra) {
   var name = s.name || s.keyword
@@ -111,7 +111,7 @@ function row(s, typed, ctx, extra) {
   out.actionLabel = "Paste"
   out.actions = [
     { label: "Copy", icon: "󰆏", run: Run.copy(filled.text) },
-    { label: "Type it out", icon: "󰌌", run: Run.pasting(Run.shell('sleep 0.15; exec wtype -- "$1"', [filled.text])) }
+    { label: "Type it out", icon: "󰌌", run: Run.pasting(Run.shell(TYPE, undefined, filled.text)) }
   ]
   // Only a snippet with no placeholder is remembered: history replays the
   // text it stored, and a date or the clipboard would come back stale.

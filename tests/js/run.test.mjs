@@ -41,7 +41,10 @@ test("every kind becomes one argv, started the way Omarchy's menu starts things"
   assert.equal(Run.command(Run.app("firefox", 1), () => null), null, "an action with no Exec runs nothing");
   assert.deepEqual(plain(Run.command(Run.open("https://x.org"))), LOGIN.concat(["xdg-open", "https://x.org"]));
   assert.deepEqual(plain(Run.command(Run.summon("omarchy.emojis"))), LOGIN.concat(["omarchy-shell", "shell", "summon", "omarchy.emojis", "{}"]));
-  assert.deepEqual(plain(Run.command(Run.copy("a b"))), LOGIN.concat(["wl-copy", "--", "a b"]));
+  assert.deepEqual(plain(Run.command(Run.copy("a b"))), { command: ["bash", "-lc", Run.COPY, "nodi"], environment: { NODI_TEXT: "a b" } }, "the text in the environment, never an argument");
+  assert.deepEqual(plain(Run.command(Run.paste("a b", 3))), { command: ["bash", "-lc", Run.PASTE, "nodi", "3"], environment: { NODI_TEXT: "a b" } });
+  assert.deepEqual(plain(Run.command(Run.exec(["omarchy-menu-emoji-insert", "a b"]))), plain(Run.command(Run.paste("a b"))), "Omarchy's emoji insert given a text, from a row saved before, pastes as a paste");
+  assert.deepEqual(plain(Run.command(Run.exec(["omarchy-menu-emoji-insert", "a", "b"]))), LOGIN.concat(["omarchy-menu-emoji-insert", "a", "b"]), "only that shape");
   const focus = plain(Run.command(Run.focus("0xab")));
   assert.equal(focus[0], "bash"); assert.equal(focus[4], "0xab", "the address is a positional argument, not script text");
   assert.equal(Run.command({ kind: "window", address: "0xab; reboot" }), null);
@@ -128,10 +131,12 @@ test("a watched command says it failed, with its last line, and only then (ROADM
   writeFileSync(join(dir, "notify-send"), `#!/usr/bin/bash\nprintf '%s|' "$@" >> ${JSON.stringify(log)}\necho >> ${JSON.stringify(log)}\n`, { mode: 0o755 });
   const said = () => { try { return readFileSync(log, "utf8").trim().split("\n").filter(Boolean); } catch { return []; } };
   const runIt = (argv) => {
-    const a = Run.watched("Sync notes", argv);
+    const w = Run.watched("Sync notes", argv);
+    const a = w.command;
     assert.deepEqual(plain(a.slice(0, 2)), ["bash", "-lc"]);
+    assert.ok(!a.includes("Sync notes"), "the title is in no argument");
     // As a plain shell here, with the fake on the PATH: a login shell would read the user's profile.
-    try { execFileSync("/usr/bin/bash", ["-c"].concat(a.slice(2)), { env: { PATH: dir + ":/usr/bin:/bin", XDG_RUNTIME_DIR: dir }, stdio: "pipe" }); return 0; }
+    try { execFileSync("/usr/bin/bash", ["-c"].concat(a.slice(2)), { env: { PATH: dir + ":/usr/bin:/bin", XDG_RUNTIME_DIR: dir, ...w.environment }, stdio: "pipe" }); return 0; }
     catch (e) { return e.status; }
   };
   assert.equal(runIt(["bash", "-c", "echo working >&2; echo 'rsync: connection refused' >&2; exit 3"]), 3, "its own exit code");
@@ -149,7 +154,9 @@ test("a watched command says it failed, with its last line, and only then (ROADM
   assert.equal(runIt(["printf", "%s", "$(touch " + join(dir, "pwned") + ")"]), 0);
   assert.ok(!existsSync(join(dir, "pwned")), "arguments are never read as shell");
   assert.deepEqual(readdirSync(dir).filter(f => f.startsWith("nodi-err")), [], "no file left behind");
-  assert.equal(Run.command(Run.exec(["true"]), null, "T")[2].indexOf("notify-send") > 0, true, "a titled command is watched");
+  assert.equal(Run.command(Run.exec(["true"]), null, "T").command[2].indexOf("notify-send") > 0, true, "a titled command is watched");
+  assert.deepEqual(plain(Run.command(Run.exec(["true"]), null, "an entry's first line").environment), { NODI_TITLE: "an entry's first line" }, "its title in the environment");
+  assert.deepEqual(plain(Run.command(Run.shell("true", [], "t"), null, "T").environment), { NODI_TITLE: "T", NODI_TEXT: "t" }, "a shell run's title and text both");
   assert.deepEqual(plain(Run.command(Run.exec(["true"]), null)).slice(0, 3), ["bash", "-lc", 'exec "$@"'], "untitled, as before");
   assert.equal(Run.command(Run.app("firefox"), null, "Firefox")[2], 'exec "$@"', "an app is not watched: LaunchFeedback says");
 });

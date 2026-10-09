@@ -19,6 +19,13 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   version and hash, and only at the Enter that asks the first question;
   typing `ask ` no longer installs anything, and the row says its Enter
   will. An adapter installed before this is installed again once.
+- Private text is in no program's arguments, which every user can read:
+  copies and pastes (clipboard entries, the selection, snippets,
+  answers), notes, `in` searches, `define` words, suggestion queries,
+  the window's title for script filters, and the titles of watched
+  commands go through the environment. A paste types as Omarchy's emoji
+  insert does, with the text on a pipe; a pinned text sent to a device
+  is written to the runtime directory rather than `/tmp`.
 
 ## 0.3.0 (2026-10-07)
 

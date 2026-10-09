@@ -67,7 +67,7 @@ test("pins come first under cb, once each, pasting by their place while the hist
   assert.equal(rows.filter(r => r.title === "the meeting notes").length, 1, "shown once, pinned");
   assert.equal(rows.filter(r => r.key === "clip:image:/s/clipboard-images/bb.png").length, 1);
   assert.deepEqual(plain(rows[2].run.argv), ["omarchy-clipboard-paste-text", "--shift-insert", "--history-index", "3"]);
-  assert.deepEqual(plain(rows[1].run.argv), ["omarchy-menu-emoji-insert", "an old address"], "gone from the history: from the pin");
+  assert.deepEqual(plain(rows[1].run), { kind: "paste", text: "an old address" }, "gone from the history: from the pin, its text in no argument");
   assert.equal(rows[1].subtitle, "Pinned, 14 characters");
   assert.deepEqual(plain(rows[0].run.argv), ["omarchy-clipboard-paste-file", "image/png", "/s/clipboard-images/bb.png"]);
   assert.equal(rows.length, 6, "three pins and the three entries left");
@@ -191,13 +191,17 @@ function sequenceHome(entries) {
   mkdirSync(join(dir, ".local/state/omarchy"), { recursive: true });
   writeFileSync(join(dir, ".local/state/omarchy/clipboard-history.json"), JSON.stringify(entries));
   mkdirSync(join(dir, "bin"));
-  writeFileSync(join(dir, "bin/omarchy-menu-emoji-insert"), '#!/bin/bash\nprintf "%s\\0" "$1" >> "$HOME/pasted"\n');
-  chmodSync(join(dir, "bin/omarchy-menu-emoji-insert"), 0o755);
+  // The paste's programs: wl-copy keeps what reaches its stdin, and every
+  // program says its arguments, so a text in one shows.
+  writeFileSync(join(dir, "bin/wl-copy"), '#!/bin/bash\nprintf "%s\\n" "$*" >> "$HOME/argv"\n{ cat; printf "\\0"; } >> "$HOME/pasted"\n');
+  writeFileSync(join(dir, "bin/wtype"), '#!/bin/bash\nprintf "%s\\n" "$*" >> "$HOME/argv"\n');
+  chmodSync(join(dir, "bin/wl-copy"), 0o755); chmodSync(join(dir, "bin/wtype"), 0o755);
   mkdirSync(join(dir, "run"), { mode: 0o700 });
   const press = () => execFileSync("/usr/bin/bash", ["-c", Clip.SEQUENCE],
     { env: { HOME: dir, XDG_RUNTIME_DIR: join(dir, "run"), PATH: join(dir, "bin") + ":/usr/bin" } });
   const pasted = () => existsSync(join(dir, "pasted")) ? readFileSync(join(dir, "pasted"), "utf8").split("\0").filter(Boolean) : [];
-  return { dir, press, pasted };
+  const argv = () => existsSync(join(dir, "argv")) ? readFileSync(join(dir, "argv"), "utf8") : "";
+  return { dir, press, pasted, argv };
 }
 
 test("in sequence: the newest text, then each older one, images skipped, then nothing", () => {
@@ -205,6 +209,8 @@ test("in sequence: the newest text, then each older one, images skipped, then no
   try {
     for (let i = 0; i < 4; i++) h.press();
     assert.deepEqual(h.pasted(), ["third", "second\n", "first"], "a last newline kept");
+    assert.doesNotMatch(h.argv(), /third|second|first/, "no text in a program's arguments");
+    assert.match(h.argv(), /^--type text\/plain --sensitive --foreground\n-M shift -k Insert -m shift\n/, "pasted as Omarchy's emoji insert pastes");
     // Later than 30 s: from the newest again, as the history is then.
     writeFileSync(join(h.dir, "run/nodi-sequence/at"), String(Math.floor(Date.now() / 1000) - 31));
     writeFileSync(join(h.dir, ".local/state/omarchy/clipboard-history.json"), JSON.stringify([{ type: "text", text: "fresh" }]));

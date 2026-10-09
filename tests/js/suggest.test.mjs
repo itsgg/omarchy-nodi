@@ -2,6 +2,7 @@
 // autocomplete, under what is typed.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { urlOf } from "./curl.mjs";
 import { load, plain } from "./load.mjs";
 import { run, config } from "./fixtures.mjs";
 
@@ -35,7 +36,8 @@ test("DuckDuckGo's answer read, and the request it is", () => {
   assert.equal(src.transient, true, "its entries go first when the cache is full");
   assert.throws(() => src.parse("<html>", true));
   assert.throws(() => src.parse("", false));
-  assert.equal(src.argv("a b&c").at(-1), "https://duckduckgo.com/ac/?type=list&q=a%20b%26c", "the words encoded");
+  assert.ok(!src.argv("a b&c").some(a => a.includes("a b")), "the words in no argument");
+  assert.equal(urlOf(src, "a b&c"), "https://duckduckgo.com/ac/?type=list&q=a%20b%26c", "the words encoded, by curl, from the environment");
   assert.equal(src.supersede, true, "each keystroke ends the read before it");
 });
 

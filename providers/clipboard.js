@@ -42,7 +42,9 @@ function kindOf(item) {
 // press at a time (flock, held through the paste), and a state file that
 // is not a number starts afresh (Fable 2026-10-06). A text over 64 KB is
 // left out: a program takes at most 128 KB as one argument. A text keeps
-// its last newline (x after it, as $(...) drops them).
+// its last newline (x after it, as $(...) drops them). Pasted as Run.js's
+// PASTE_T pastes, the text never a program's argument (a test holds the
+// two the same).
 var SEQUENCE = 'h="$HOME/.local/state/omarchy/clipboard-history.json"; st="${XDG_RUNTIME_DIR:?}/nodi-sequence"'
   + "\n" + 'mkdir -p -m 700 "$st" && exec 9> "$st/lock" && flock 9 || exit 1'
   + "\n" + 'now=$(date +%s); at=$(cat "$st/at" 2>/dev/null); n=$(cat "$st/n" 2>/dev/null)'
@@ -51,7 +53,11 @@ var SEQUENCE = 'h="$HOME/.local/state/omarchy/clipboard-history.json"; st="${XDG
   + "\n" + 'else jq -c \'[.[] | select(.type == "text" and (.text | utf8bytelength) <= 65536) | .text]\' "$h" > "$st/list" || exit 1; n=0; fi'
   + "\n" + 't=$(jq -j --argjson n "$n" \'.[$n] // empty\' "$st/list"; printf x); t=${t%x}; [ -n "$t" ] || exit 0'
   + "\n" + 'printf "%s" "$n" > "$st/n"; printf "%s" "$now" > "$st/at"'
-  + "\n" + 'exec omarchy-menu-emoji-insert "$t"'
+  + "\n" + '[ -n "$t" ] || exit 0'
+  + "\n" + 'printf "%s" "$t" | wl-copy --type text/plain --sensitive --foreground & p=$!'
+  + "\n" + 'sleep 0.15; wtype -M shift -k Insert -m shift 2>/dev/null || true; sleep 0.2; kill "$p" 2>/dev/null || true'
+  + "\n" + 'n=${1:-0}; a=(); while [ "$n" -gt 0 ]; do a+=(-k Left); n=$((n-1)); done'
+  + "\n" + '[ "${#a[@]}" -eq 0 ] || { sleep 0.1; exec wtype "${a[@]}"; }'
 
 // The text in each image of the history, and in the pinned ones it names
 // ("$@"), read once with tesseract into ~/.cache/nodi/ocr by the image's
@@ -120,7 +126,11 @@ function textRow(item, index, score) {
 }
 
 // A pinned text Omarchy's history no longer holds: pasted and sent from
-// what the pin keeps, as an argument, as a snippet's text is.
+// what the pin keeps, in the environment, as a snippet's text is (lib/Run.js).
+// Sent as a file in the runtime directory, his alone and gone at logout,
+// as the share takes a moment to read it.
+var SHARE_TEXT = 't=${NODI_TEXT-}; unset NODI_TEXT; f=$(mktemp -p "${XDG_RUNTIME_DIR:?}" --suffix=.txt nodi-share.XXXXXX) || exit 1'
+  + "\n" + 'printf "%s" "$t" > "$f" && exec omarchy-menu-share file "$f"'
 function pinnedTextRow(pin, score) {
   var text = String(pin.text)
   var lines = text.split(/\r?\n/).length
@@ -129,10 +139,9 @@ function pinnedTextRow(pin, score) {
     subtitle: "Pinned, " + text.length + " characters" + (lines > 1 ? ", " + lines + " lines" : ""),
     preview: { title: "Pinned", subtitle: text.length + " characters", text: text, mono: true },
     icon: "󰐃", score: score, copy: text, actionLabel: "Paste", group: "Pinned", pin: { kind: "text", text: text },
-    run: Run.exec(["omarchy-menu-emoji-insert", text]),
+    run: Run.paste(text),
     actions: [{ label: "Copy without pasting", icon: "󰆏", run: Run.copy(text) },
-              { label: "Send to a device", icon: "󰄜",
-                run: Run.shell('f=$(mktemp --suffix=.txt) && printf "%s" "$1" > "$f" && exec omarchy-menu-share file "$f"', [text]) }]
+              { label: "Send to a device", icon: "󰄜", run: Run.shell(SHARE_TEXT, undefined, text) }]
   }
 }
 
