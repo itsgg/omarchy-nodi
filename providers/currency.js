@@ -134,11 +134,11 @@ var provider = {
     rates: {
       argv: function(param, env) {
         return ["/usr/bin/bash", "-c",
-          "set -o pipefail; t=\"$1/rates.json.tmp\"; " +
-          "mkdir -p \"$1\" && curl -q -fsS --max-time 8 --max-filesize \"$3\" \"$2\" | head -c \"$(($3 + 1))\" > \"$t\" " +
+          "set -o pipefail; mkdir -p \"$1\" && t=$(mktemp \"$1/rates.json.XXXXXX\") || exit 1; " +
+          "curl -q -fsS --max-time 8 --max-filesize \"$3\" \"$2\" | head -c \"$(($3 + 1))\" > \"$t\" " +
           "&& [ \"$(stat -c %s \"$t\")\" -le \"$3\" ] " +
           "&& jq -e '.result == \"success\" and (.rates | type == \"object\")' \"$t\" >/dev/null " +
-          "&& mv \"$t\" \"$1/rates.json\" && cat \"$1/rates.json\" || { rm -f \"$t\"; exit 1; }",
+          "&& mv -fT -- \"$t\" \"$1/rates.json\" && cat \"$1/rates.json\" || { rm -f \"$t\"; exit 1; }",
           "nodi-rates", env.cacheDir, RATES_URL, String(RATES_MAX_BYTES)]
       },
       parse: parseRates,

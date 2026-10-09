@@ -2396,7 +2396,9 @@ Item {
     root.refreshWindows()
     // Before the first open, so it is drawn as asked (Sonnet 2026-10-06).
     root.refreshAppearance()
-    cacheMaker.run(["/usr/bin/mkdir", "-p", root.cacheDir, root.stateDir, root.cacheDir + "/ask"])
+    // Each his alone (0700), made so or made so now: they hold what he
+    // typed, pinned and set (codex's review, 2026-10-09).
+    cacheMaker.run(["/usr/bin/install", "-d", "-m", "700", root.cacheDir, root.stateDir, root.cacheDir + "/ask", root.dataDir])
     appsDebounce.restart()
     requests.request("omarchy-commands")
   }

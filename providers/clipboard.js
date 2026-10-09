@@ -74,7 +74,7 @@ var OCR = 'c="$HOME/.cache/nodi/ocr"; h="$HOME/.local/state/omarchy/clipboard-hi
   + "\n" + '  case "$p" in /*) ;; *) continue ;; esac; [ -f "$p" ] || continue; f="$c/${p##*/}.txt"'
   + "\n" + '  if [ ! -f "$f" ]; then'
   + "\n" + '    if [ "$SECONDS" -ge 3 ]; then left=$((left + 1)); continue; fi'
-  + "\n" + '    timeout 20 nice -n 10 tesseract "$p" - 2>/dev/null > "$f.tmp"; mv -f -- "$f.tmp" "$f" || continue'
+  + "\n" + '    o=$(mktemp -- "$f.XXXXXX") || continue; timeout 20 nice -n 10 tesseract "$p" - 2>/dev/null > "$o"; mv -fT -- "$o" "$f" || { rm -f -- "$o"; continue; }'
   + "\n" + '  fi'
   + "\n" + '  t=$(< "$f"); t=${t//[$\'\t\r\n\']/ }; printf "%s\\t%s\\n" "$p" "${t:0:4000}"'
   + "\n" + 'done < <(jq -r \'.[] | select(.type == "image") | .path // empty\' "$h" 2>/dev/null; [ "$#" -eq 0 ] || printf "%s\\n" "$@")'

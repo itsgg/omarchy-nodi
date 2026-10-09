@@ -2,9 +2,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { load, plain } from "./load.mjs";
+import { load, plain, root } from "./load.mjs";
 import { run } from "./fixtures.mjs";
-import { spawnSync } from "node:child_process";
+import { spawnSync, execFileSync } from "node:child_process";
 
 const run_launch = args => spawnSync("/usr/bin/bash", ["-c", load("lib/Agents.js").LAUNCH, "nodi-agent", ...args], { encoding: "utf8" });
 
@@ -448,4 +448,48 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   const his = [];
   Engine.run("x touch /tmp/pwn", cfg, services({ asked: his, filter: () => [] }));
   assert.ok(his.some(k => /^filter:/.test(k)), "his own search asks it, as before");
+});
+
+test("files Nodi writes are written beside, under names of their own, then moved in: a link at the old fixed name, or at the name itself, is never followed (codex's reviews, 2026-10-09)", async () => {
+  const { mkdtempSync, writeFileSync, readFileSync, symlinkSync, readdirSync, statSync, lstatSync, rmSync, chmodSync, mkdirSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-tmp-"));
+  try {
+    const victim = join(t, "victim");
+    writeFileSync(victim, "untouched");
+    mkdirSync(join(t, "victimdir"));
+    const mode = f => statSync(f).mode & 0o777;
+    const isFile = f => lstatSync(f).isFile();
+    // The launch script's settings file: links at the old temp name and at
+    // the name, one to a file and one to a folder.
+    symlinkSync(victim, join(t, "settings.json.tmp"));
+    symlinkSync(victim, join(t, "settings.json"));
+    symlinkSync(join(t, "victimdir"), join(t, "other.json"));
+    for (const name of ["settings.json", "other.json"]) {
+      const r = run_launch(["--file", "X_SETTINGS", join(t, name), '{"a":1}', "exec", "/usr/bin/bash", "-c", 'cat "$X_SETTINGS"']);
+      assert.deepEqual([r.status, r.stdout], [0, '{"a":1}\n'], name);
+      assert.ok(isFile(join(t, name)), name + " is a file now, not the link");
+      assert.equal(mode(join(t, name)), 0o600);
+    }
+    assert.deepEqual(readdirSync(join(t, "victimdir")), [], "nothing put in the folder a link named");
+    // lib/ics.py's cache: links at the copy, its meta and their old temp names.
+    for (const n of ["feed.ics", "feed.json", "feed.ics.tmp", "feed.json.tmp"]) symlinkSync(victim, join(t, n));
+    execFileSync("/usr/bin/python3", ["-I", "-B", "-c", "import sys; sys.path.insert(0, sys.argv[1]); import ics; ics.write_private(sys.argv[2], b'cal'); ics.write_meta(sys.argv[3], {'etag': 'x'})",
+                                      join(root, "lib"), join(t, "feed.ics"), join(t, "feed")]);
+    assert.deepEqual([readFileSync(join(t, "feed.ics"), "utf8"), readFileSync(join(t, "feed.json"), "utf8")], ["cal", '{"etag": "x"}']);
+    for (const n of ["feed.ics", "feed.json"]) { assert.ok(isFile(join(t, n)), n); assert.equal(mode(join(t, n)), 0o600, n); }
+    // The currency rates, from a stand-in curl: links at rates.json and its old temp name.
+    mkdirSync(join(t, "bin")); mkdirSync(join(t, "cache"));
+    writeFileSync(join(t, "bin/curl"), '#!/bin/bash\nprintf \'{"result":"success","rates":{"USD":1}}\'\n'); chmodSync(join(t, "bin/curl"), 0o755);
+    symlinkSync(victim, join(t, "cache/rates.json.tmp"));
+    symlinkSync(victim, join(t, "cache/rates.json"));
+    const C = load("providers/currency.js");
+    const a = C.provider.sources.rates.argv("", { cacheDir: join(t, "cache") });
+    assert.equal(execFileSync(a[0], a.slice(1), { env: { PATH: join(t, "bin") + ":/usr/bin:/bin" } }).toString(), '{"result":"success","rates":{"USD":1}}');
+    assert.ok(isFile(join(t, "cache/rates.json"))); assert.equal(mode(join(t, "cache/rates.json")), 0o600);
+    assert.equal(readFileSync(victim, "utf8"), "untouched", "no write went through a link");
+    const left = readdirSync(t).filter(f => /\.[A-Za-z0-9]{6}$/.test(f)).concat(readdirSync(join(t, "cache")).filter(f => /\.[A-Za-z0-9]{6}$/.test(f)));
+    assert.deepEqual(left, [], "nothing left behind");
+  } finally { rmSync(t, { recursive: true, force: true }); }
 });

@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync, rmSync, mkdtempSync, writeFileSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, rmSync, mkdtempSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
@@ -161,7 +161,9 @@ test("Omarchy's real menu parses, and its guards run in one batch", { skip: !exi
 test("guards: the package list is kept until the package database changes, the readers run side by side", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-guards-"));
   try {
-    const bin = join(dir, "bin"), cache = join(dir, "cache");
+    // The kept list is in Nodi's own cache folder, whatever XDG_CACHE_HOME
+    // says (codex's review, 2026-10-09: there it missed the folder made his alone).
+    const bin = join(dir, "bin"), cache = join(dir, ".cache");
     rmSync(bin, { recursive: true, force: true });
     execFileSync("mkdir", ["-p", bin]);
     const pacman = answer => writeFileSync(join(bin, "pacman"), answer
@@ -178,7 +180,7 @@ test("guards: the package list is kept until the package database changes, the r
     }))]);
     const runGuards = () => {
       const started = Date.now();
-      const out = execFileSync("bash", ["-c", Menu.guardScript(m)], { env: { PATH: bin + ":/usr/bin:/bin", HOME: dir, XDG_CACHE_HOME: cache } }).toString();
+      const out = execFileSync("bash", ["-c", Menu.guardScript(m)], { env: { PATH: bin + ":/usr/bin:/bin", HOME: dir, XDG_CACHE_HOME: join(dir, "elsewhere") } }).toString();
       return { g: Menu.parseGuards(out, m), ms: Date.now() - started };
     };
     pacman(true);
@@ -188,6 +190,8 @@ test("guards: the package list is kept until the package database changes, the r
     assert.equal(first.g.checked.term, true);
     assert.ok(first.ms < 1000, "three 0.4 s readers, one after another at least 1.2 s, took " + first.ms + " ms");
     assert.equal(readdirSync(join(cache, "nodi")).filter(f => f.startsWith("packages-")).length, 1);
+    assert.equal(statSync(join(cache, "nodi", readdirSync(join(cache, "nodi")).find(f => f.startsWith("packages-")))).mode & 0o777, 0o600, "his alone");
+    assert.ok(!existsSync(join(dir, "elsewhere")), "not where XDG_CACHE_HOME points");
     pacman(false);
     assert.equal(runGuards().g.when.vim, true, "the second run reads the kept list, not pacman");
   } finally { rmSync(dir, { recursive: true, force: true }); }
