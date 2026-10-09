@@ -605,3 +605,15 @@ test("= or calc alone: the answers copied before, newest first (ROADMAP 56)", ()
   assert.ok(keeps(run("sig", {}, snip)[0]), "a snippet by its keyword is (Fable 2026-10-06: the kind gate took it away)");
 });
 
+
+test("an ISO date is the date's, not a sum (2026-10-09)", () => {
+  const rows = run("2026-10-09");
+  assert.equal(rows[0].provider, "time", rows.map(r => r.provider + ": " + r.title).join(" | "));
+  assert.equal(rows[0].title, "Fri, 9 Oct 2026");
+  assert.ok(!rows.some(r => r.provider === "math"), "no 2,007");
+  assert.equal(top("2026-1-9").provider, "time");
+  assert.equal(top("10-5").title, "5", "a subtraction is still one");
+  assert.equal(top("2026 - 10 - 9").provider, "math", "spaced out, it is sums");
+  assert.equal(top("2026-02-29").title, "1,995", "no such day: a sum (codex's review, 2026-10-09)");
+  assert.equal(top("2026-13-40").provider, "math");
+});

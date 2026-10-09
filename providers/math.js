@@ -271,6 +271,15 @@ var provider = {
     // History keeps of them (ROADMAP 56), as Alfred and PowerToys keep a
     // calculator's history. Not "calc", which opens LibreOffice Calc.
     if (/^\s*=\s*$/.test(query)) return pastAnswers(ctx.history || {})
+    // A date as ISO writes it, 2026-10-09, is the date's (providers/time.js),
+    // not 2,007: it came first, and Enter took the sum (2026-10-09).
+    var iso = String(query).match(/^\s*(\d{4})-(\d{1,2})-(\d{1,2})\s*$/)
+    if (iso) {
+      var dt = new Date(+iso[1], +iso[2] - 1, +iso[3])
+      // Only a day there is: 2026-02-29 and 2026-13-40 stay sums (codex's
+      // review, 2026-10-09).
+      if (dt.getFullYear() === +iso[1] && dt.getMonth() === +iso[2] - 1 && dt.getDate() === +iso[3]) return []
+    }
     var text = query.replace(/=\s*$/, "")
     var r = evaluate(text)
     if (!r || r.trivial) return []
