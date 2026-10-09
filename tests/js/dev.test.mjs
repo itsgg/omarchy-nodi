@@ -31,6 +31,12 @@ test("tmux sessions, SSH hosts, man and tldr", () => {
   assert.deepEqual(plain(t[1].run.argv.slice(-4)), ["tmux", "attach-session", "-t", "$3"], "by id, which a dotted name cannot break");
   assert.equal(t[0].subtitle, "tmux, 1 window, attached");
   assert.deepEqual(plain(top("ssh box", { ssh }).run.argv.slice(-3)), ["ssh", "--", "box"]);
+  // No host named: `ssh` says where they are named, only once the config is read.
+  const none = q => run(q, { ssh: [] }).filter(r => r.key === "ssh:none");
+  assert.deepEqual(plain(none("ssh ").map(r => [r.title, r.run])), [["No host in ~/.ssh/config", null]]);
+  assert.equal(none("ssh bo").length, 0, "a host being typed is no list");
+  assert.ok(!run("ssh ", {}).some(r => r.key === "ssh:none"), "not before the read lands");
+  assert.ok(!run("ssh ", { ssh }).some(r => r.key === "ssh:none"));
   assert.deepEqual(plain(top("man ls").run.argv.slice(-3)), ["man", "--", "ls"]);
   assert.deepEqual(plain(top("man printf 3").run.argv.slice(-4)), ["man", "--", "3", "printf"]);
   assert.deepEqual(plain(top("man --help 1").run.argv.slice(-4)), ["man", "--", "1", "--help"], "with a section too, a page is never an option");

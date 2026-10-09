@@ -78,3 +78,13 @@ test("open reads the desktop as saved now, starts only what has no window, once,
     assert.deepEqual(sh("work", { REFUSE: "1" }), [1, "error: no"]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("desktop with none saved says how to save one; forgetting a name not saved says which are (driven live, 2026-10-10)", () => {
+  const mine = (q, prefs) => run(q, { windows, prefs }).filter(r => r.provider === "desktops");
+  assert.deepEqual(plain(mine("desktop", P.empty()).map(r => [r.title, r.run, r.nodi])), [["No desktop saved", null, ""]]);
+  assert.equal(mine("desktops", P.empty()).length, 1);
+  assert.deepEqual(plain(mine("forget desktop work", P.empty()).map(r => [r.title, r.subtitle, r.nodi])), [["No desktop named \"work\"", "None saved", ""]]);
+  const p = P.withDesktop(P.empty(), "Home", [{ id: "firefox", cls: "firefox", name: "Firefox", workspace: "1" }], 5);
+  assert.equal(mine("forget desktop work", p)[0].subtitle, "Saved: Home");
+  assert.ok(!mine("desktop", p).some(r => r.key === "desktop:none"), "one saved: it is listed");
+});

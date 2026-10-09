@@ -617,7 +617,9 @@ Item {
   function shownKeys() { return root.rows.slice(0, 8).map(function(r) { return r.key }).join("\u0001") }
 
   function recompute() {
-    var before = { query: root.shownQuery, key: root.selectedRow ? root.selectedRow.key : "", index: root.selectedIndex }
+    var sel = root.selectedRow
+    var before = { query: root.shownQuery, key: sel ? sel.key : "", index: root.selectedIndex,
+                   acts: !!(sel && (sel.run || sel.nodi || sel.complete || sel.copy)) }
     var keysBefore = root.shownKeys()
     if (root.captureRow) {
       root.results = Engine.hotkeyPrompt(root.captureRow, root.captureNote)

@@ -222,3 +222,11 @@ test("a selection collapses at a letter's edge, and a move over a long paste sta
   assert.equal(long.slice(at).length > 0 && !/^[\uDC00-\uDFFF]/.test(long.slice(at)), true, "never inside a pair");
   assert.equal(K.edited("left", "\u{1F525}", 2, 0, 0).at, 0);
 });
+
+test("a row that does nothing keeps no selection: the best that landed is selected (driven live, `pkg zed`, 2026-10-10)", () => {
+  const K = load("lib/Keys.js");
+  const rows = [{ key: "pkg:zed" }, { key: "pkg:zed-bin" }, { key: "status" }];
+  assert.equal(K.reselect({ query: "pkg zed", key: "status", index: 0, acts: false }, rows, "pkg zed"), 0, "the status row selected alone: the top once rows land");
+  assert.equal(K.reselect({ query: "pkg zed", key: "pkg:zed-bin", index: 0, acts: true }, rows, "pkg zed"), 1, "a row that runs: held where it moved");
+  assert.equal(K.reselect({ query: "pkg zed", key: "pkg:zed-bin", index: 0 }, rows, "pkg zed"), 1, "acts unsaid: held, as before");
+});

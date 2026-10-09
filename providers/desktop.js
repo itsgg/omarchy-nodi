@@ -29,8 +29,8 @@ function duration(seconds) {
 // A device's or a network's own name is also a keyword, lower-cased, so a
 // camel-cased one is found by its words as typed: "iphone" finds
 // "GG's iPhone", which the name alone splits as "i phone" (Fable 2026-10-02).
-function named(q, name, words) {
-  return Score.tier(q, { name: name, whole: true, keywords: words.concat([String(name).toLowerCase()]) })
+function named(q, name, words, aliases) {
+  return Score.tier(q, { name: name, whole: true, aliases: aliases || [], keywords: words.concat([String(name).toLowerCase()]) })
 }
 
 function mediaRows(q, d) {
@@ -63,10 +63,17 @@ function mediaRows(q, d) {
 function audioRows(q, list, input) {
   var out = []
   var words = input ? ["input", "microphone", "mic", "audio input", "recording"] : ["output", "speaker", "speakers", "headphones", "headset", "audio output", "sound output"]
+  // The kind's own names, not what it is used for: "recording" as one put
+  // the microphones over Record the Whole Screen (Cursor's review, 2026-10-10).
+  var kind = input ? ["input", "inputs", "microphone", "microphones", "mic", "audio input"] : ["output", "outputs", "speaker", "speakers", "audio output", "sound output"]
   for (var i = 0; i < (list || []).length; i++) {
     var n = list[i]
     if (!(n.id >= 0) || !n.name) continue
-    var t = named(q, n.description || n.name, words)
+    // The kind's words, typed whole, name every device of the kind: `output`
+    // is the provider's own hint for the list, and as a keyword (42) it
+    // fell under three files named output (64) and off the eight shown
+    // (2026-10-10, driven live).
+    var t = named(q, n.description || n.name, words, kind)
     if (!t) continue
     out.push({
       key: (input ? "input:" : "output:") + n.name,

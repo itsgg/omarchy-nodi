@@ -243,7 +243,7 @@ var provider = {
   help: [
     { id: "selection", title: "Selection", icon: ICON,
       about: "Text you selected before opening the bar: fixed, rewritten, translated, its case changed, searched; pasted over it",
-      examples: [{ q: "fix", note: "Fix its spelling and grammar" }, { q: "rewrite shorter", note: "Rewritten as you ask" },
+      examples: [{ q: "fix", note: "Text selected in the last two minutes, its spelling and grammar fixed" }, { q: "rewrite shorter", note: "Rewritten as you ask" },
                  { q: "case ", note: "UPPER, lower, Title Case, snake_case..." }, { q: "translate" }] }
   ],
   match: function(query, ctx) {

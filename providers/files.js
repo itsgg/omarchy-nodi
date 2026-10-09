@@ -70,6 +70,10 @@ var CONTENTS = 'q=${NODI_Q-}; unset NODI_Q; d=(); for x in "$@"; do [ -d "$x" ] 
   + "\n" + 'timeout 2 rg --ignore-case --fixed-strings --json --max-count 1 --max-columns 200 --max-columns-preview --no-messages -f <(printf "%s\\n" "$q") -- "${d[@]}" | head -n 120'
   + "\n" + 's=${PIPESTATUS[0]}; [ "$s" -le 1 ] || [ "$s" -eq 141 ] && exit 0; exit "$s"'
 
+// What a name search under home leaves out (find below): dependencies'
+// copies, never the user's own.
+var EXCLUDED = ["go/pkg/mod", "node_modules", "site-packages", "__pycache__"]
+
 // The find source's parameter: the kind, then the words, apart by a
 // character no name holds.
 function findParam(kind, q) { return kind ? kind + "\u0001" + q : q }
@@ -247,7 +251,11 @@ function fileRow(path, name, isDir, score, home) {
   return row
 }
 
-function recentRows(typed, ctx, home) {
+// `named`: "f" or "recent", which name no app; "file manager" with no such
+// recent file is the File manager the rest of Nodi answers.
+// `asTyped`: the same in the case typed, for what the row says and fills in
+// (fd's smart case: "Report" finds only Report; Cursor's review, 2026-10-10).
+function recentRows(typed, ctx, home, named, asTyped) {
   var k = kindOf(typed)
   var needle = Match.fold(k.rest)
   var files = Array.isArray(ctx.files) ? ctx.files : []
@@ -266,6 +274,11 @@ function recentRows(typed, ctx, home) {
     out.push(fileRow(f.path, name, false, score, home))
   }
   // "file manager" with no such recent file: the rest of Nodi answers it.
+  // "f report" says so and offers the search under home: an app the word
+  // named stood alone in its place (2026-10-10, driven live).
+  var said = asTyped === undefined ? typed : asTyped
+  if (out.length === 0 && needle && named) return [{ key: "files:none", title: "No recent file named \"" + kindOf(said).rest + "\"", subtitle: "Enter finds the files under home named so",
+                                                    score: 40, copy: "", complete: "find " + said, remember: false }]
   if (out.length === 0) return needle ? [] : [{ title: "No recent files", subtitle: "Recently used", score: 40, copy: "" }]
   return out
 }
@@ -368,7 +381,7 @@ function filesFor(query, ctx) {
   var inside = String(query).match(/^\s*in\s+(?=\S)(?![\d+\-]|\.\d)(.*)$/i)
   if (inside && home) return contentRows(inside[1].trim(), ctx, home)
   var m = String(query).match(/^\s*(?:(?:f|file)\s+(.*)|recent(?:\s+(.*))?)$/i)
-  if (m) return recentRows((m[1] || m[2] || "").trim().toLowerCase(), ctx, home)
+  if (m) return recentRows((m[1] || m[2] || "").trim().toLowerCase(), ctx, home, !/^\s*file\s/i.test(query), (m[1] || m[2] || "").trim())
   if (/^(~\/|~$|\/)/.test(raw) && home) return pathRows(raw === "~" ? "~/" : String(query).replace(/^\s+/, ""), ctx, home)
   // A recent file's whole name at root ("notes.org", "main.cc"): the most
   // recent such file, as a thing named exactly, so a name that is also a
@@ -414,8 +427,12 @@ var provider = {
         var q = cut === -1 ? p : p.slice(cut + 1)
         if (!q) return null
         var only = kind === "dir" ? ["--type", "d"] : kind && KINDS[kind] ? KINDS[kind].reduce(function(a, e) { return a.concat(["-e", e]) }, []) : []
+        // Never a dependency's copy: Go's module cache and packages
+        // installed per project hold thousands of names (`dns`, `uuid`,
+        // `terminal`) a search under home meant none of (2026-10-10, driven
+        // live). Hidden folders and what a .gitignore names fd leaves out.
         return ["/usr/bin/fd", "--fixed-strings", "--max-results", "60", "--color", "never", "--absolute-path",
-                "--exclude", "*\n*"].concat(only, ["--", q, env.home])
+                "--exclude", "*\n*"].concat(EXCLUDED.reduce(function(a, x) { return a.concat(["--exclude", x]) }, []), only, ["--", q, env.home])
       },
       parse: function(text, ok, param) { var p = String(param); var cut = p.indexOf("\u0001"); return parseFound(text, ok, cut === -1 ? p : p.slice(cut + 1)) },
       maxAgeMs: 10 * 1000,

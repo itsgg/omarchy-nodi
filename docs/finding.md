@@ -24,9 +24,9 @@ Aliases, hotkeys, favourites, hidden rows and window rules.
 
 Type part of an app's name, its initials, or what it does.
 
-- `firefox`
+- `chromium`
 - `term`
-- `brave new window`
+- `chromium new window`
 
 ### Switch window
 
@@ -34,7 +34,7 @@ Type an app or a window title. w and a space lists them all.
 
 - `w `: Every other open window, most recent first
 - `w github`: Windows with github in the title
-- `brave`: Brave's windows first, then Brave to open a new one
+- `chromium`: Chromium's windows first, then Chromium to open a new one
 
 ### Omarchy menu
 
@@ -43,7 +43,7 @@ Every action in Omarchy's menu, yours included, by name.
 - `screenshot`
 - `dns`: Setup > Network > DNS, with the current one marked
 - `settings`: Everything under Setup
-- `install zed`: Installers answer only when asked
+- `install zed`: Installers answer only when asked, and only for what is not installed
 
 ### Toggles
 
@@ -196,7 +196,7 @@ A quick answer from your coding agent; Enter pastes it, Ctrl+Enter copies it.
 
 Text you selected before opening the bar: fixed, rewritten, translated, its case changed, searched; pasted over it.
 
-- `fix`: Fix its spelling and grammar
+- `fix`: Text selected in the last two minutes, its spelling and grammar fixed
 - `rewrite shorter`: Rewritten as you ask
 - `case `: UPPER, lower, Title Case, snake_case...
 - `translate`
@@ -281,7 +281,7 @@ Claude Code's and Codex's limits, and their sessions running in a terminal.
 
 Your next meeting first, Enter joining it; from an iCal address set in nodi.json.
 
-- `cal`: The next eight days
+- `cal `: The next eight days
 - `cal standup`: Events that hold the word
 
 ### File dialogs

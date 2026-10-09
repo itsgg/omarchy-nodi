@@ -23,7 +23,7 @@
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { load, root } from "../tests/js/load.mjs";
-import { Engine, config, services } from "../tests/js/fixtures.mjs";
+import { Engine, Jsonc, config, services } from "../tests/js/fixtures.mjs";
 
 const check = process.argv.includes("--check");
 const docs = join(root, "docs");
@@ -32,7 +32,9 @@ const problems = [];
 
 // ---------------------------------------------------------------- generated
 
-const topics = Engine.helpTopics(config, services({}));
+// With a calendar set: off, its topic only says how to turn it on, and the
+// docs say what it does once on.
+const topics = Engine.helpTopics(Jsonc.merge(config, { calendar: { ics: "https://example.com/basic.ics" } }), services({}));
 const keysTopic = topics.find(t => t.id === "shortcuts");
 
 function code(s) { return "`" + String(s).replace(/`/g, "'") + "`" }

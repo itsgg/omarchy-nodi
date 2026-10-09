@@ -105,3 +105,23 @@ test("in, with no folder of its own there: says so, never that no file holds the
   const rows = plain(run("in budget", { contents: [{ noFolder: true }] })).filter(r => r.provider === "files");
   assert.deepEqual(rows.map(r => [r.title, r.subtitle]), [["No folder to search", "~/Documents is not there: name others under \"files\": { \"contents\": [...] }"]]);
 });
+
+test("a file by its name sits under an Omarchy setting named as well, by more than habit gives, and dependencies' copies are never searched (driven live, 2026-10-10)", () => {
+  const S = load("lib/Score.js");
+  assert.ok(S.score("exact", "setting") - S.score("exact", "file") > S.HABIT_MAX, "`dns`: Setup > Network > DNS over a folder named dns");
+  assert.ok(S.score("exact", "app") > S.score("exact", "file"));
+  const argv = plain(F.provider.sources.find.argv("dns", { home: "/home/u" }));
+  for (const x of ["go/pkg/mod", "node_modules", "site-packages", "__pycache__"]) assert.ok(argv.some((a, i) => a === x && argv[i - 1] === "--exclude"), x);
+  assert.deepEqual(argv.slice(-3), ["--", "dns", "/home/u"]);
+});
+
+test("f with no recent file so named says so and offers the search under home; file manager stays the app's (driven live, 2026-10-10)", () => {
+  const recent = [{ path: "/home/u/Documents/budget.ods", name: "budget.ods" }];
+  const none = files(run("f report", { files: recent }));
+  assert.deepEqual(plain(none.map(r => [r.title, r.complete, r.run])), [["No recent file named \"report\"", "find report", null]]);
+  assert.equal(files(run("recent img cat", { files: recent }))[0].complete, "find img cat", "the kind goes with it");
+  const cased = files(run("f Report", { files: recent }))[0];
+  assert.deepEqual(plain([cased.title, cased.complete]), ["No recent file named \"Report\"", "find Report"], "as typed: fd's smart case (Cursor's review, 2026-10-10)");
+  assert.ok(!files(run("file manager", { files: recent })).some(r => r.key === "files:none"), "\"file manager\" is the File manager");
+  assert.equal(files(run("f budget", { files: recent }))[0].title, "budget.ods");
+});

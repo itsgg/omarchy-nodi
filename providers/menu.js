@@ -248,7 +248,7 @@ var provider = {
   help: [
     { id: "omarchy", title: "Omarchy menu", icon: "󰣇", about: "Every action in Omarchy's menu, yours included, by name",
       examples: [{ q: "screenshot" }, { q: "dns", note: "Setup > Network > DNS, with the current one marked" },
-                 { q: "settings", note: "Everything under Setup" }, { q: "install zed", note: "Installers answer only when asked" }] },
+                 { q: "settings", note: "Everything under Setup" }, { q: "install zed", note: "Installers answer only when asked, and only for what is not installed" }] },
     { id: "toggles", title: "Toggles", icon: "󰔡", about: "Omarchy's toggles, each with its state",
       examples: [{ q: "gaps", note: "Window Gaps, ON or OFF" }, { q: "dnd", note: "Notifications, ON or OFF" }, { q: "stay awake" }] }
   ],
