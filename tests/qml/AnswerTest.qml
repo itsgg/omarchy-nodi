@@ -47,10 +47,12 @@ Item {
     Quickshell.execDetached(["/usr/bin/mkdir", "-p", test.marks])
     streams.start(spec('printf "## Hi\\n"; sleep 0.6; printf "there"; sleep 0.6; printf " end"'))
     // A child that would leave a marker after the stop: it never must.
-    // Three seconds to the marker, read at 5.5 s, so the stop has room on
+    // Eight seconds to the marker, read at 10.5 s, so the stop has room on
     // a loaded machine (2026-10-07: at a load of 20, 1.2 s was not enough
-    // for a kill sent every 50 ms through pkill).
-    stops.start(spec('printf "said so far "; (sleep 3; : > "$1/stopped-child") & sleep 3; : > "$1/stopped-parent"; printf b', 10000, [test.marks]))
+    // for a kill sent every 50 ms through pkill; 2026-10-09: 3 s lost, now
+    // and then, at loads from 11 to 104, on 9d83779 too, where the same
+    // chain run outside Quickshell ends in 0.3 s every time).
+    stops.start(spec('printf "said so far "; (sleep 8; : > "$1/stopped-child") & sleep 8; : > "$1/stopped-parent"; printf b', 15000, [test.marks]))
     // A Tamil letter's three bytes in two writes, 0.3 s apart.
     tamil.start(spec("printf 'xx \\xe0\\xae'; sleep 0.3; printf '\\xa4 end'"))
     queuedStop.start(spec(test.stubborn))
@@ -114,8 +116,15 @@ Item {
       check(late.phase === "error" && /ran past 1 s/.test(late.error) && late.text === "x", "the deadline ends one that runs on: " + late.phase + " " + JSON.stringify(late.error))
       late.reset()
       check(late.phase === "idle" && late.text === "" && late.question === "", "reset() forgets it")
-      // Last, after the stopped program's three seconds (marksRead says done).
-      marksRead.running = true
+      marks.start()
     }
+  }
+
+  // Last, after the stopped program's eight seconds (marksRead says done);
+  // the deadline above is still read at 5.5 s (codex's review, 2026-10-09).
+  Timer {
+    id: marks
+    interval: 5000
+    onTriggered: marksRead.running = true
   }
 }
