@@ -10,7 +10,7 @@ started).
 
 ```jsonc
 {
-  "hotkey": "SUPER + SPACE",
+  "hotkey": "SUPER + SEMICOLON",
   "currency": { "home": "INR", "favorites": ["USD", "EUR"] },
   "time": { "home": "Asia/Kolkata", "zones": ["UTC", "America/New_York"] },
   // Merged with the default keywords; "disabled": true removes one.

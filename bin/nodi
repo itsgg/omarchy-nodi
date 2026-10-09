@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-# nodi: Nodi from a terminal or a script (README, "The nodi command").
+# nodi: Nodi from a terminal or a script (docs/extend.md, "From a terminal").
 #
 #   nodi                      open the bar
 #   nodi <words...>           open it with the words typed ("nodi -- run x"
@@ -9,7 +9,7 @@
 #                             rows from stdin, a line each; the one chosen is
 #                             printed as it was read
 #   nodi mcp                  the bar as an MCP server on stdin and stdout,
-#                             for another agent (README, "For agents")
+#                             for another agent (docs/extend.md, "For agents")
 #
 # Exit status: 0 done, 1 nothing was chosen (Escape, or the bar closed),
 # 2 Nodi refused it (an unknown row, a row that asks first, rows it could

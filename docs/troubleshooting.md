@@ -4,7 +4,7 @@
 
 | It says | What happened, and what to do |
 |---|---|
-| Nodi has no hotkey | The `"hotkey"` is not a key combination (write it as `"SUPER + SPACE"`), or something else already opens on it, which it names. Set another in `nodi.json`. |
+| Nodi has no hotkey | The `"hotkey"` is not a key combination (write it as `"SUPER + SEMICOLON"`), or something else already opens on it, which it names: Super+Space is Omarchy's menu until you move it ([Getting started](start.md)). Set another in `nodi.json`. |
 | A row's hotkey is taken | A key you gave a row from Ctrl+K is bound to something else now. Give the row another from Ctrl+K. |
 | nodi.json has an error | Your settings file does not parse, or holds no object of settings; the notification says why, and where for a typo. Nothing in it applies until it does: the last settings that worked are kept, or the defaults, if none has worked since the shell started. |
 | (a row's name) failed | A command a row ran exited with an error: the text is the last line it wrote, a script command's exit status if it wrote none, or why an action that can be undone failed. A command of a menu row or a script filter's that fails without a word, or a program you close, says nothing. |
