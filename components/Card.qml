@@ -225,7 +225,9 @@ BorderSurface {
           // Not over a composition either (Sonnet 2026-10-07: it drew on it).
           objectName: "placeholder"
           visible: !card.composed
-          text: nodi.placeholder || "Search"
+          // Naming an alias, the field takes a word, not a search: it
+          // suggested "uuid" there (2026-10-10, driven live).
+          text: nodi.aliasRow ? "A word for " + String(nodi.aliasRow.title || "this row") : (nodi.placeholder || "Search")
           color: nodi.secondary
           font: input.font
           elide: Text.ElideRight
