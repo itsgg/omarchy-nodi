@@ -58,6 +58,8 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   edit or a fix.
 - A date typed as ISO writes it, 2026-10-09, answers with the date,
   not 2,007.
+- An adapter installed at a new version removes its older ones, which
+  were left behind at about 60 MB each.
 
 ## 0.3.0 (2026-10-07)
 
