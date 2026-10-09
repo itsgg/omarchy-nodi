@@ -20,6 +20,11 @@
 
 var LIMIT = 8
 
+// tldr prints its page and exits, and the terminal closed with it before
+// the page could be read (2026-10-10, driven live): it waits for a key, the
+// page's colours kept, as man's pager waits.
+var TLDR = 'tldr -- "$1"; printf "\\n%s" "Any key closes"; read -rsn1'
+
 function terminal(dir, cmd) {
   var argv = ["uwsm-app", "--", "xdg-terminal-exec"]
   if (dir) argv.push("--dir=" + dir)
@@ -556,7 +561,7 @@ var provider = {
     }
     var page = String(query).match(/^\s*(man|tldr)\s+([A-Za-z0-9._+-]+)(?:\s+([0-9a-z]+))?\s*$/)
     if (page) {
-      var cmd = page[1] === "man" ? (page[3] ? ["man", "--", page[3], page[2]] : ["man", "--", page[2]]) : ["tldr", "--", page[2]]
+      var cmd = page[1] === "man" ? (page[3] ? ["man", "--", page[3], page[2]] : ["man", "--", page[2]]) : ["bash", "-c", TLDR, "nodi-tldr", page[2]]
       return [{ key: page[1] + ":" + page[2], title: (page[1] === "man" ? "Manual: " : "tldr: ") + page[2] + (page[3] ? "(" + page[3] + ")" : ""),
                 subtitle: "In a terminal", icon: "", score: 98, copy: page[2], run: terminal("", cmd), remember: false }]
     }

@@ -138,6 +138,10 @@ Item {
 
   // What the bar shows.
   property string question: ""
+  // The tools refused this turn, his Escape or the bar closing: said at the
+  // answer's end, so a preface ("I'll run the touch command.") does not
+  // read as done (2026-10-10, Codex driven live).
+  property var refused: []
   // What the agent was sent for it: the question, or the question with
   // what it is about (the selection's text); and what it is about.
   property string message: ""
@@ -258,6 +262,7 @@ Item {
     ask.context = context !== undefined ? String(context) : kept ? kept.context : ""
     ask.image = image !== undefined ? image : kept ? kept.image : null
     ask.allowed = ""
+    ask.refused = []
     ask.question = String(q)
     ask.answer = ""
     ask.error = ""
@@ -304,6 +309,7 @@ Item {
     ask.error = ""
     ask.phase = "idle"
     ask.allowed = ""
+    ask.refused = []
     // A request he never answered is refused, so the agent is not left asking.
     if (ask.proposal) ask.deny()
     ask.phase = "idle"
@@ -371,7 +377,10 @@ Item {
     var p = ask.proposal
     if (!p) return
     ask.proposal = null
-    if (p.kind === "permission") proc.write(Acp.result(p.id, Acp.choose(p.options, false)))
+    if (p.kind === "permission") {
+      proc.write(Acp.result(p.id, Acp.choose(p.options, false)))
+      if (ask.turn !== null) ask.refused = ask.refused.concat([String(p.title || "a tool")])
+    }
     else if (p.kind === "auth") { ask.fail("Not signed in to " + ask.agentName); return }
     ask.settle()
   }
@@ -468,6 +477,8 @@ Item {
       var stop = Acp.stopped(m.result && m.result.stopReason)
       if (stop && !ask.answer) { ask.fail(stop); return }
       if (stop) ask.answer += "\n\n(" + stop + ")"
+      if (ask.refused.length) ask.answer = Acp.withRefused(ask.answer, ask.refused, ask.answerMax)
+      ask.refused = []
       // A row the bar's run showed waits for him after the answer ends.
       ask.phase = ask.proposal ? "proposing" : "done"
     }

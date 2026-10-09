@@ -96,7 +96,9 @@ through the bar that the bar cannot.
 
 Any other tool the agent asks to use shows the same way, with what it is
 given: Enter allows that one call, Esc refuses it. Nodi never answers
-"always", so the agent asks again the next time.
+"always", so the agent asks again the next time. What was refused is
+said at the end of the answer, "(Refused: Run command)", so words the
+agent wrote before asking ("I'll run it") do not read as done.
 
 MCP servers you name, in Claude Code's own format, are its too:
 

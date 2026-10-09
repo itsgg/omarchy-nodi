@@ -39,7 +39,7 @@ test("every kind becomes one argv, started the way Omarchy's menu starts things"
   assert.deepEqual(plain(Run.command(Run.app("Disk Usage"))), LOGIN.concat(["uwsm-app", "--", "gtk-launch", "Disk Usage.desktop"]), "a name with a space is one argument");
   assert.deepEqual(plain(Run.command(Run.app("firefox", 1), (id, i) => ["firefox", "--private-window"])), LOGIN.concat(["uwsm-app", "--", "firefox", "--private-window"]));
   assert.equal(Run.command(Run.app("firefox", 1), () => null), null, "an action with no Exec runs nothing");
-  assert.deepEqual(plain(Run.command(Run.open("https://x.org"))), LOGIN.concat(["xdg-open", "https://x.org"]));
+  assert.deepEqual(plain(Run.command(Run.open("https://x.org"))), LOGIN.concat(["gio", "open", "https://x.org"]));
   assert.deepEqual(plain(Run.command(Run.summon("omarchy.emojis"))), LOGIN.concat(["omarchy-shell", "shell", "summon", "omarchy.emojis", "{}"]));
   assert.deepEqual(plain(Run.command(Run.copy("a b"))), { command: ["bash", "-lc", Run.COPY, "nodi"], environment: { NODI_TEXT: "a b" } }, "the text in the environment, never an argument");
   assert.deepEqual(plain(Run.command(Run.paste("a b", 3))), { command: ["bash", "-lc", Run.PASTE, "nodi", "3"], environment: { NODI_TEXT: "a b" } });

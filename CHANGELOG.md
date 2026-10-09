@@ -7,6 +7,26 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 
 ## Unreleased
 
+Fixes, from every feature driven on a live Omarchy (2026-10-10)
+- A file opens through `gio open`: Omarchy's nvim for text/plain is a
+  terminal app, which `xdg-open` ran with no terminal, so nothing showed;
+  and a Markdown file opens in what you set for Markdown.
+- `tldr tar` waits for a key: its terminal closed as the page printed.
+- An answer Ask's agent gave after you refused a tool ends with what was
+  refused, "(Refused: Run command)", so "I'll run it" does not read as
+  done.
+- `output` lists the audio outputs, `mic` and `input` the inputs: a file
+  named output stood over them.
+- An Omarchy setting named exactly comes before a file of that name
+  (`dns`), and the search under home leaves out go/pkg/mod,
+  node_modules, site-packages and __pycache__.
+- A status row ("Asking the AUR...") no longer holds the selection while
+  the rows it waits for land above it.
+- `f report`, `undo`, `desktop`, `forget desktop <name>` and `ssh ` say
+  so when there is nothing, where unrelated rows stood; the calendar's
+  help, with no calendar set, says how to set one.
+- Help examples name Chromium, which Omarchy ships, not Firefox or Brave.
+
 ## 0.4.0 (2026-10-09)
 
 The bar
