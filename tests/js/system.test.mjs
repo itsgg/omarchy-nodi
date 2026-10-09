@@ -121,3 +121,7 @@ test("defects found in the old bar stay fixed", () => {
   // Themes were a fixed list of 23; now whatever Omarchy lists, Dark Knight from ~/.config included.
   assert.ok(run("theme", themes).some(r => r.image.startsWith("/home/u/.config/omarchy/themes/")));
 });
+
+test("brightness with words it does not take answers nothing of its own", () => {
+  assert.ok(!run("brightness xyz").some(r => r.provider === "system"));
+});

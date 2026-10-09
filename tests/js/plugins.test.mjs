@@ -40,3 +40,10 @@ test("a plugin by its name opens through the shell, Nodi itself never", () => {
   run("radar", { asked });
   assert.ok(asked.includes("plugins"), "the list is asked for");
 });
+
+test("the shell's list that did not come, or did not read, is no list", () => {
+  const parse = P.provider.sources.plugins.parse;
+  assert.throws(() => parse("", false), /did not list its plugins/);
+  assert.throws(() => parse("not json", true), /did not read/);
+  assert.ok(Array.isArray(parse(listed, true)));
+});

@@ -201,3 +201,19 @@ test("the placeholders Alfred and Raycast have: cursor, an older clipboard entry
   assert.equal(fill('{random min="5" max="1"}').text, "");
 });
 
+
+test("a snippet with no keyword, its help, and a saved one that is gone", () => {
+  const S = load("providers/snippets.js");
+  const settings = [{ name: "Letter", text: 'Dear {argument name="who"},' }, { keyword: "sig", name: "Signature", text: "Regards" }];
+  const cfg = Object.assign({}, config, { snippets: settings });
+  const letter = run("snip letter", {}, cfg).find(r => r.title === "Letter");
+  assert.equal(letter.subtitle, "No keyword in nodi.json", "its arguments wait for a keyword it does not have");
+  const help = plain(S.provider.help({ settings }));
+  assert.deepEqual(help[0].examples.map(e => [e.q, e.note]), [["snip ", "Every snippet"], ["Letter ", "Letter, then who"], ["sig", "Signature"]]);
+  assert.equal(S.provider.resolve("snippet:gone", { settings }), null);
+});
+
+test("a date placeholder's seconds", () => {
+  const P = load("lib/Placeholders.js");
+  assert.equal(P.formatDate(new Date(2026, 8, 23, 14, 5, 7), "HH:mm:ss"), "14:05:07");
+});

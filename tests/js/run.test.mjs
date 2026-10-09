@@ -197,3 +197,11 @@ test("Ctrl+K typed into: words that start the label or group's, each group under
   assert.deepEqual(all.filter(a => a[1]).map(a => a[1]), ["Copy", "Manage"], "the row's own under the row's name, the others under theirs");
   assert.ok(!("section" in acts[3]), "the list actionsFor gave is left as it was");
 });
+
+test("a plugin opened: said as the shell command it is, and Enter says Open", () => {
+  const R = load("lib/Run.js");
+  assert.equal(R.describe(R.summon("omarchy.emojis")), "omarchy-shell shell summon omarchy.emojis '{}'");
+  assert.equal(R.describe(R.summon("x.y", "text")), "omarchy-shell shell summon x.y text");
+  assert.equal(R.verb(R.summon("omarchy.emojis")), "Open");
+  assert.equal(R.focusFirst(R.paste("x"), null, "0x5b8f"), null, "nothing to focus first for: as it is");
+});

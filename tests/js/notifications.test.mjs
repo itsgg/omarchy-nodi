@@ -38,3 +38,24 @@ test("found by what they said, Enter does what the click did", () => {
   assert.deepEqual(plain(all.map(r => r.title)), ["nodi.json has an error", "Bad action", "Dash", "Process crashed: chromium"]);
   assert.ok(!run("lock", { notifications }).some(r => r.provider === "notifications"));
 });
+
+test("the history read from Omarchy's own folder, and a day old said in days", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "nodi-notes-home-"));
+  try {
+    const dir = join(home, ".local/state/omarchy/notifications/history");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "1.json"), JSON.stringify({ app: "Mail", summary: "Two days old", body: "", timestamp: at - 2 * 86400e3 }, null, 2));
+    writeFileSync(join(dir, "2.json"), JSON.stringify({ app: "Mail", summary: "Just now", body: "", timestamp: at - 1000 }));
+    const argv = N.provider.sources.notifications.argv("", { home });
+    const read = N.parse(execFileSync(argv[0], argv.slice(1)).toString(), true);
+    assert.deepEqual(plain(read.map(n => n.summary)), ["Just now", "Two days old"], "each file one line, a pretty-printed one too");
+    const old = top("two days", { notifications: read });
+    assert.equal(old.subtitle, "Mail, 2 d ago");
+    const none = N.provider.sources.notifications.argv("", { home: join(home, "nobody") });
+    assert.equal(execFileSync(none[0], none.slice(1)).toString(), "", "no history: nothing, not a failure");
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});

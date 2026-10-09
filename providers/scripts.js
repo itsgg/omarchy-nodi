@@ -226,8 +226,6 @@ function extend(row, extra) {
   return row
 }
 
-function escapeRegExp(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
-
 // For Engine's fallbacks: a script that takes exactly one text argument,
 // run on what nothing else answered.
 function fallbacks(text, ctx) {

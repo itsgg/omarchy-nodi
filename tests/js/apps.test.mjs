@@ -44,3 +44,10 @@ test("a verb in front of a name finds the app, unless an app is named with the v
   assert.ok(fitted({ fitQuery: "obs" }) > fitted({}), "fit judges the name without the verb (Fable 2026-10-05)");
   assert.ok(run("start obs", { apps: [app("obs", "OBS Studio")], history: {} })[0].score > 74, "the provider passes it");
 });
+
+test("an app a model may be asked to describe: its entry says nothing but its name", () => {
+  const A = load("providers/apps.js");
+  assert.equal(A.undescribed({ name: "Foo", comment: "", generic: "" }), true);
+  assert.equal(A.undescribed({ name: "Foo", generic: "foo" }), true, "its name again is nothing said");
+  assert.equal(A.undescribed({ name: "Foo", comment: "Does foo" }), false);
+});

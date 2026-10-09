@@ -299,3 +299,9 @@ test("a step belongs to its keyword, and Escape steps back", () => {
   assert.deepEqual(plain(Keys.decide({ name: "Escape" }, { stepping: true })), { do: "stepBack" });
   assert.deepEqual(plain(Keys.decide({ name: "Escape" }, { stepping: true, prompting: true })), { do: "cancelPrompt" }, "a prompt first");
 });
+
+test("an action of a kind it does not know is no action", () => {
+  const rows = F.parse(JSON.stringify({ title: "Odd", action: { teleport: "mars" } }), { keyword: "k" });
+  assert.ok(!rows[0].run);
+  assert.deepEqual(plain(F.actionOf("open")), {}, "nor one that is no object");
+});

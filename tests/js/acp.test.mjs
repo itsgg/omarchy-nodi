@@ -113,3 +113,9 @@ test("why a prompt ended, when it is not the answer's own end", () => {
   assert.match(A.stopped("max_tokens"), /length/);
   assert.match(A.stopped("refusal"), /refused/);
 });
+
+test("a sign-in asked for by its method; a turn's end Ask has no words for says nothing", () => {
+  const A = load("lib/Acp.js");
+  assert.deepEqual(plain(JSON.parse(A.authenticate(7, "chatgpt"))), { jsonrpc: "2.0", id: 7, method: "authenticate", params: { methodId: "chatgpt" } });
+  assert.equal(A.stopped("something_new"), "");
+});
