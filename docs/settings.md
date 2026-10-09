@@ -61,7 +61,7 @@ started).
 | `"clipboard"` | `"limit"`: how many entries `cb` lists |
 | `"files"` | `"limit"`: how many files a search lists; `"root"`: `false` stops the search of your home by name; `"contents"`: the folders `in` searches |
 | `"windows"` | `"preview"`: `false` leaves the window itself out of the pane under `w` |
-| `"calendar"` | `"ics"`: your calendar's secret iCal address, or a list of them; `"me"`: your address, so an invitation you declined is left out |
+| `"calendar"` | `"ics"`: your calendar's secret iCal address (`https://` or `webcal://`), an `.ics` file's path (`/...`, `~/...` or `file://`), or a list of them; `"me"`: your address, so an invitation you declined is left out |
 | `"translate"` | `"language"`: what `tr` and Translate go to (English unless set) |
 | `"notes"` | `"file"`: where `note` writes (`~/Documents/notes.md` unless set) |
 
