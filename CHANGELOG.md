@@ -56,6 +56,8 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   written over, so a hand edit's typo loses no alias, favourite, hotkey
   or rule; the bar reads the file again at each open, taking a hand
   edit or a fix.
+- A date typed as ISO writes it, 2026-10-09, answers with the date,
+  not 2,007.
 
 ## 0.3.0 (2026-10-07)
 
