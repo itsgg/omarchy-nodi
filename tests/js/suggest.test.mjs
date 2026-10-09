@@ -62,3 +62,16 @@ test("a cache full of suggestions lets them go first", async () => {
   const gone = R.prune(cache, 64, null, k => k.indexOf("suggest:") === 0);
   assert.deepEqual(plain(gone), ["suggest:q0"], "the oldest suggestion, not the older folder listing");
 });
+
+test("a keyword that reads the clipboard waits for it, saying so", () => {
+  const cfg = Object.assign({}, config, { keywords: [{ keyword: "q", title: "Quote", open: "https://x.test/?q={clipboard}" }] });
+  const row = run("q ", {}, cfg).find(r => r.provider === "keywords");
+  assert.equal(row.subtitle, "Reading the clipboard...");
+  assert.ok(!row.run, "nothing to open until it is read");
+  // One that takes the words typed too: the words wait with it.
+  const both = Object.assign({}, config, { keywords: [{ keyword: "q", title: "Quote", open: "https://x.test/?q={q}&c={clipboard}" }] });
+  const typed = run("q some words", {}, both).find(r => r.provider === "keywords");
+  assert.deepEqual([typed.title, typed.subtitle, !!typed.run], ["Quote...", "Reading the clipboard...", false]);
+  const read = run("q some words", { clipboardText: "the copy" }, both).find(r => r.provider === "keywords");
+  assert.deepEqual(plain(read.run), { kind: "open", target: "https://x.test/?q=some%20words&c=the%20copy" }, "read: both in it");
+});

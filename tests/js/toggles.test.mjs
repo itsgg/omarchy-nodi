@@ -125,3 +125,9 @@ test("every menu toggle names a real Omarchy menu id", { skip: !existsSync(REAL_
   for (const t of Toggles.TABLE) if (t.menu) assert.ok(real.items[t.menu] && real.items[t.menu].action, t.menu);
 });
 
+
+test("a state that says neither on, off nor a value shows no badge", () => {
+  const T = load("lib/Toggles.js");
+  assert.deepEqual(plain(T.badge({ on: null })), { text: "", tone: "" });
+  assert.deepEqual(plain(T.badge(null)), { text: "", tone: "" });
+});

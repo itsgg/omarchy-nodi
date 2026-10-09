@@ -331,3 +331,9 @@ test("calendar: a meeting near is found by its title or by join", () => {
   const all = Object.assign({}, data, { events: [ev("g", "All hands", local(23, 0, 0), local(24, 0, 0), { allDay: true })] });
   eq(mine(Engine.home(cfg, services({ calendar: all, history: {}, reminders: [] }))), [], "an all-day event never leads");
 });
+
+test("calendar: a meeting link of a service it does not know is named by its host", () => {
+  const meet = { calendars: data.calendars, details: {}, events: [ev("z", "Sync", t - 5 * MIN, t + 25 * MIN, { link: "https://meet.example.org/room-7" })] };
+  const row = mine(Engine.home(cfg, services({ calendar: meet, history: {}, reminders: [] })))[0];
+  assert.equal(row.subtitle, "Now, until 14:25, meet.example.org");
+});

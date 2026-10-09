@@ -159,3 +159,16 @@ test("windows from Quickshell's records, null and junk skipped (ROADMAP 32)", ()
   assert.equal(S.windowsFrom([], { id: -98, name: "special:scratch" }).activeWorkspace, "special:scratch");
   assert.deepEqual(plain(S.windowsFrom(null, null)), { list: [], activeWorkspace: null });
 });
+
+test("the selection and the clipboard's text read at an open, each ended by its marker", () => {
+  const S = load("lib/Sources.js");
+  const dir = mkdtempSync(join(tmpdir(), "nodi-sel-"));
+  try {
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "bin/wl-paste"), '#!/bin/bash\ncase "$*" in *--primary*) printf "picked";; *--list-types*) echo text/plain;; *) printf "copied\\n";; esac\n', { mode: 0o755 });
+    const argv = S.selectionArgv();
+    assert.deepEqual(plain(argv.slice(0, 2)), ["/usr/bin/bash", "-c"]);
+    const out = execFileSync(argv[0], argv.slice(1), { env: { PATH: join(dir, "bin") + ":/usr/bin:/bin" } }).toString();
+    assert.equal(out, "picked\n\u001e\ncopied\n\n\u001e\n", "the selection, its marker, the clipboard with its own newline, its marker");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

@@ -148,3 +148,22 @@ test("an argument that is JSON but no object marks the script invalid, places ke
   assert.equal(r.badge, "Not run");
   assert.equal(r.run, undefined);
 });
+
+test("an inline script's output is read from its own folder, with what it prints", async () => {
+  const S = load("providers/scripts.js");
+  const dir = mkdtempSync(join(tmpdir(), "nodi-inline-"));
+  try {
+    writeFileSync(join(dir, "where.sh"), "#!/bin/bash\npwd\necho second\n");
+    chmodSync(join(dir, "where.sh"), 0o755);
+    const src = S.provider.sources["script-output"];
+    const argv = src.argv(JSON.stringify([dir, join(dir, "where.sh"), 0]));
+    const out = execFileSync(argv[0], argv.slice(1), { env: { PATH: "/usr/bin:/bin", HOME: dir } }).toString();
+    assert.equal(out, dir + "\nsecond\n");
+    assert.throws(() => src.parse("", false), /the script failed/);
+    const gone = src.argv(JSON.stringify([join(dir, "nope"), join(dir, "where.sh"), 0]));
+    // HOME is the test's: a login shell with none reads the real one's
+    // profile (Cursor's review, 2026-10-10).
+    assert.throws(() => execFileSync(gone[0], gone.slice(1), { env: { PATH: "/usr/bin:/bin", HOME: dir }, stdio: "pipe" }),
+                  e => e.status === 1 && e.stdout.toString() === "", "no folder: it fails, never runs elsewhere");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

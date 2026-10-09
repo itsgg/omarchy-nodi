@@ -125,3 +125,12 @@ test("f with no recent file so named says so and offers the search under home; f
   assert.ok(!files(run("file manager", { files: recent })).some(r => r.key === "files:none"), "\"file manager\" is the File manager");
   assert.equal(files(run("f budget", { files: recent }))[0].title, "budget.ods");
 });
+
+test("find alone says what it takes; a folder that could not be listed says so", () => {
+  const rows = plain(run("find ", {})).filter(r => r.provider === "files");
+  assert.deepEqual(rows.map(r => [r.title, r.hint]), [["Find files", "find [img|doc|video|audio|dir] <name>"]]);
+  const dir = F.provider.sources.directory;
+  assert.deepEqual(plain(dir.parse("", false, "/root/secret")), { path: "/root/secret", entries: [], error: "Not a folder you can read" });
+  assert.equal(dir.parse("f\ta\nd\tb\n", false, "/x").error, "", "a listing that printed entries keeps them");
+  assert.equal(dir.argv("relative"), null, "only an absolute path is listed");
+});

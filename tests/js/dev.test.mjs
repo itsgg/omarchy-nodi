@@ -253,3 +253,27 @@ test("bookmarks: the folders walked, under bm and three at root (ROADMAP 55)", (
   assert.equal(plain(run("bm ", { failed: { bookmarks: "not JSON" } }))[0].title, "Could not read the bookmarks", "a real failure says so");
 });
 
+
+test("the lists read from a home: repositories under the usual folders, browser history and bookmarks, none when there are none", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const home = mkdtempSync(join(tmpdir(), "nodi-dev-home-"));
+  const go = (name, extra) => { const a = D.provider.sources[name].argv("", {}); try { return execFileSync(a[0], a.slice(1), { env: { HOME: home, PATH: "/usr/bin:/bin", ...(extra || {}) } }).toString(); } catch (e) { return null; } };
+  try {
+    for (const d of ["Work/nodi/.git", "Projects/kural/.git", "Code/deep/a/b/c/d/.git", "elsewhere/x/.git"]) mkdirSync(join(home, d), { recursive: true });
+    const found = plain(D.provider.sources.projects.parse(go("projects"), true)).filter(p => p.git).map(p => p.name).sort();
+    assert.deepEqual(found, ["kural", "nodi"], "four folders deep at most, and only the usual ones");
+    // Chromium's history, as its sqlite file holds it.
+    assert.equal(go("browser-history"), null, "no browser: the read fails, as no list");
+    mkdirSync(join(home, ".config/chromium/Default"), { recursive: true });
+    execFileSync("/usr/bin/sqlite3", [join(home, ".config/chromium/Default/History"),
+      "create table urls (id integer primary key, url text, title text, visit_count integer, last_visit_time integer); insert into urls (url, title, visit_count, last_visit_time) values ('https://example.com/a', 'Example A', 4, 13300000000000000);"]);
+    const history = plain(D.provider.sources["browser-history"].parse(go("browser-history"), true));
+    assert.deepEqual(history.map(h => [h.url, h.title]), [["https://example.com/a", "Example A"]]);
+    assert.deepEqual(plain(D.provider.sources.bookmarks.parse(go("bookmarks"), true)), [], "no bookmarks file: none");
+    writeFileSync(join(home, ".config/chromium/Default/Bookmarks"), JSON.stringify({ roots: { bookmark_bar: { type: "folder", name: "Bar", children: [{ type: "url", name: "Docs", url: "https://docs.example.com/" }] } } }));
+    assert.deepEqual(plain(D.provider.sources.bookmarks.parse(go("bookmarks"), true)).map(b => b.url), ["https://docs.example.com/"]);
+  } finally { rmSync(home, { recursive: true, force: true }); }
+});

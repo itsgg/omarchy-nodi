@@ -36,3 +36,9 @@ test("the last MAX kept, a damaged file read as none, the summary", () => {
                                    PickLog.entry(3, [], "lo c", "c", [{ key: "x" }, { key: "y" }, { key: "c" }])]));
   assert.deepEqual(s, { picks: 3, medianRank: 2, first: 1, medianLetters: 3 });
 });
+
+test("the log as it is written: JSON, and none is an empty list", () => {
+  const P = load("lib/PickLog.js");
+  assert.equal(P.serialize(null), "[]");
+  assert.equal(P.serialize([{ at: 1 }]), '[{"at":1}]');
+});

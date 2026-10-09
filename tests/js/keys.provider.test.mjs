@@ -70,3 +70,30 @@ test("a binding the menu runs is left to the menu row, which shows its keys", ()
   const pause = run("pause", { menu: { items: shellMenu.items, order: shellMenu.order, when: {}, checked: {} } });
   assert.ok(pause.some(r => r.provider === "keys" && r.title === "Pause"), pause.map(r => r.title).join());
 });
+
+test("the records as Omarchy writes them: its own command run, the newest records read; and a saved key that is gone", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync, copyFileSync } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+  const { tmpdir } = await import("node:os");
+  const K = load("providers/keys.js");
+  const t = mkdtempSync(join(tmpdir(), "nodi-keys-"));
+  try {
+    mkdirSync(join(t, "bin")); mkdirSync(join(t, "cache/omarchy"), { recursive: true });
+    // Omarchy's own: it writes the records file, which is then read.
+    writeFileSync(join(t, "bin/omarchy-menu-keybindings"), '#!/bin/bash\n[ "$1" = --print ] && cp "$NODI_FIXTURE" "$XDG_CACHE_HOME/omarchy/keybindings-1.records"\n');
+    // An older file of one record beside it: the newest is the one read
+    // (Cursor's review, 2026-10-10).
+    const { utimesSync, readFileSync } = await import("node:fs");
+    const older = join(t, "cache/omarchy/keybindings-9.records");
+    writeFileSync(older, readFileSync(join(root, "tests/js/fixtures/keybindings.records"), "utf8").split("\n").slice(0, 1).join("\n") + "\n");
+    utimesSync(older, new Date(2020, 0, 1), new Date(2020, 0, 1));
+    chmodSync(join(t, "bin/omarchy-menu-keybindings"), 0o755);
+    const argv = K.provider.sources.keybindings.argv();
+    const out = execFileSync(argv[0], argv.slice(1), { env: { PATH: join(t, "bin") + ":/usr/bin:/bin", HOME: t, XDG_CACHE_HOME: join(t, "cache"),
+                                                              NODI_FIXTURE: join(root, "tests/js/fixtures/keybindings.records") } }).toString();
+    assert.deepEqual(plain(K.provider.sources.keybindings.parse(out, true)).length, binds.length);
+    assert.throws(() => K.provider.sources.keybindings.parse("", false), /no keybinding records/);
+    const ctx = { request: () => ({ state: "ready", value: binds }) };
+    assert.equal(K.provider.resolve("keys:NO + SUCH", ctx, null), null);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});

@@ -74,3 +74,24 @@ test("define: Wiktionary's senses as plain text, English first, a row each, Ente
   const cased = run("define Hello", { define: [] }).filter(r => r.provider === "dictionary");
   assert.equal(cased[0].complete, "define hello", "Wiktionary is by case");
 });
+
+test("define: an answer that did not come or did not read says so, and one still on its way says it is looking", () => {
+  const parse = D.provider.sources.define.parse;
+  assert.throws(() => parse("", false), /Wiktionary did not answer/);
+  assert.throws(() => parse("<html>", true), /Wiktionary's answer did not read/);
+  const down = run("define xyzzy", { failed: { define: "timed out" } }).filter(r => r.provider === "dictionary");
+  assert.deepEqual(plain(down.map(r => [r.title, r.subtitle])), [["Wiktionary did not answer", "timed out"]]);
+  const waiting = run("define xyzzy", {}).filter(r => r.provider === "dictionary");
+  assert.deepEqual(plain(waiting.map(r => [r.title, r.subtitle])), [["Looking up xyzzy...", "Wiktionary"]]);
+});
+
+test("packages: nothing in pacman or the AUR for the words says so", () => {
+  const rows = run("pkg zzqxv", { pkgRepo: [], pkgAur: [] }).filter(r => r.provider === "packages");
+  assert.deepEqual(plain(rows.map(r => [r.title, r.subtitle])), [["No package named or about \"zzqxv\"", "pacman and the AUR"]]);
+});
+
+test("define: Wiktionary's answer as it sends it, read into senses", () => {
+  const got = plain(D.provider.sources.define.parse(JSON.stringify({ en: [{ partOfSpeech: "Noun", definitions: [{ definition: "A <b>happy</b> accident." }] }] }), true));
+  assert.equal(got.length, 1);
+  assert.match(JSON.stringify(got[0]), /A happy accident\./);
+});

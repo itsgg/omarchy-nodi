@@ -196,3 +196,20 @@ test("guards: the package list is kept until the package database changes, the r
     assert.equal(runGuards().g.when.vim, true, "the second run reads the kept list, not pacman");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("a submenu stays two points under its best child, whatever the weights would give it; a saved row the menu lost is none", () => {
+  const Score = load("lib/Score.js");
+  const small = Menu.merge([Menu.parseItems(JSON.stringify({ "update": { label: "Update" }, "update.now": { label: "Update now", action: "true" } }))]);
+  const m = { items: small.items, order: small.order, when: {}, checked: {} };
+  const was = Score.KIND.menu;
+  Score.KIND.menu = 30;   // a submenu weighted over an action, as a change of weights might
+  try {
+    const rows = run("upd", withMenu({ menu: m })).filter(r => r.provider === "menu");
+    const byTitle = Object.fromEntries(rows.map(r => [r.title, r.score]));
+    // Two points under, give or take the place each row is given after.
+    assert.ok(byTitle["Update"] < byTitle["Update now"] && Math.abs(byTitle["Update"] - (byTitle["Update now"] - 2)) < 0.05, JSON.stringify(byTitle));
+  } finally { Score.KIND.menu = was; }
+  const P = load("providers/menu.js");
+  assert.equal(P.provider.resolve("menu:no.such.row", { menu }), null);
+  assert.equal(P.provider.resolve("app:firefox", { menu }), null);
+});

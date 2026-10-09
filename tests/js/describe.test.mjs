@@ -98,3 +98,10 @@ test("every app Omarchy installs without a description is in the table", { skip:
   }
   assert.deepEqual(missing, []);
 });
+
+test("descriptions kept, then the new ones over them", () => {
+  const D = load("lib/Describe.js");
+  const m = D.merged({ a: { for: "1", text: "old a" }, b: { for: "1", text: "b" } }, { a: { for: "2", text: "new a" }, c: { for: "1", text: "c" } });
+  assert.deepEqual(plain(m), { a: { for: "2", text: "new a" }, b: { for: "1", text: "b" }, c: { for: "1", text: "c" } });
+  assert.deepEqual(plain(D.merged({}, {})), {});
+});

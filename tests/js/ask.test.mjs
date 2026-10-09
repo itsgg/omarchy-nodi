@@ -517,3 +517,8 @@ test("with the agent's program not installed, no Ask fallback, and `ask ` says s
   assert.equal(plain(run("ask what is this", { ask }))[0].subtitle, "claude is not on your login PATH: install it, or name another agent in nodi.json");
   assert.equal(plain(run("ask ", { ask }))[0].subtitle, "claude is not on your login PATH: install it, or name another agent in nodi.json", "said at `ask ` itself");
 });
+
+test("a question that could not be asked says why, and Enter asks again", () => {
+  const rows = plain(run("ask why", { ask: { phase: "error", question: "why", error: "out of credits", agent: "Claude", model: "haiku" } }));
+  assert.deepEqual([rows[0].key, rows[0].title, rows[0].actionLabel, rows[0].nodi], ["ask:error", "Could not ask: out of credits", "Ask again", "ask"]);
+});

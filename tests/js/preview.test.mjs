@@ -116,3 +116,9 @@ test("the read itself, on real files: code, a PDF, a folder, a binary", () => {
     assert.equal(F.provider.sources["file-head"].argv("relative/path"), null);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+test("a code that sets no colour (bold) leaves the colour as it was", () => {
+  const A = load("lib/Ansi.js");
+  const ESC = "\x1b";
+  assert.equal(A.html(ESC + "[1mbold" + ESC + "[0m", {}), '<div style="white-space: pre-wrap">bold</div>');
+});

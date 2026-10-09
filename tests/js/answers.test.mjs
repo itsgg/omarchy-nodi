@@ -617,3 +617,80 @@ test("an ISO date is the date's, not a sum (2026-10-09)", () => {
   assert.equal(top("2026-02-29").title, "1,995", "no such day: a sum (codex's review, 2026-10-09)");
   assert.equal(top("2026-13-40").provider, "math");
 });
+
+test("the zones whose offsets are read: every city's zone once, then the ones set, once", () => {
+  const Tz = load("lib/tzcities.js");
+  const zones = plain(Tz.allZones(["Asia/Colombo", "Mars/Olympus", "Mars/Olympus", ""]));
+  assert.equal(new Set(zones).size, zones.length, "each once");
+  assert.ok(zones.includes("Asia/Tokyo") && zones.includes("America/Los_Angeles"), "the cities' zones");
+  assert.equal(zones.filter(z => z === "Asia/Colombo").length, 1, "a set zone a city has already is not added again");
+  assert.equal(zones.at(-1), "Mars/Olympus", "a set zone no city has comes after them");
+  assert.deepEqual(plain(Tz.allZones()).length, zones.length - 1, "none set: the cities' alone");
+});
+
+test("time: a 12-hour clock when asked, a day back, and the zones still being read", () => {
+  const twelve = Object.assign({}, config, { time: Object.assign({}, config.time, { clock24: false }) });
+  assert.equal(run("time in tokyo", {}, twelve)[0].title, "5:30 pm Tokyo");
+  assert.equal(run("3am lkt to pst", {}, twelve)[0].title, "2:30 pm Los Angeles (-1 day)");
+  assert.equal(top("1am lkt to pst").title, "12:30 Los Angeles (-1 day)");
+  assert.deepEqual(plain(run("time in tokyo", { zones: null }).slice(0, 1).map(r => [r.title, r.subtitle])), [["Looking up time zones...", "Time"]]);
+  assert.equal(top("10 days ago").title, "Sun, 13 Sep 2026");
+  assert.equal(top("10 days ago").subtitle, "10 days ago");
+  // At the end of what a Date can hold, no Feb 29 is left to count to.
+  const late = services({ now: () => new Date(275760, 2, 1) });
+  assert.equal(Engine.run("days until feb 29", config, late).filter(r => r.provider === "time").length, 0);
+});
+
+test("currency: the rates as the service sends them, and an answer that is no rates is refused", () => {
+  const C = load("providers/currency.js");
+  const parse = C.provider.sources.rates.parse;
+  assert.deepEqual(plain(parse(JSON.stringify({ result: "success", rates: { USD: 1, LKR: 300 }, time_last_update_unix: 10, time_next_update_unix: 20 }), true)),
+                   { rates: { USD: 1, LKR: 300 }, updated: 10, next: 20 });
+  assert.throws(() => parse("", false), /Could not reach open.er-api.com/);
+  assert.throws(() => parse(JSON.stringify({ result: "error", "error-type": "quota-reached" }), true), /unexpected response/);
+  assert.throws(() => parse(JSON.stringify({ result: "success", rates: "none" }), true), /unexpected response/);
+});
+
+test("units: a result under one keeps four significant figures, not four places", () => {
+  assert.equal(top("1 g to kg").copy, "0.001");
+  assert.equal(top("1 mm to km").copy, "0.000001");
+});
+
+test("a sum that does not parse is no answer: a token out of place, a function without its brackets", () => {
+  for (const q of ["2 * )", "sqrt 4", "sqrt(4"]) assert.ok(!run(q).some(r => r.provider === "math"), q);
+});
+
+test("a row's footer word: Copy for a row that copies, nothing for one that does nothing", () => {
+  assert.equal(Rows.actionLabel({ copy: "x" }), "Copy");
+  assert.equal(Rows.actionLabel({}), "");
+});
+
+test("every provider, and one that throws costs its own rows, never the query: its rows, its help, its commands", async () => {
+  const { warnings } = await import("./load.mjs");
+  const Registry = load("providers/index.js");
+  assert.equal(Engine.providers(), Registry.all, "the registry's list as it is");
+  assert.equal(Engine.providers().length, 39);
+  const units = Registry.all.find(p => p.id === "units");
+  const snippets = Registry.all.find(p => p.id === "snippets");
+  const filters = Registry.all.find(p => p.id === "filters");
+  const was = { match: units.match, help: snippets.help, commands: filters.commands };
+  units.match = () => { throw new Error("boom") };
+  snippets.help = () => { throw new Error("no help") };
+  filters.commands = () => { throw new Error("no commands") };
+  try {
+    const before = warnings.length;
+    const rows = run("5 km to mi");
+    assert.ok(!rows.some(r => r.provider === "units"), "the one that threw: none of its rows");
+    assert.ok(rows.length > 0, "the rest still answer");
+    const topics = run("?");
+    assert.ok(topics.length > 5 && !topics.some(r => /Snippets/.test(r.title)), "the help, without the one whose help threw");
+    // A command of another provider's, not a fallback, which shows whatever
+    // happened to the commands (Cursor's review, 2026-10-10).
+    assert.ok(run("search packages").some(r => r.provider === "packages" && r.title === "Search packages"), "commands of the rest still found");
+    const said = warnings.slice(before).join("\n");
+    assert.match(said, /nodi: provider units failed: Error: boom/);
+    assert.match(said, /nodi: help for snippets failed: Error: no help/);
+    assert.match(said, /nodi: commands for filters failed: Error: no commands/);
+  } finally { units.match = was.match; snippets.help = was.help; filters.commands = was.commands; }
+  assert.equal(top("5 km to mi").provider, "units", "put back: it answers again");
+});

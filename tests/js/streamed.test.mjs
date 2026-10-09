@@ -88,3 +88,8 @@ test("Escape stops an answer on its way before it clears or closes anything", ()
   assert.deepEqual(plain(Keys.decide({ name: "Escape" }, v)), { do: "stopAnswer" });
   assert.deepEqual(plain(Keys.decide({ name: "Escape" }, Object.assign({}, v, { answering: false, prompting: false, armed: false }))), { do: "dismiss" });
 });
+
+test("an answer found from the search box by its title, Enter writing its keyword", () => {
+  const row = run("assistant").find(r => r.title === "Assistant" && r.complete === "a ");
+  assert.ok(row, "the answer's command row");
+});

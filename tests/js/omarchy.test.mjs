@@ -130,3 +130,12 @@ test("Omarchy's real command list parses", { skip: !existsSync("/usr/share/omarc
 });
 
 function Rows() { return load("lib/Rows.js"); }
+
+test("a saved Omarchy command as the catalog has it now, by its program; one the catalog lost is none", () => {
+  const ctx = { request: (name, param, opts) => name === "omarchy-commands" ? { state: "ready", value: commands } : { state: "pending" } };
+  const one = commands.find(c => !c.args);
+  const row = Omarchy.provider.resolve("omarchy:" + one.binary, ctx);
+  assert.equal(row.title, Omarchy.rowFor(one, "exact").title);
+  assert.equal(Omarchy.provider.resolve("omarchy:no-such-binary", ctx), null);
+  assert.equal(Omarchy.provider.resolve("omarchy:" + one.binary, {}), null, "no catalog read yet: nothing");
+});
