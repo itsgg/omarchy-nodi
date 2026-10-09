@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -789,11 +790,7 @@ def fetch(url, cache_dir, now):
                 meta = {"fetchedAt": int(now * 1000), "etag": r.headers.get("ETag", ""), "modified": r.headers.get("Last-Modified", "")}
                 if keeps:
                     try:
-                        tmp = base + ".tmp"
-                        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-                        with os.fdopen(fd, "wb") as f:
-                            f.write(body)
-                        os.replace(tmp, base + ".ics")
+                        write_private(base + ".ics", bytes(body))
                         write_meta(base, meta)
                     except OSError:
                         pass
@@ -830,12 +827,26 @@ def fetched(url, cache_dir, now):
         return None, {"ok": False, "error": "could not be read (%s)" % type(e).__name__}
 
 
+def write_private(path, data):
+    """`data` (bytes) to `path`, whole or not at all: written to a file of
+    its own beside it (mkstemp: a name of its own, made with O_EXCL, 0600,
+    so no name another could have put a link at), then renamed over it
+    (codex's review, 2026-10-09)."""
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path) or ".", prefix="." + os.path.basename(path) + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def write_meta(base, meta):
-    tmp = base + ".json.tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as f:
-        json.dump(meta, f)
-    os.replace(tmp, base + ".json")
+    write_private(base + ".json", json.dumps(meta).encode("utf-8"))
 
 
 def google_id(url):
@@ -927,11 +938,7 @@ def expanded(cache_dir, url, text, name, i, cal_id, me, local, lo, hi):
     got = {"stamp": stamp, "name": cal.text("X-WR-CALNAME").strip(), "events": rows, "details": details}
     try:
         os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-        tmp = path + ".tmp"
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump(got, f)
-        os.replace(tmp, path)
+        write_private(path, json.dumps(got).encode("utf-8"))
     except OSError:
         pass
     return got

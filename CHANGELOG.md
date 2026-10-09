@@ -45,6 +45,10 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   suggestions and the weather and Wikipedia extensions over https only
   and refused past a size; a calendar served over https follows no
   redirect away from it.
+- Nodi's folders in your home are yours alone (0700), and a file it
+  replaces (a calendar's copy, the rates, the packages list, Gemini's
+  settings) is written under a name of its own first, never one a link
+  could stand at.
 
 ## 0.3.0 (2026-10-07)
 

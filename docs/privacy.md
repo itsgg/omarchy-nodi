@@ -62,6 +62,10 @@ Everything Nodi reads, writes, starts and sends, and when.
   from (`wl-paste --primary`) and the clipboard's text (never a password
   manager's), keeps them until it next opens, and sends one to the agent
   only when you pick one of the agent's rows on it.
+- Its folders, `~/.cache/nodi/`, `~/.local/state/nodi/` and
+  `~/.local/share/nodi/`, are yours alone (0700), made so at each start;
+  a file it replaces is written beside it under a name of its own, then
+  moved over it.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`,
   which holds what you set on rows (favourites, aliases, hotkeys, hidden
   rows and deeplinks, each with a copy of its row: its title and what it
