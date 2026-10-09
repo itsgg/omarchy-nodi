@@ -393,3 +393,20 @@ test("an answer kept to its most characters: the separator counted, never half a
   assert.deepEqual(plain(Acp.capped("x".repeat(8), "", "\u{1F525}\u{1F525}", 9)), { text: "x".repeat(8), cut: true });
   assert.equal(Acp.capped("x".repeat(10), "", "y", 10).text.length, 10);
 });
+
+test("when Ask goes, its agent is stopped: TERM, then KILL if it is still the same process (codex's review, 2026-10-09)", async () => {
+  const { spawn } = await import("node:child_process");
+  const ignores = spawn("/usr/bin/bash", ["-c", 'trap "" TERM; sleep 30'], { stdio: "ignore" });
+  await new Promise(r => setTimeout(r, 200));
+  const gone = new Promise(r => ignores.on("exit", (code, signal) => r(signal)));
+  const a = G.stopArgv(ignores.pid, 0.3);
+  spawnSync(a[0], a.slice(1));
+  assert.equal(await gone, "SIGKILL", "one that ignores TERM is killed");
+  const calm = spawn("/usr/bin/sleep", ["30"], { stdio: "ignore" });
+  const ended = new Promise(r => calm.on("exit", (code, signal) => r(signal)));
+  const b = G.stopArgv(calm.pid, 0.3);
+  assert.equal(spawnSync(b[0], b.slice(1)).status, 0);
+  assert.equal(await ended, "SIGTERM");
+  assert.equal(spawnSync(b[0], b.slice(1)).status, 0, "gone already: nothing to do");
+  assert.equal(G.stopArgv(0), null); assert.equal(G.stopArgv(1), null, "never init"); assert.equal(G.stopArgv("x"), null);
+});

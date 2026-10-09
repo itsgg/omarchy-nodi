@@ -206,7 +206,26 @@ test("the key is released on unload only when no Nodi took this one's place", ()
     releaseCode();
     assert.equal(readFileSync(log, "utf8"), 'eval hl.unbind("SUPER + code:20")\n', "Nodi's alone: released, its prefix as Hyprland reads it");
     assert.equal(Hotkey.releaseArgv(null, "x", "y"), null, "nothing bound, nothing to release");
+    // The window rules go with it, when none is loaded (codex's review, 2026-10-09).
+    rmSync(log);
+    writeFileSync(join(dir, "binds.json"), JSON.stringify([{ modmask: 64, key: "SPACE", description: "Nodi" }]));
+    const withRules = answer => { const a = Hotkey.releaseArgv(combo, "io.github.itsgg.nodi", shell(answer), hyprctl, 0, "rules off"); execFileSync(a[0], a.slice(1)); };
+    withRules("ok");
+    assert.ok(!existsSync(log), "a successor answered: its rules stay");
+    withRules("unknown");
+    assert.equal(readFileSync(log, "utf8"), 'eval rules off\neval hl.unbind("SUPER + SPACE")\n');
+    rmSync(log);
+    const rulesOnly = Hotkey.releaseArgv([], "io.github.itsgg.nodi", shell("unknown"), hyprctl, 0, "rules off");
+    execFileSync(rulesOnly[0], rulesOnly.slice(1));
+    assert.equal(readFileSync(log, "utf8"), "eval rules off\n", "rules and no key: the rules still go");
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("the chords to release: its own, the rows' as saved and as bound, each once (codex's review, 2026-10-09)", () => {
+  const held = plain(Hotkey.held("SUPER + PERIOD", { "SUPER + F": "app:firefox", "SUPER + G": "app:gimp" }, { "SUPER + F": "app:firefox", "SUPER + H": "app:htop" }));
+  assert.deepEqual(held.map(c => Hotkey.comboString(c.mask, c.key)), ["SUPER + PERIOD", "SUPER + F", "SUPER + G", "SUPER + H"],
+                   "a key changed a moment ago is still released by the one it was bound as");
+  assert.deepEqual(plain(Hotkey.held("", {}, {})), []);
 });
 
 test("row hotkeys: bound to the row's deeplink, never over another bind", () => {
