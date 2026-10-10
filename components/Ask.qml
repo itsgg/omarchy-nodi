@@ -132,6 +132,22 @@ Item {
   property string readyAdapter: ""
   property string notInstalled: ""
   readonly property string install: ask.adapterKey && ask.readyAdapter !== ask.adapterKey ? ask.spec.adapter : ""
+  // Whether the adapter is in place is asked at the load and whenever it
+  // changes (NODI_INSTALL=check, lib/Agents.js), so the rows stop saying
+  // an Enter installs it once it is installed; until a start said so they
+  // said it after every shell restart (2026-10-10). Only for an agent Nodi
+  // starts by its own launch script: one given by `program` says so when
+  // it starts. The check installs nothing and starts nothing.
+  // A reader's environment: the check needs no key of the agent's.
+  property string checkedAdapter: ""
+  function checkReady() {
+    // One asked while one runs waits for it (Reader.qml), the newest kept.
+    if (ask.program || !ask.adapterKey || !ask.spec || ask.readyAdapter === ask.adapterKey) return
+    var argv = Agents.checkArgv(ask.spec.argv)
+    if (argv) readyCheck.run(argv, ask.adapterKey)
+  }
+  onAdapterKeyChanged: ask.checkReady()
+  Component.onCompleted: ask.checkReady()
   // This start was allowed to install (NODI_INSTALL=1).
   property bool startInstalls: false
   onLaunchKeyChanged: if (proc.running && !ask.busy() && !ask.recycling) ask.restart()
@@ -641,6 +657,16 @@ Item {
   }
 
   // ---------------------------------------------------------------- the process
+
+  Reader {
+    id: readyCheck
+    timeoutMs: 10000
+    maxBytes: 4096
+    onFinished: function(text, ok, key) {
+      if (ok && key === ask.adapterKey && /(^|\n)nodi: adapter ready\s*$/.test(readyCheck.errorTail)) { ask.readyAdapter = key; ask.notInstalled = "" }
+      ask.checkedAdapter = String(key)
+    }
+  }
 
   Process {
     id: proc

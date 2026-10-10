@@ -26,6 +26,8 @@ Fixes, from every feature driven on a live Omarchy (2026-10-10)
   so when there is nothing, where unrelated rows stood; the calendar's
   help, with no calendar set, says how to set one.
 - Help examples name Chromium, which Omarchy ships, not Firefox or Brave.
+- Ask checks at the shell's start whether its adapter is installed: the
+  rows no longer say an Enter installs one that is, after every restart.
 
 ## 0.4.0 (2026-10-09)
 
