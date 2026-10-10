@@ -143,9 +143,12 @@ validate:
 # one, so a symlinked plugin never hot-reloads. By content (--checksum):
 # rsync's size and mtime check skipped a file changed within the second an
 # archive of the same tree was installed (2026-10-04, found by `installed`).
+# An agent's folder (.claude, its worktrees whole copies of the tree) and
+# Python's bytecode are hidden, not excluded: never sent, and a copy of
+# either left by an older install is deleted (Cursor's review, 2026-10-10).
 install:
 	@mkdir -p "$(DEST)"
-	@rsync -a --checksum --delete --exclude '.git' --exclude 'tests' --exclude '.github' --exclude 'shots' --exclude 'docs' ./ "$(DEST)/"
+	@rsync -a --checksum --delete --exclude '.git' --exclude 'tests' --exclude '.github' --exclude 'shots' --exclude 'docs' --filter 'H .claude' --filter 'H __pycache__' ./ "$(DEST)/"
 	@echo "installed; enable with: omarchy plugin enable $(PLUGIN_ID)"
 
 # Quickshell caches compiled QML; clearing it and restarting the shell is the
