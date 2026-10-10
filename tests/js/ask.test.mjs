@@ -228,6 +228,51 @@ test("an adapter installs only when asked to, and again when the shipped lock is
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
+test("--check says whether the adapter is in place, and does nothing else whatever NODI_INSTALL says: no install, lock, file, program or start (2026-10-10)", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync, rmSync, readdirSync, readFileSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-check-"));
+  try {
+    writeFileSync(join(t, "npm"), FAKE_NPM); chmodSync(join(t, "npm"), 0o755);
+    const dir = join(t, "agents/pkg@1"), lock = join(t, "lock");
+    mkdirSync(lock); writeFileSync(join(lock, "package.json"), "{}\n"); writeFileSync(join(lock, "package-lock.json"), "{\"v\": 1}\n");
+    const settings = join(t, "settings.json");
+    const opts = ["--which", "AGENT", "no-such-program-nodi", "--file", "VAR", settings, "{}"];
+    const go = (pre, install) => spawnSync("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", ...pre, "npm", dir, lock, "pkg", "1", "x", "hello"],
+                                         { encoding: "utf8", env: { PATH: t + ":/usr/bin:/bin", NPM_LOG: join(t, "log"), HOME: t, NPM_SLEEP: "0", NODI_INSTALL: install } });
+    // NODI_INSTALL=1 as a profile might export it: still no install.
+    const none = go(["--check", ...opts], "1");
+    assert.deepEqual([none.status, none.stdout, none.stderr], [75, "", "nodi: pkg@1 is not installed\n"], "not installed: said, as a start says it");
+    assert.ok(!existsSync(join(t, "log")) && !existsSync(dir) && !existsSync(dir + ".lock"), "nothing installed, no lock taken");
+    assert.ok(!existsSync(settings), "no settings file written");
+    assert.equal(go([], "1").status, 0, "installed when asked");
+    mkdirSync(join(t, "agents/pkg@0"));
+    const before = readdirSync(join(t, "agents")).sort();
+    const ready = go(["--check", ...opts], "1");
+    assert.deepEqual([ready.status, ready.stdout, ready.stderr], [0, "", "nodi: adapter ready\n"], "ready, and the adapter not run");
+    assert.deepEqual(readdirSync(join(t, "agents")).sort(), before, "another version kept, nothing added");
+    assert.ok(!existsSync(settings));
+    assert.equal(go(opts, "0").status, 127, "a start still needs its program");
+    writeFileSync(join(lock, "package-lock.json"), "{\"v\": 2}\n");
+    assert.equal(go(["--check"], "1").status, 75, "a tree from another lock is not ready, and is not installed again");
+    assert.equal(readFileSync(join(dir, "package-lock.json"), "utf8"), "{\"v\": 1}\n");
+    const marker = join(t, "started");
+    const own = spawnSync("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "--check", "exec", "/usr/bin/touch", marker], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } });
+    assert.deepEqual([own.status, own.stderr, existsSync(marker)], [0, "", false], "an agent that is its own program: not started");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("checkArgv: the start's arguments with --check first, under a shell that reads no profile; none for a program of his own", () => {
+  const s = plain(G.spec("claude", "/d", "", "x", [], "/a"));
+  const c = plain(G.checkArgv(s.argv));
+  assert.deepEqual(c.slice(0, 2), ["/usr/bin/bash", "-c"], "no login shell: no profile runs before the script");
+  assert.equal(c[2], s.argv[2]);
+  assert.deepEqual(c.slice(3), [s.argv[3], "--check"].concat(s.argv.slice(4)));
+  assert.equal(G.checkArgv(["/usr/bin/python3", "fake-agent.py"]), null);
+  assert.equal(G.checkArgv(null), null);
+});
+
 test("the shipped lockfiles are the versions Ask names: exact, every package from the registry with its hash, none with an install script", async () => {
   const { readFileSync } = await import("node:fs");
   const root = new URL("../../", import.meta.url).pathname;
