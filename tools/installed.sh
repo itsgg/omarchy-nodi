@@ -12,7 +12,9 @@ dest=${1:?usage: installed.sh <installed dir>}
 dest=${dest%/}
 repo=$(cd "$(dirname "$0")/.." && pwd)
 home=${HOME:-}
-excludes=(--exclude .git --exclude tests --exclude .github --exclude shots --exclude docs)
+# As `make install` copies: an agent's own folder (.claude, its worktrees
+# whole copies of the tree) and Python's bytecode are not Nodi (2026-10-10).
+excludes=(--exclude .git --exclude tests --exclude .github --exclude shots --exclude docs --exclude .claude --exclude __pycache__)
 
 short() {
   local line=$1
