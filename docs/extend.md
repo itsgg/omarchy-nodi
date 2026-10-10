@@ -16,16 +16,24 @@ with a header:
 # @nodi.title Greet
 # @nodi.mode silent
 # @nodi.argument1 { "type": "text", "placeholder": "name" }
-echo "hello $1"
+echo "hello $NODI_ARGUMENT1"
 ```
 
-Saved as `greet`, `greet Ravi` runs it and shows its last line as a
-notification. `fullOutput` runs it in a terminal instead, and `inline`
-shows its output on its row; `needsConfirmation` asks for a second Enter
-and `currentDirectoryPath` sets where it runs. `scripts.dirs` sets the
-folders read, in place of this one: list it too to keep it. The same header with `@raycast.` works, so
-scripts from [raycast/script-commands](https://github.com/raycast/script-commands)
-run as they are.
+Saved as `greet`, `greet Ravi` runs it and shows its last line in
+Nodi's own toast, a small popup at the top of the screen. `fullOutput`
+runs it in a terminal instead, and `inline` shows its output on its row;
+`needsConfirmation` asks for a second Enter and `currentDirectoryPath`
+sets where it runs. `scripts.dirs` sets the
+folders read, in place of this one: list it too to keep it.
+
+What you type for its arguments reaches it as `NODI_ARGUMENT1`,
+`NODI_ARGUMENT2` and so on, in its environment, never as its arguments:
+any user of the machine can read a running program's arguments in
+`/proc`. The same header with `@raycast.` works, and scripts from
+[raycast/script-commands](https://github.com/raycast/script-commands),
+which read `$1`, run as they are with one line in `nodi.json`:
+`"scripts": { "arguments": true }` makes the values `$1`, `$2` ... too,
+where those other users can read them while the script runs.
 
 ## Script filters
 
@@ -38,9 +46,12 @@ into rows, as you type:
 ]
 ```
 
-`n meet` runs `my-notes --nodi meet`: the words after the keyword, trimmed,
-are the last argument (so a program must not read it as an option) and
-`NODI_QUERY`. From your session it gets PATH, HOME, USER,
+`n meet` runs `my-notes --nodi` with `NODI_QUERY` set to `meet`: the
+words after the keyword, trimmed, in its environment, never its
+arguments, which any user of the machine can read in `/proc` while it
+runs. A program that reads them as its last argument, as Alfred's and
+Walker's do, says `"argument": true` on its entry (and must not read
+them as an option). From your session it gets PATH, HOME, USER,
 `XDG_RUNTIME_DIR`, `OMARCHY_PATH`, the Wayland, Hyprland and D-Bus
 variables, and nothing else; LANG is `C.UTF-8`. It is told of the window
 you came from, the one that had the focus when the bar opened:
@@ -112,8 +123,10 @@ Esc steps back. A step that prints no row has done its work, and the bar
 closes. A step never runs twice by itself, since it may do what it says;
 taken again, it runs again. `"format": "rofi"` runs a rofi script as rofi
 does: first with no argument and `ROFI_RETV=0`, then, on Enter, with the
-entry as its argument, `ROFI_RETV=1` (2 for what you typed, offered as a
-row unless the script says `no-custom`), `ROFI_INFO` and `ROFI_DATA`. Its
+entry as `NODI_PICK`, `ROFI_RETV=1` (2 for what you typed, offered as a
+row unless the script says `no-custom`), `ROFI_INFO` and `ROFI_DATA`. A
+rofi script reads the entry as its argument, as rofi gives it: such an
+entry says `"argument": true`. Its
 entries' `icon`, `meta`, `info`, `display` and `nonselectable` are read,
 and its `message` shows under the field.
 
@@ -125,7 +138,7 @@ and found by its title or by `undo`; Enter twice runs it. Such an action
 is a command that does its work and ends: it runs in the filter's
 environment, not your session's whole one (no `DISPLAY`, `EDITOR` or
 `GDK_SCALE`, for one), and is ended after two minutes, so it is no way to
-open a window. If it fails, a notification says why, and no undo is
+open a window. If it fails, Nodi's toast says why, and no undo is
 offered, whatever it printed. The undo itself runs as any action does, in
 your session. The offer lasts while the shell runs, not across a restart.
 
@@ -141,8 +154,9 @@ the pane as it arrives:
 ]
 ```
 
-`a why is it slow`, then Enter, runs `my-ask --markdown "why is it slow"`
-with the same environment, argument and `NODI_QUERY` as a script filter.
+`a why is it slow`, then Enter, runs `my-ask --markdown` with the same
+environment and `NODI_QUERY` as a script filter; with `"argument": true`
+the question is its last argument too.
 It runs for two minutes at most (`timeoutMs`, from 1000 to 600000) and may print
 120 KB. What it prints shows a word at a time, at its spaces, so text
 with no spaces (Chinese, a long URL) shows once it ends. Write each piece as you have it: a program whose output is
@@ -160,7 +174,9 @@ notes in your Obsidian vaults, and `issues` and `containers` give your
 GitHub issues and Docker containers; `"answers": [{ "contrib": "weather" }]`
 gives `weather chennai`, and `wikipedia` gives `wp`, an article's summary.
 They are kept in this repository, never fetched; what you set on the
-entry wins over theirs, all but the program it names.
+entry wins over theirs, all but the program it names and `"argument"`:
+each reads what you type from `NODI_QUERY`, and hands it on to curl and
+jq in their environment, never their arguments.
 
 ## From a terminal
 
@@ -199,17 +215,24 @@ pick took the bar before this one was answered.
 Code or any other agent. Its tools: `search` the bar's rows (each with a
 key, what it runs, and whether it asks first), `run` one by its key
 (refusing a row that asks, as `nodi run` does, and any row but an app,
-a window, Omarchy's menu and toggles, the desktop's media and devices,
-a saved desktop, a keybinding or a plugin, whose commands no word of the
-agent's reaches, and of those not a reminder; a search starts none of your script
-filters or inline scripts), `propose` one (the bar
+a window, Omarchy's menu, the desktop's media, a saved desktop or a
+plugin, whose commands no word of the agent's reaches, and of those not
+a reminder nor one that changes a setting or installs: Omarchy's Setup,
+Style, Install, Remove and Update, a toggle, a theme, the next
+background, a Bluetooth device, a Wi-Fi network, an audio device; a
+keybinding's row neither, as it runs whatever it is bound to; those it
+may propose; a search starts none of your script filters or inline
+scripts), `propose` one (the bar
 opens on it with its command; your Enter runs it, Escape refuses), and
 `approve`, a permission prompt tool for a headless `claude -p`: the bar
 shows the tool and its input, and your Enter allows it. A key a search
 found runs as found for ten minutes; one question waits in the bar at a
 time, and a newer one takes its place, the older answered "not asked".
 A query or a key is 64 KB at most, a message 16 MB, read so: a longer
-one is refused unread.
+one is refused unread. What it hands the bar goes in a file of its own,
+0700 under `$XDG_RUNTIME_DIR` (logind's `/run/user/<uid>` when the agent
+starts it with that unset, as Codex does), never an argument another
+local user could read.
 
 ```sh
 claude mcp add nodi -- nodi mcp

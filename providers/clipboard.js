@@ -119,9 +119,10 @@ function textRow(item, index, score) {
     pin: Prefs.textFits(text) ? { kind: "text", text: text } : null,
     run: Run.exec(["omarchy-clipboard-paste-text", "--shift-insert", "--history-index", String(index)]),
     actions: [{ label: "Copy without pasting", icon: "󰆏", run: Run.exec(["omarchy-clipboard-paste-text", "--copy-only", "--history-index", String(index)]) },
-              // Copied first, then shared as Omarchy's menu shares the clipboard.
-              { label: "Send to a device", icon: "󰄜",
-                run: Run.shell('omarchy-clipboard-paste-text --copy-only --history-index "$1" && exec omarchy-menu-share clipboard', [String(index)]) }]
+              // Sent as a pinned text is (SHARE_TEXT): Omarchy's own share of the
+              // clipboard leaves it in a /tmp file (omarchy-menu-share:17-19,
+              // 47; the marketplace's review, 2026-10-10).
+              { label: "Send to a device", icon: "󰄜", run: Run.shell(SHARE_TEXT, undefined, text) }]
   }
 }
 

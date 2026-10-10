@@ -31,10 +31,13 @@ var MAX = 12
 
 // The folder typed in, if the dialog still has the focus: Home, so a
 // suggested name stays after it, then the path, in one wtype (two left a
-// moment between them for the focus to move; Sonnet 2026-10-06).
-var TYPE = 'sleep 0.1; w=$(hyprctl activewindow -j 2>/dev/null | jq -r ".address // empty")'
+// moment between them for the focus to move; Sonnet 2026-10-06). The path
+// on wtype's stdin, from the environment, never an argument, which
+// another local user can read in /proc (the marketplace's review,
+// 2026-10-10), as snippets type theirs.
+var TYPE = 't=${NODI_TEXT-}; unset NODI_TEXT; sleep 0.1; w=$(hyprctl activewindow -j 2>/dev/null | jq -r ".address // empty")'
   + "\n" + '[ "$w" = "$1" ] || { echo "the file dialog no longer has the focus" >&2; exit 1; }'
-  + "\n" + 'exec wtype -k Home -- "$2"'
+  + "\n" + 'printf "%s" "$t" | exec wtype -k Home -'
 
 // Folders to offer, a kind and a path a line: the folders of the files
 // opened or saved last (recently-used.xbel, newest first), zoxide's,
@@ -98,7 +101,7 @@ function homeSet(folders) {
 
 function tilde(path, home) { return home && (path === home || path.indexOf(home + "/") === 0) ? "~" + path.slice(home.length) : path }
 
-function typeRun(d, path) { return Run.pasting(Run.shell(TYPE, [d.address, path === "/" ? "/" : path + "/"])) }
+function typeRun(d, path) { return Run.pasting(Run.shell(TYPE, [d.address], path === "/" ? "/" : path + "/")) }
 
 // A path wtype can type as it is: a newline in one would be an Enter in
 // the dialog (Sonnet 2026-10-06).

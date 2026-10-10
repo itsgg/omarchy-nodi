@@ -113,10 +113,14 @@ test("keywords: open, run, and quoting", () => {
     const cfg = { providers: ["keywords"], keywords: [{ keyword: "x", run: template }] };
     const row = Engine.run("x " + q, cfg, {})[0];
     assert.equal(row.run.kind, "shell");
-    assert.equal(row.run.script, template, "the command as written");
+    assert.ok(row.run.script.endsWith("\n" + template), "the command as written, after the line that takes its words");
+    // The words in the environment, never an argument or the script (the
+    // marketplace's review, 2026-10-10).
+    assert.deepEqual(plain([row.run.args, row.run.text]), [[], q]);
+    assert.ok(!row.run.script.includes(q) || q === "");
     assert.equal(row.remember, false, "a search is not learned");
     assert.equal(row.subtitle, "Runs " + template);
-    return execFileSync("bash", ["-c", row.run.script, "nodi", ...row.run.args], { cwd: root, stdio: ["ignore", "pipe", "pipe"] }).toString();
+    return execFileSync("bash", ["-c", row.run.script, "nodi", ...row.run.args], { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, NODI_TEXT: row.run.text } }).toString();
   };
   const nasty = "$(echo pwned) `id` \"x\" it's  two  *";
   assert.equal(say("printf '<%s>' \"$1\"", nasty), "<" + nasty + ">");
@@ -354,7 +358,8 @@ test("home: an empty bar shows the rows run most, then reminders", () => {
     "toggle:wifi": { n: 6, t, s: snap("Wi-Fi", { kind: "toggle", provider: "system", toggle: "wifi", run: Run.exec(["true"]) }) },
     "bad": { n: 9, t, s: snap("Bad", { run: { kind: "exec", argv: [] } }) }
   };
-  const reminders = [{ unit: "r1", label: "Tea", remaining: "5m", atTime: "17:05", seconds: 300 }, { unit: "r2", label: "Stretch", remaining: "40m", atTime: "17:40", seconds: 2400 }];
+  // Nodi's own (lib/Reminders.js), given in any order: soonest first.
+  const reminders = [{ id: "r2", at: t + 40 * 60000, set: t, message: "Stretch" }, { id: "r1", at: t + 5 * 60000, set: t, message: "Tea" }];
   const rows = run("", { history, reminders, toggleStates: { wifi: { on: false, value: "0" } } });
   // Firefox 20 runs; Wi-Fi 6; Foot 3; Old 50 runs two hundred days ago,
   // halved every 30 days to under one (ROADMAP 38: a count ages now). Six
@@ -363,7 +368,7 @@ test("home: an empty bar shows the rows run most, then reminders", () => {
   assert.equal(rows.find(r => r.title === "Wi-Fi").badge, "OFF", "toggles show their state now, not when they were run");
   assert.equal(rows[0].section, "Recent");
   assert.equal(rows[4].section, "Reminders");
-  assert.deepEqual(plain(rows[4].run.argv), ["omarchy-reminder", "show"]);
+  assert.deepEqual(plain([rows[4].subtitle, rows[4].run, rows[4].complete]), ["In 5 min, at 14:05", null, "reminders"], "Enter lists them; no command");
   assert.deepEqual(plain(run("", { history: {} }).map(r => r.provider)), Array(5).fill("starter"), "nothing run yet: only what to try (ROADMAP 77)");
 });
 

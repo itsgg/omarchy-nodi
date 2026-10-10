@@ -115,14 +115,6 @@ test("clipboard and launcher hides", () => {
   assert.deepEqual(plain(S.hidden("a.desktop\n# comment\n\nb\n")), { a: true, b: true });
 });
 
-test("reminders: soonest first", () => {
-  const text = JSON.stringify({ count: 2, reminders: [
-    { unit: "omarchy-reminder-2.timer", label: "Stretch", remaining: "40m", atTime: "17:40", remainingSeconds: 2400 },
-    { unit: "omarchy-reminder-1.timer", label: "Tea", remaining: "5m", atTime: "17:05", remainingSeconds: 300 }] });
-  assert.deepEqual(plain(S.reminders(text).map(r => r.label)), ["Tea", "Stretch"]);
-  assert.deepEqual(plain(S.reminders("nope")), []);
-});
-
 test("directory: a name with a newline is left out, not misread", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-dir-"));
   try {

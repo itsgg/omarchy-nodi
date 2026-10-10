@@ -1,9 +1,9 @@
 // Files (ROADMAP 64): names in any search, contents under `in`, kinds.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, realpathSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { load, plain } from "./load.mjs";
 import { run, Engine, config, services } from "./fixtures.mjs";
@@ -52,9 +52,10 @@ test("find and f by kind; a kind word alone is a name", () => {
   assert.deepEqual(plain(F.kindOf("img")), { kind: "img", rest: "" }, "f img: every recent image");
   assert.deepEqual(plain(F.kindOf("dir proj")), { kind: "", rest: "dir proj" }, "recent files are never folders");
   const argv = F.provider.sources.find.argv(F.findParam("img", "cat"), { home: "/home/u" });
-  assert.ok(argv.includes("-e") && argv.includes("png") && argv.at(-2) === "cat" && argv.at(-1) === "/home/u");
-  assert.deepEqual(plain(F.provider.sources.find.argv(F.findParam("dir", "proj"), { home: "/home/u" }).slice(-5)), ["--type", "d", "--", "proj", "/home/u"]);
-  assert.deepEqual(plain(F.provider.sources.find.argv("cat", { home: "/home/u" }).slice(-3)), ["--", "cat", "/home/u"], "no kind: as before");
+  assert.ok(argv.includes("-e") && argv.includes("png") && argv[4] === "/home/u" && !argv.includes("cat"));
+  assert.deepEqual(plain(F.provider.sources.find.argv(F.findParam("dir", "proj"), { home: "/home/u" }).slice(-2)), ["--type", "d"]);
+  assert.match(plain(F.provider.sources.find.environment(F.findParam("img", "cat"))).NODI_FIND, /cat/, "the words in the environment, the kind in the arguments");
+  assert.ok(!plain(F.provider.sources.find.argv("cat", { home: "/home/u" })).includes("cat"), "no kind: the words in no argument either");
   const recent = [{ path: "/home/u/a.png", name: "a.png" }, { path: "/home/u/b.pdf", name: "b.pdf" }];
   assert.deepEqual(plain(files(run("f img", { files: recent })).map(r => r.title)), ["a.png"]);
   assert.deepEqual(plain(files(run("f doc b", { files: recent })).map(r => r.title)), ["b.pdf"]);
@@ -112,7 +113,7 @@ test("a file by its name sits under an Omarchy setting named as well, by more th
   assert.ok(S.score("exact", "app") > S.score("exact", "file"));
   const argv = plain(F.provider.sources.find.argv("dns", { home: "/home/u" }));
   for (const x of ["go/pkg/mod", "node_modules", "site-packages", "__pycache__"]) assert.ok(argv.some((a, i) => a === x && argv[i - 1] === "--exclude"), x);
-  assert.deepEqual(argv.slice(-3), ["--", "dns", "/home/u"]);
+  assert.equal(argv[4], "/home/u");
 });
 
 test("f with no recent file so named says so and offers the search under home; file manager stays the app's (driven live, 2026-10-10)", () => {
@@ -133,4 +134,35 @@ test("find alone says what it takes; a folder that could not be listed says so",
   assert.deepEqual(plain(dir.parse("", false, "/root/secret")), { path: "/root/secret", entries: [], error: "Not a folder you can read" });
   assert.equal(dir.parse("f\ta\nd\tb\n", false, "/x").error, "", "a listing that printed entries keeps them");
   assert.equal(dir.argv("relative"), null, "only an absolute path is listed");
+});
+
+test("a name under home: the words in no argument, matched in the last part of a path, smart case, 60 at most (the marketplace's review, 2026-10-10)", () => {
+  const S = F.provider.sources.find;
+  const h = mkdtempSync(join(tmpdir(), "nodi-find-"));
+  try {
+    for (const n of ["Q4 report.pdf", "a.b (x).txt", "நொடி.md", "deep/inside.txt", "reports/x.txt"]) { mkdirSync(dirname(join(h, n)), { recursive: true }); writeFileSync(join(h, n), ""); }
+    for (let i = 0; i < 70; i++) writeFileSync(join(h, "many-" + i + ".log"), "");
+    const go = q => {
+      const argv = plain(S.argv(q, { home: h }));
+      assert.ok(!argv.some(a => a.includes(q)), "the words in an argument: " + JSON.stringify(argv));
+      const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8", ...plain(S.environment(q)) } });
+      assert.equal(r.status, 0, r.stderr);
+      return r.stdout.split("\n").filter(Boolean).map(p => p.slice(h.length + 1)).sort();
+    };
+    assert.deepEqual(go("report"), ["Q4 report.pdf", "reports/"], "any case, a folder by its name");
+    assert.deepEqual(go("Report"), [], "a capital: that case only");
+    assert.deepEqual(go("a.b (x)"), ["a.b (x).txt"], "fixed text, not a pattern");
+    assert.deepEqual(go("நொடி"), ["நொடி.md"]);
+    assert.deepEqual(go("deep"), ["deep/"], "the last part only, not a file inside");
+    assert.equal(go("many").length, 60);
+    assert.deepEqual(go("zzqx"), [], "none: an answer, exit 0");
+    // On one line: a newline made two patterns, and "a" found every name
+    // with an a (Fable 2026-10-10).
+    assert.deepEqual(go("a\nreport"), [], "a newline is a space");
+    assert.deepEqual(go("Q4\nreport"), ["Q4 report.pdf"]);
+    // fd failing is a search that failed, not none found (Fable 2026-10-10).
+    const argv = plain(S.argv("x", { home: join(h, "missing") }));
+    const bad = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", env: { PATH: "/usr/bin:/bin", LANG: "C.UTF-8", ...plain(S.environment("x")) } });
+    assert.notEqual(bad.status, 0, "a home fd cannot read");
+  } finally { rmSync(h, { recursive: true, force: true }); }
 });

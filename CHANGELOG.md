@@ -7,6 +7,82 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 
 ## Unreleased
 
+Private text out of every argument (the marketplace's review, 2026-10-10)
+- Ask's list of running agent sessions reads each one's last prompt,
+  window title, folder and arguments into its JSON by jq's `$ENV`: the
+  prompt was jq's argument, where another local user could read it in
+  `/proc`.
+- What `nodi` hands the bar (a search, a row to run or describe, an
+  agent's proposal or tool call, `nodi <query>`, a pick's placeholder)
+  goes in a file only you can read, in a 0700 folder under
+  `$XDG_RUNTIME_DIR` that goes when the call ends; the argument names the
+  file.
+- A web address Nodi opens (a search, a meeting's link, a bookmark) goes
+  to the browser by a page of Nodi's own, 0600 under `$XDG_RUNTIME_DIR`,
+  that sends it on. The page is gone two minutes later.
+- "Continue in your agent" opens the agent with no prompt and puts the
+  question on the clipboard to paste: as a prompt it stayed in the
+  agent's arguments for the whole session.
+- A keyword's `run`, a saved desktop's name, a `>` command and a
+  clipboard entry sent to a device reach their shell in its environment;
+  a `>` command in a terminal runs from a 0600 file that removes itself.
+  A file search's words reach rg as a pattern it reads, a preview's path
+  its shell's environment, a path picked in a file dialog wtype's input,
+  and the apps to describe Claude's input.
+- `pkg` searches the repositories in the full list pacman prints,
+  matched in Nodi, and the AUR through curl's `--variable`; the search
+  through yay is gone. A row's "Installed" follows what is installed
+  now.
+- A hotkey given to a row runs `hotkey:<keys>`, looked up in prefs.json,
+  never the row's key (a file's path, a command), and its description has
+  no comma: Omarchy's keybinding records split at commas, and a file
+  named `x,exec,touch PWNED #.pdf` with a hotkey became a runnable record.
+- Text Nodi shows is plain text: a clipboard entry or a title holding
+  `<img src=...>` was rich text, and Qt fetched the image.
+- Notes, screenshots, an agent's session and Nodi's own folders are made
+  0600 and 0700 whatever your umask is.
+- A calendar at an `http://` address is refused unless it is on this
+  machine, and so is a redirect from one to http elsewhere: its events
+  came unencrypted.
+
+Notices and reminders of Nodi's own (the marketplace's review, 2026-10-10)
+- Nodi's notices (a row that failed, a script's last line, a screenshot
+  saved, a settings error, a hotkey not bound) show in its own toast, a
+  small popup at the top of the screen that goes after six seconds or at
+  a click, never in a desktop notification: `notify-send` held their
+  words in its arguments, and Omarchy's notification host puts each
+  popup's text in a program's arguments, where another user of the
+  machine could read them. A script of Nodi's hands the bar its words in
+  a file only you can read (`omarchy-shell shell call
+  io.github.itsgg.nodi toast @file:...`).
+- `remind 15 call mom` is Nodi's own reminder, kept in
+  `~/.local/state/nodi/reminders.json` and said in the toast when it is
+  due, its words never in a command; one that came due while the shell
+  was not running, or the machine slept, is said as late, with when.
+  `reminders`, `reminders clear` (still a second Enter) and the empty
+  bar's rows show Nodi's own, and the bar no longer asks
+  `omarchy-reminder` at each open; reminders set with Omarchy's are no
+  longer shown. A reminders.json with an error is left as it is, never
+  written over, and the toast says so.
+
+Changed: what you type stays out of programs' arguments, which any user
+of the machine can read in /proc (the marketplace's review, 2026-10-10)
+- A script filter or an answer gets the words in `NODI_QUERY` only. One
+  that reads them as its last argument, Alfred's way, or a rofi script
+  that reads the entry picked as `$1`, says `"argument": true` on its
+  entry.
+- A script command gets its arguments as `NODI_ARGUMENT1`,
+  `NODI_ARGUMENT2` ...; a Raycast script reading `$1` runs as before with
+  `"scripts": { "arguments": true }`. A `fullOutput` script's arguments
+  reach its terminal in a private file, never the terminal's arguments.
+- The weather and wikipedia extensions hand the place or the words to
+  curl by `--variable` and to jq by `$ENV`.
+- An agent's run at once (`nodi mcp`) no longer changes a setting or
+  installs: Omarchy's Setup, Style, Install, Remove and Update, a toggle,
+  a theme, the next background, a Bluetooth device, a Wi-Fi network or
+  an audio device is proposed, and runs at your Enter, as every reminder
+  row is and a keybinding's row, which runs whatever it is bound to.
+
 Fixes, from every feature driven on a live Omarchy (2026-10-10)
 - A file opens through `gio open`: Omarchy's nvim for text/plain is a
   terminal app, which `xdg-open` ran with no terminal, so nothing showed;

@@ -701,6 +701,15 @@ def events_of(cal, cal_id, me, local, lo, hi):
 
 # ---------------------------------------------------------------- feeds
 
+def on_this_machine(url):
+    """Whether the host urllib connects to, after any user:password@, is
+    this machine (http://localhost:x@cal.example is cal.example)."""
+    try:
+        return urllib.parse.urlsplit(url).hostname in ("127.0.0.1", "localhost", "::1")
+    except ValueError:
+        return False
+
+
 def where(url):
     """('file', path) or ('web', url), or (None, why)."""
     u = (url or "").strip()
@@ -712,7 +721,13 @@ def where(url):
         return "file", os.path.join(os.environ.get("HOME", ""), u[2:])
     if u.startswith("/"):
         return "file", u
-    if re.match(r"https?://", u, re.I):
+    # http only to this machine: elsewhere it would carry the calendar, and
+    # its secret address, unencrypted (2026-10-10, before the marketplace's
+    # review asked).
+    m = re.match(r"(https?)://", u, re.I)
+    if m and m.group(1).lower() == "http" and not on_this_machine(u):
+        return None, "an http:// address would send the calendar unencrypted; use https:// or webcal://"
+    if m:
         return "web", u
     return None, "not an https:// or webcal:// address, nor a file"
 
@@ -720,12 +735,15 @@ def where(url):
 class HttpsOnly(urllib.request.HTTPRedirectHandler):
     """Follows a feed's redirect, but never from https to anything else:
     an address asked for over https is not read in the clear (codex's
-    review, 2026-10-09). urllib follows ten at most, and only to http,
+    review, 2026-10-09); and to http only on this machine, as where() takes
+    one (Fable 2026-10-10). urllib follows ten at most, and only to http,
     https and ftp; ftp is no feed's either."""
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         to = (newurl or "").lower()
         if req.full_url.lower().startswith("https://") and not to.startswith("https://"):
             raise urllib.error.HTTPError(newurl, code, "a redirect away from https", headers, fp)
+        if to.startswith("http://") and not on_this_machine(newurl):
+            raise urllib.error.HTTPError(newurl, code, "a redirect to http elsewhere", headers, fp)
         if not to.startswith(("https://", "http://")):
             raise urllib.error.HTTPError(newurl, code, "a redirect to no web address", headers, fp)
         return super().redirect_request(req, fp, code, msg, headers, newurl)

@@ -6,37 +6,78 @@ Everything Nodi reads, writes, starts and sends, and when.
   with arguments that are never read as shell. A paste focuses the window
   the bar opened over first, then types into it.
 - Text that may be private never goes in a program's arguments, which
-  any user of the machine can read: what it copies or pastes (a
-  clipboard entry, the selection, a snippet, an answer), a note, the
-  words of an `in` search, a `define` word or a suggestion's query, the
-  window's title a script filter is told of, and the title of a row
-  whose command it watches go in the program's environment, its own
-  alone, and are unset before what it starts. A script filter or answer
-  of yours still gets the query as its last argument, as its contract
-  says ([Extending](extend.md)), and "Continue in your agent" hands the
-  question to Omarchy's `omarchy-agent-prompt` as its argument.
-- A command a row runs that fails is reported in a notification, "<row>
+  any user of the machine can read in `/proc`: what it copies or pastes
+  (a clipboard entry, the selection, a snippet, an answer), a note, the
+  words of a search of files or packages, an `in` search, a `define`
+  word or a suggestion's query, the words a keyword, a script filter, an
+  answer or a script command of yours is given, a `>` command line, a
+  saved desktop's name, the window's title a script filter is told of,
+  the title of a row whose command it watches, and an agent session's
+  last prompt, title and folder under `agents` go in the program's
+  environment or its input, its own alone, and are unset before what it
+  starts. A script filter or answer gets the query as its last argument
+  too only when its entry says `"argument": true`, and a script command
+  its arguments as `$1` ... only with `"scripts": { "arguments": true }`
+  ([Extending](extend.md)). A `>` command run in a terminal reaches it in
+  a file only you can read, which removes itself; the programs your
+  command line starts have what you wrote as their arguments, as they
+  would in a terminal.
+- What `nodi` hands the running bar (a search, a row to run or describe,
+  `nodi <query>`, a pick's placeholder, an agent's tool call or
+  proposal) goes in a file only you can read (0600, in a 0700 folder
+  under `$XDG_RUNTIME_DIR`, gone when the call ends, or a minute after
+  `nodi <query>`, which the bar reads once Nodi has loaded), and only
+  the file's path is an argument. A row you give a hotkey is bound to `nodi` with
+  its keys (`hotkey:<keys>`), never with the row's key, which can be a
+  file's path or a command.
+- A web address it opens (a search, a meeting's link, a bookmark) reaches
+  the browser by a page of Nodi's own, never as an argument: written for
+  you alone (0600, in a 0700 folder under `$XDG_RUNTIME_DIR`), opened by
+  its path in the browser that opens https, which it sends on to the
+  address at once, and gone two minutes later. "Continue in your agent"
+  opens your agent with no prompt, the question on the clipboard to paste.
+  A file or folder it opens goes to `gio open` by its path, as an
+  argument, as a file manager hands it on; so does an address that is not
+  http(s), such as `mailto:`.
+- It shows text as plain text: a title, a clipboard entry or a filter's
+  row that holds HTML is shown as written, and an `<img>` in it fetches
+  nothing.
+- Its notices are its own toast, a small popup at the top of the screen
+  that no other program draws, and never a desktop notification:
+  `notify-send` holds its words in its arguments, and Omarchy's
+  notification host puts each popup's text in a program's arguments too.
+  A script of Nodi's says one by writing its words to a file in a folder
+  of `$XDG_RUNTIME_DIR` only you can read, and naming the file to the
+  bar (`omarchy-shell shell call io.github.itsgg.nodi toast @file:...`).
+- A command a row runs that fails is reported in that toast, "<row>
   failed": a command of Nodi's own rows or a script filter's with the last
   line of errors it wrote (one that fails without a word, or a program
   you close, is not reported); a script command with its last line or its
   exit status; an action that can be undone with why it failed.
 - `nodi mcp` runs only when an agent starts it, and runs a row only by
   `run`, which the agent's own permissions gate, or by your Enter. `run`
-  takes only an app, a window, Omarchy's menu and toggles, the desktop's
-  media and devices, a saved desktop, a keybinding or a plugin, and not
-  a reminder; anything else, a command line after `>` among them, runs only
-  on your Enter. An agent's search, in the bar or through `nodi mcp`,
-  starts none of your script filters or inline scripts.
+  takes only an app, a window, Omarchy's menu, the desktop's media,
+  volume and brightness, a saved desktop or a plugin, and of those
+  nothing that changes a setting or installs: Omarchy's Setup, Style,
+  Install, Remove and Update, a toggle, a theme, the next background, a
+  Bluetooth device, a Wi-Fi network, an audio device and a reminder's
+  row run, as a keybinding's row and anything else do (a command line
+  after `>` among them), only on your Enter. An agent's search, in the bar or through `nodi mcp`, starts none
+  of your script filters or inline scripts.
 - It sends what you type after `g`, `yt` or `wiki`, from the second letter,
   to DuckDuckGo's autocomplete (duckduckgo.com/ac) for suggestions; a
   keyword of yours does so only with `"suggest": true`.
-- Under `pkg` it asks pacman and, through yay, the AUR; under `define`,
-  Wiktionary (en.wiktionary.org's REST API) for the word typed.
+- Under `pkg` it reads pacman's list of packages and matches it itself,
+  and asks the AUR (aur.archlinux.org's RPC) for the longest word typed;
+  under `define`, Wiktionary (en.wiktionary.org's REST API) for the word
+  typed.
 - What it downloads itself is bounded: over https only, following no
   redirect, and refused past a size (the rates 256 KB, a definition
-  4 MB, suggestions 64 KB, the weather and Wikipedia extensions 1 MB and
-  2 MB an answer); a calendar 20 MB, following a redirect only to
-  https when the address is https.
+  4 MB, the AUR's answer 4 MB, suggestions 64 KB, the weather and
+  Wikipedia extensions 1 MB and 2 MB an answer); a calendar 20 MB,
+  following a redirect only to https when the address is https, and at
+  an `http://` address only when it is on this machine (`localhost`,
+  `127.0.0.1`, `[::1]`).
 - It goes online for exchange rates (open.er-api.com, once the service
   says its next rates are due, daily in practice, or every ten minutes
   while that fails), for `prs` (through `gh`), to describe apps, if
@@ -63,16 +104,21 @@ Everything Nodi reads, writes, starts and sends, and when.
   manager's), keeps them until it next opens, and sends one to the agent
   only when you pick one of the agent's rows on it.
 - Its folders, `~/.cache/nodi/`, `~/.local/state/nodi/` and
-  `~/.local/share/nodi/`, are yours alone (0700), made so at each start;
-  a file it replaces is written beside it under a name of its own, then
-  moved over it.
+  `~/.local/share/nodi/`, are yours alone (0700), made so at each start
+  and each open; a file it replaces is written beside it under a name of
+  its own, then moved over it. Notes, screenshots and an agent's session
+  write their files for you alone (0600, a folder they make 0700),
+  whatever your umask; a notes file you made keeps its mode.
 - It writes to `~/.cache/nodi/` and `~/.local/state/nodi/prefs.json`,
   which holds what you set on rows (favourites, aliases, hotkeys, hidden
   rows and deeplinks, each with a copy of its row: its title and what it
   runs), the text of each clipboard entry you pin, the desktops
   you save (each app's desktop id, window class and workspace), the
   window rules you set, by window class, and which of the first opens'
-  starters you have been through. A search under
+  starters you have been through; and to `~/.local/state/nodi/reminders.json`,
+  the reminders you set, each one's words and when it is due, until it
+  is said or you clear them. Omarchy's own reminders (`omarchy-reminder`)
+  are neither read nor shown. A search under
   `cb` with words reads the text in each image of the history once, with
   Omarchy's `tesseract` (about 2 s an image, a few seconds at a time
   while that search is open), into `~/.cache/nodi/ocr/`; pasting in sequence

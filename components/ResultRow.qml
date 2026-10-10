@@ -28,6 +28,7 @@ Item {
 
   // Nearer the rows it heads than the group above it.
   Text {
+    textFormat: Text.PlainText
     visible: rowItem.section !== ""
     anchors.left: parent.left
     anchors.leftMargin: Style.spacing.lg

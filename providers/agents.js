@@ -25,7 +25,15 @@ var USAGE = 'd="$HOME/.local/state/omarchy/agents/usage"; for f in "$d"/*.json; 
 // the record Claude Code keeps of each process (~/.claude/sessions/<pid>
 // .json; the newest transcript in a folder was another session's, Sonnet
 // 2026-10-06): the last thing asked and when it was last written. Which
-// of them are sessions, isSession decides.
+// of them are sessions, isSession decides. What it read reaches jq in its
+// environment, never its arguments, which another local user can read in
+// /proc: the prompt, the window's title, the folder, the agent's own
+// arguments; the transcript, named by the folder and the session, is read
+// on stdin (the marketplace's review, 2026-10-10).
+// The agent's arguments go to jq as one environment string, which the
+// kernel caps at 128 KB as it did each argument: 4 KB an argument and
+// 64 KB in all, the rest left out (Fable 2026-10-10: past it jq never ran
+// and the session was missing).
 var SESSIONS = 'declare -A parent win pane client'
   + "\n" + 'while read -r p pp; do parent[$p]=$pp; done < <(ps -eo pid=,ppid=)'
   + "\n" + 'while IFS=$\'\\x1f\' read -r p a c t; do win[$p]="$a"$\'\\x1f\'"$c"$\'\\x1f\'"$t"; done < <(hyprctl clients -j | jq -r \'.[] | [(.pid | tostring), .address, .class, .title] | join("\\u001f")\')'
@@ -50,12 +58,13 @@ var SESSIONS = 'declare -A parent win pane client'
   + "\n" + '    id=$(jq -r \'.sessionId // empty\' "$rec" 2>/dev/null); rcwd=$(jq -r \'.cwd // empty\' "$rec" 2>/dev/null)'
   + "\n" + '    f="$HOME/.claude/projects/$(printf "%s" "${rcwd:-$cwd}" | sed \'s#[^A-Za-z0-9]#-#g\')/$id.jsonl"'
   + "\n" + '    if [ "${entry:-cli}" = cli ] && [ -n "$id" ] && [ -f "$f" ]; then'
-  + "\n" + '      at=$(stat -c %Y "$f")'
-  + "\n" + '      said=$(tac "$f" | jq -r \'select(.type == "user" and (.isMeta | not) and (.message.content | type) == "string") | .message.content | select(startswith("<") | not)\' 2>/dev/null | head -n1 | cut -c1-200)'
+  + "\n" + '      at=$(stat -L -c %Y /dev/stdin < "$f")'
+  + "\n" + '      said=$(tac < "$f" | jq -r \'select(.type == "user" and (.isMeta | not) and (.message.content | type) == "string") | .message.content | select(startswith("<") | not)\' 2>/dev/null | head -n1 | cut -c1-200)'
   + "\n" + '    fi'
   + "\n" + '  fi'
   + "\n" + '  IFS=$\'\\x1f\' read -r wa wc wt <<< "$w"'
-  + "\n" + '  jq -cn --arg tool "$tool" --arg pid "$pid" --arg cwd "$cwd" --arg address "$wa" --arg cls "$wc" --arg title "$wt" --arg said "$said" --argjson at "${at:-0}" --arg entry "$entry" \'{tool: $tool, pid: $pid, cwd: $cwd, address: $address, cls: $cls, title: $title, said: $said, at: $at, entrypoint: $entry, argv: $ARGS.positional}\' --args -- "${argv[@]:1}"'
+  + "\n" + '  a=""; for x in "${argv[@]:1}"; do [ "${#a}" -gt 65536 ] && break; a+="${x:0:4096}"$\'\\x1f\'; done'
+  + "\n" + '  NODI_CWD=$cwd NODI_TITLE=$wt NODI_SAID=$said NODI_ENTRY=$entry NODI_ARGV=$a jq -cn --arg tool "$tool" --arg pid "$pid" --arg address "$wa" --arg cls "$wc" --argjson at "${at:-0}" \'{tool: $tool, pid: $pid, cwd: $ENV.NODI_CWD, address: $address, cls: $cls, title: $ENV.NODI_TITLE, said: $ENV.NODI_SAID, at: $at, entrypoint: $ENV.NODI_ENTRY, argv: ($ENV.NODI_ARGV | split("\\u001f") | .[:-1])}\''
   + "\n" + 'done; exit 0'
 
 // Codex subcommands that are no session; `codex -p work` is a profile.

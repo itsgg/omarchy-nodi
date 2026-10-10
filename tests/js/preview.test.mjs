@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, statSync, symlinkSync, chmodSync } from "node:fs";
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync, statSync, symlinkSync, chmodSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load, plain } from "./load.mjs";
@@ -87,9 +87,13 @@ test("the read itself, on real files: code, a PDF, a folder, a binary", () => {
     writeFileSync(join(dir, "folder", "a b.txt"), "");
     symlinkSync(join(dir, "guide.pdf"), join(dir, "link.pdf"));
     writeFileSync(join(dir, "blob"), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0]));
+    // The path in the environment, in no argument (the marketplace's
+    // review, 2026-10-10).
     const read = p => {
-      const argv = F.provider.sources["file-head"].argv(p);
-      return F.parseHead(execFileSync(argv[0], argv.slice(1), { env: { HOME: home, PATH: "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" } }).toString(), true);
+      const S = F.provider.sources["file-head"];
+      const argv = S.argv(p);
+      assert.ok(!argv.some(a => a.includes(p)), "the path in an argument");
+      return F.parseHead(execFileSync(argv[0], argv.slice(1), { env: { HOME: home, PATH: "/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8", ...S.environment(p) } }).toString(), true);
     };
     const code = read(join(dir, "sizes.js"));
     assert.equal(code.kind, "ansi", "bat colours it");
@@ -121,4 +125,26 @@ test("a code that sets no colour (bold) leaves the colour as it was", () => {
   const A = load("lib/Ansi.js");
   const ESC = "\x1b";
   assert.equal(A.html(ESC + "[1mbold" + ESC + "[0m", {}), '<div style="white-space: pre-wrap">bold</div>');
+});
+
+test("bat is told a file's extension or a name every project has, never a name of his own (Fable 2026-10-10)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-preview-bat-"));
+  try {
+    const bin = join(dir, "bin"), log = join(dir, "bat.log");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "bat"), '#!/usr/bin/bash\nprintf "%s\\n" "$*" >> ' + JSON.stringify(log) + '\nexec cat\n', { mode: 0o755 });
+    const S = F.provider.sources["file-head"];
+    const told = name => {
+      writeFileSync(join(dir, name), "words\n");
+      const argv = S.argv(join(dir, name));
+      execFileSync(argv[0], argv.slice(1), { env: { HOME: dir, PATH: bin + ":/usr/bin:/bin", LANG: "C.UTF-8", ...S.environment(join(dir, name)) } });
+      return readFileSync(log, "utf8").trim().split("\n").pop().replace(/^.*--file-name /, "");
+    };
+    assert.equal(told("divorce-lawyer-notes"), "x", "no dot: no name");
+    assert.equal(told(".secret-notes"), "x", "a dotfile of his: no name");
+    assert.equal(told("plan.final.md"), "x.md");
+    assert.equal(told(".env.local"), "x.local");
+    assert.equal(told("Makefile"), "Makefile", "a name bat colours by");
+    assert.equal(told(".bashrc"), ".bashrc");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

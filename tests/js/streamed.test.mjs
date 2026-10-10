@@ -16,9 +16,13 @@ const cfg = Object.assign({}, config, { answers: [helper] });
 const run = (q, answer) => Engine.run(q, cfg, services(answer ? { answer } : {}));
 const window = { address: "0x5b8f", class: "foot", title: "vim", pid: "5438", workspace: "2" };
 
-test("Enter's run: the question last and as NODI_QUERY, the window as NODI_WINDOW_*, two minutes by default", () => {
+test("Enter's run: the question as NODI_QUERY, last only when the answer says so, the window as NODI_WINDOW_*, two minutes by default", () => {
   const s = plain(A.spec("a  why is it slow ", [helper], window));
-  assert.deepEqual(s.argv, ["my-ask", "--markdown", "why is it slow"]);
+  // In no argument by default: any local user can read one in /proc (the
+  // marketplace's review, 2026-10-10).
+  assert.deepEqual(s.argv, ["my-ask", "--markdown"]);
+  assert.deepEqual(plain(A.spec("a why", [Object.assign({}, helper, { argument: true })]).argv), ["my-ask", "--markdown", "why"], "\"argument\": true");
+  assert.deepEqual(plain(A.spec("a why", [Object.assign({}, helper, { argument: "yes" })]).argv), ["my-ask", "--markdown"], "only true");
   assert.deepEqual(s.env, { NODI_QUERY: "why is it slow", NODI_WINDOW_ADDRESS: "0x5b8f", NODI_WINDOW_CLASS: "foot",
     NODI_WINDOW_TITLE: "vim", NODI_WINDOW_PID: "5438", NODI_WINDOW_WORKSPACE: "2" }, "the window's title in no argument");
   assert.deepEqual([s.keyword, s.title, s.question, s.timeoutMs], ["a", "Assistant", "why is it slow", 120000]);

@@ -24,6 +24,7 @@ Rectangle {
 
   Text {
     id: capText
+    textFormat: Text.PlainText
     anchors.centerIn: parent
     text: cap.label
     color: cap.foreground

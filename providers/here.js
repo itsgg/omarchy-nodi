@@ -32,12 +32,15 @@ var TEXT = 'f=$(mktemp --suffix=.png) || exit 1'
   + "\n" + 'printf "%s" "$t" | wl-copy && exec omarchy-shell shell summon "$2" "{}"'
 
 // A screenshot of it alone, as omarchy-capture-screenshot names and keeps
-// one, your user-dirs read as it reads them.
-var SHOT = '[ -f "$HOME/.config/user-dirs.dirs" ] && . "$HOME/.config/user-dirs.dirs"'
+// one, your user-dirs read as it reads them; his alone (0600), where
+// Omarchy's are 0644 (the marketplace's review, 2026-10-10); said in Nodi's
+// own toast (Run.js TOAST).
+var SHOT = Run.TOAST
+  + "\n" + 'umask 077; [ -f "$HOME/.config/user-dirs.dirs" ] && . "$HOME/.config/user-dirs.dirs"'
   + "\n" + 'd="${OMARCHY_SCREENSHOT_DIR:-${XDG_PICTURES_DIR:-$HOME/Pictures}}"; mkdir -p "$d" || exit 1'
   + "\n" + 'f="$d/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"'
   + "\n" + 'grim -T "$1" "$f" || { echo "the window could not be captured" >&2; exit 1; }'
-  + "\n" + 'wl-copy --type image/png < "$f"; notify-send -a Nodi "Screenshot of $2" "Saved to the clipboard and $f"'
+  + "\n" + 'wl-copy --type image/png < "$f"; nodi_toast "Screenshot of $2" "Saved to the clipboard and $f"'
 
 // Omarchy's own region capture, then the bar, if it copied anything (a
 // cancelled region copies nothing, and the bar stays closed).

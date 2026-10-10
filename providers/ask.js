@@ -26,6 +26,19 @@ function agentName(a) {
   return String((a && a.agent) || "Claude") + (m && !/[\/:]/.test(m) ? " " + m.charAt(0).toUpperCase() + m.slice(1) : "")
 }
 
+// "Continue in your agent": the question on the clipboard, to paste, and
+// Omarchy's agent started with no prompt. Given one, omarchy-agent keeps
+// it in the agent's arguments for the session's life, where another local
+// user can read it (the marketplace's review of f444138, 2026-10-10). The
+// question goes as the copy's text, never an argument, copied as
+// lib/Run.js's COPY copies (a test holds them the same); --pick offers the
+// choice when no default agent is set, as Omarchy's own key does. A copy
+// that failed stops it, said in the toast: an agent opened then had the
+// clipboard's older text to paste, unsaid (Fable 2026-10-10).
+var CONTINUE = 't=${NODI_TEXT-}; unset NODI_TEXT'
+  + "\n" + 'printf "%s" "$t" | wl-copy || exit 1'
+  + "\n" + 'exec omarchy-agent --pick'
+
 var provider = {
   id: "ask",
   name: "Ask",
@@ -109,8 +122,8 @@ var provider = {
         run: Run.paste(answer), actionLabel: "Paste" },
       { key: "ask:copy", title: "Copy the answer", subtitle: "Clipboard", icon: "󰆏", score: 97, copy: answer, remember: false,
         run: Run.copy(answer) },
-      { key: "ask:agent", title: "Continue in your agent", subtitle: q, icon: "󰆍", score: 96, copy: q, remember: false,
-        run: Run.exec(["omarchy-agent-prompt", q]) },
+      { key: "ask:agent", title: "Continue in your agent", subtitle: "Opens it, the question copied to paste", icon: "󰆍", score: 96, copy: q, remember: false,
+        run: Run.shell(CONTINUE, undefined, q) },
       { key: "ask:again", title: "Ask again", subtitle: a.context === "window" ? q + ", with the same picture" : q, icon: "󰚩", score: 95, copy: q,
         nodi: "ask", remember: false, actionLabel: "Ask" },
       // A follow-up is a question typed after `ask `; this one forgets.

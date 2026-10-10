@@ -4,10 +4,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { load, plain } from "./load.mjs";
+import { toastShell, toasts, toastArgv, toastModes, carriersLeft } from "./toastfake.mjs";
 
 const Run = load("lib/Run.js");
 const Rows = load("lib/Rows.js");
@@ -39,7 +40,8 @@ test("every kind becomes one argv, started the way Omarchy's menu starts things"
   assert.deepEqual(plain(Run.command(Run.app("Disk Usage"))), LOGIN.concat(["uwsm-app", "--", "gtk-launch", "Disk Usage.desktop"]), "a name with a space is one argument");
   assert.deepEqual(plain(Run.command(Run.app("firefox", 1), (id, i) => ["firefox", "--private-window"])), LOGIN.concat(["uwsm-app", "--", "firefox", "--private-window"]));
   assert.equal(Run.command(Run.app("firefox", 1), () => null), null, "an action with no Exec runs nothing");
-  assert.deepEqual(plain(Run.command(Run.open("https://x.org"))), LOGIN.concat(["gio", "open", "https://x.org"]));
+  assert.deepEqual(plain(Run.command(Run.open("/home/u/x.org"))), LOGIN.concat(["gio", "open", "/home/u/x.org"]));
+  assert.deepEqual(plain(Run.command(Run.open("https://x.org")).command), ["bash", "-lc", Run.OPEN_PAGE, "nodi"], "a web address by a page (tests/js/open.test.mjs)");
   assert.deepEqual(plain(Run.command(Run.summon("omarchy.emojis"))), LOGIN.concat(["omarchy-shell", "shell", "summon", "omarchy.emojis", "{}"]));
   assert.deepEqual(plain(Run.command(Run.copy("a b"))), { command: ["bash", "-lc", Run.COPY, "nodi"], environment: { NODI_TEXT: "a b" } }, "the text in the environment, never an argument");
   assert.deepEqual(plain(Run.command(Run.paste("a b", 3))), { command: ["bash", "-lc", Run.PASTE, "nodi", "3"], environment: { NODI_TEXT: "a b" } });
@@ -125,11 +127,12 @@ test("a file's preview: its details and first lines once the read lands", () => 
   assert.throws(() => F.parseHead("", false));
 });
 
-test("a watched command says it failed, with its last line, and only then (ROADMAP 53)", () => {
+test("a watched command says it failed, with its last line, and only then, in Nodi's own toast (ROADMAP 53)", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-watch-"));
-  const log = join(dir, "said");
-  writeFileSync(join(dir, "notify-send"), `#!/usr/bin/bash\nprintf '%s|' "$@" >> ${JSON.stringify(log)}\necho >> ${JSON.stringify(log)}\n`, { mode: 0o755 });
-  const said = () => { try { return readFileSync(log, "utf8").trim().split("\n").filter(Boolean); } catch { return []; } };
+  // Nodi's toast, never a notification, the words in no argument (the
+  // marketplace's review, 2026-10-10): the stand-in omarchy-shell keeps them.
+  toastShell(dir);
+  const said = () => toasts(dir).map(t => t.title + "|" + t.body);
   const runIt = (argv) => {
     const w = Run.watched("Sync notes", argv);
     const a = w.command;
@@ -140,7 +143,10 @@ test("a watched command says it failed, with its last line, and only then (ROADM
     catch (e) { return e.status; }
   };
   assert.equal(runIt(["bash", "-c", "echo working >&2; echo 'rsync: connection refused' >&2; exit 3"]), 3, "its own exit code");
-  assert.deepEqual(said(), ["-a|Nodi|--|Sync notes failed|rsync: connection refused|"]);
+  assert.deepEqual(said(), ["Sync notes failed|rsync: connection refused"]);
+  assert.match(toastArgv(dir), /^shell call io\.github\.itsgg\.nodi toast @file:.*\/nodi-ipc\.[A-Za-z0-9]+\/payload\n$/);
+  assert.ok(!/Sync notes|rsync/.test(toastArgv(dir)), "the title and the line in no argument");
+  assert.deepEqual(toastModes(dir), ["700 600"], "carried in a folder and a file his alone");
   assert.equal(runIt(["bash", "-c", "exit 1"]), 1);
   assert.equal(said().length, 1, "a failure that says nothing is quiet");
   assert.equal(runIt(["bash", "-c", "echo bye >&2; kill -TERM $$"]), 143);
@@ -148,13 +154,15 @@ test("a watched command says it failed, with its last line, and only then (ROADM
   assert.equal(runIt(["bash", "-c", "echo fine >&2"]), 0);
   assert.equal(said().length, 1, "success is quiet");
   assert.equal(runIt(["bash", "-c", "echo 'the disk is full' >&2; sleep 0.4 & exit 2"]), 2);
-  assert.equal(said()[1], "-a|Nodi|--|Sync notes failed|the disk is full|", "a child that holds stderr a moment longer: the line still read (Fable 2026-10-05)");
+  assert.equal(said()[1], "Sync notes failed|the disk is full", "a child that holds stderr a moment longer: the line still read (Fable 2026-10-05)");
   assert.equal(runIt(["bash", "-c", "echo '-x is not an option' >&2; exit 4"]), 4);
-  assert.equal(said()[2], "-a|Nodi|--|Sync notes failed|-x is not an option|", "a line that starts with a dash is no option to notify-send");
+  assert.equal(said()[2], "Sync notes failed|-x is not an option", "a line that starts with a dash is text");
   assert.equal(runIt(["printf", "%s", "$(touch " + join(dir, "pwned") + ")"]), 0);
   assert.ok(!existsSync(join(dir, "pwned")), "arguments are never read as shell");
   assert.deepEqual(readdirSync(dir).filter(f => f.startsWith("nodi-err")), [], "no file left behind");
-  assert.equal(Run.command(Run.exec(["true"]), null, "T").command[2].indexOf("notify-send") > 0, true, "a titled command is watched");
+  assert.deepEqual(carriersLeft(dir), [], "nor the folder that carried a toast");
+  assert.ok(Run.command(Run.exec(["true"]), null, "T").command[2].includes('nodi_toast "$t failed"'), "a titled command is watched");
+  assert.ok(Run.command(Run.exec(["true"]), null, "T").command[2].indexOf("notify-send") === -1, "and never notifies");
   assert.deepEqual(plain(Run.command(Run.exec(["true"]), null, "an entry's first line").environment), { NODI_TITLE: "an entry's first line" }, "its title in the environment");
   assert.deepEqual(plain(Run.command(Run.shell("true", [], "t"), null, "T").environment), { NODI_TITLE: "T", NODI_TEXT: "t" }, "a shell run's title and text both");
   assert.deepEqual(plain(Run.command(Run.exec(["true"]), null)).slice(0, 3), ["bash", "-lc", 'exec "$@"'], "untitled, as before");
@@ -204,4 +212,57 @@ test("a plugin opened: said as the shell command it is, and Enter says Open", ()
   assert.equal(R.describe(R.summon("x.y", "text")), "omarchy-shell shell summon x.y text");
   assert.equal(R.verb(R.summon("omarchy.emojis")), "Open");
   assert.equal(R.focusFirst(R.paste("x"), null, "0x5b8f"), null, "nothing to focus first for: as it is");
+});
+
+test("nodi_toast: the words carried in a 0700 folder's file to Nodi's toast, in no argument, the folder gone after; quiet when the bar is away (the marketplace's review, 2026-10-10)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-toast-"));
+  toastShell(dir);
+  const say = (env, ...args) => execFileSync("/usr/bin/bash", ["-c", Run.TOAST + '\nnodi_toast "$@"; echo "after $?"', "nodi", ...args],
+                                            { env: { PATH: dir + ":/usr/bin:/bin", ...env } }).toString();
+  const words = ['a "quote" $(touch ' + join(dir, "pwned") + ') நொடி', "-n second\nline"];
+  assert.equal(say({ XDG_RUNTIME_DIR: dir }, ...words), "after 0\n");
+  assert.deepEqual(plain(toasts(dir)), [{ title: words[0], body: words[1] }], "whole, as given");
+  assert.ok(!existsSync(join(dir, "pwned")), "never read as shell");
+  assert.ok(!/quote|நொ|second/.test(toastArgv(dir)), "in no argument");
+  assert.deepEqual(toastModes(dir), ["700 600"]);
+  assert.deepEqual(carriersLeft(dir), []);
+  assert.equal(say({ XDG_RUNTIME_DIR: dir, NODI_PLUGIN_ID: "gg.nodi" }, "t"), "after 0\n");
+  assert.match(toastArgv(dir).trim().split("\n").pop(), /^shell call gg\.nodi toast @file:/, "a clone's own id");
+  // The bar away: nothing said, nothing left, no failure.
+  writeFileSync(join(dir, "omarchy-shell"), "#!/usr/bin/bash\nexit 1\n", { mode: 0o755 });
+  assert.equal(say({ XDG_RUNTIME_DIR: dir }, "t", "b"), "after 0\n");
+  assert.deepEqual(carriersLeft(dir), []);
+  assert.equal(Run.TOAST.includes("notify-send"), false);
+  // No XDG_RUNTIME_DIR (a cleared environment): logind's folder for this
+  // user, where the bar reads, not /tmp, which it refuses (Fable 2026-10-10).
+  toastShell(dir);
+  const uid = process.getuid(), own = "/run/user/" + uid;
+  let mine = false;
+  try { mine = statSync(own).isDirectory() && statSync(own).uid === uid; } catch (e) {}
+  assert.equal(say({}, "t", "b"), "after 0\n");
+  const carried = toastArgv(dir).trim().split("\n").pop();
+  if (mine) assert.match(carried, new RegExp("toast @file:" + own + "/nodi-ipc\\.[A-Za-z0-9]+/payload$"));
+  else assert.ok(!/toast @file:\/tmp\//.test(carried), "never /tmp: " + carried);
+});
+
+test("Uninstall that fails says why in Nodi's toast, the why in no argument", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-uninstall-"));
+  toastShell(dir);
+  const app = Rows.normalize({ title: "Spotify", copy: "", run: Run.app("spotify") }, { id: "apps", name: "Apps" }, 0, 0);
+  const un = Rows.actionsFor(app, {}).find(a => a.label === "Uninstall");
+  const remove = code => {
+    writeFileSync(join(dir, "omarchy-remove-launcher-entry"), "#!/usr/bin/bash\necho \"no entry named $1\"\nexit " + code + "\n", { mode: 0o755 });
+    execFileSync(un.run.argv[0], un.run.argv.slice(1), { env: { PATH: dir + ":/usr/bin:/bin", XDG_RUNTIME_DIR: dir } });
+  };
+  remove(0);
+  assert.deepEqual(plain(toasts(dir)), [], "removed: nothing said");
+  remove(1);
+  assert.deepEqual(plain(toasts(dir)), [{ title: "Could not uninstall Spotify", body: "no entry named spotify" }]);
+  assert.ok(!/no entry/.test(toastArgv(dir)), "the why in no argument");
+  assert.ok(!un.run.argv[2].includes("notify-send"));
+});
+
+test("describe shows a value with a control character as bash's $'...', so a script's packed arguments are seen (Fable 2026-10-10)", () => {
+  assert.equal(Run.describe(Run.shell("echo", ["a b"], "Ravi\u001fplan\u001f")), "echo\n\n$1 = 'a b'\n\nNODI_TEXT = $'Ravi\\x1fplan\\x1f'");
+  assert.equal(Run.describe(Run.shell("echo", ["it's\u0007"], "two\nlines")), "echo\n\n$1 = $'it\\'s\\x07'\n\nNODI_TEXT = 'two\nlines'", "a newline alone stays as it is");
 });
