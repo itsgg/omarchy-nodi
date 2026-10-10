@@ -161,7 +161,10 @@ test("containers: running first, stop asked twice, a shell and the logs in a ter
 // and $url is what curl would ask for. Each call's own arguments are kept.
 const CURL = 'printf "%s\\n" "$*" >> "$HOME/argv.log"; printf "%s\\n" "$*" >> "$HOME/curl.log"\n'
   + 'vars=(); tmpl=; out=; prev=\n'
-  + 'for a; do case $prev in --variable) vars+=(--variable "$a");; --expand-url) tmpl=$a;; -o) out=$a;; esac; prev=$a; done\n'
+  + 'for a; do case $prev in --variable) vars+=(--variable "$a");; --expand-url) tmpl=$a;; -o) out=$a;; *) case $a in https://*) [ -n "$tmpl" ] || tmpl=$a;; esac;; esac; prev=$a; done\n'
+  // As a curl before 8.22 does (CI's 8.5, 2026-10-10): an empty variable
+  // fails, so a script must never hand one over.
+  + 'for v in "${vars[@]}"; do case $v in %*) n=${v#%}; [ -n "${!n-}" ] || { echo "curl: option --variable: variable expansion failure" >&2; exit 2; };; esac; done\n'
   + 'url=$(/usr/bin/curl -q -s "${vars[@]}" --expand-write-out "$tmpl" -o /dev/null file:///dev/null)\n';
 
 // The other programs a contrib script starts, each keeping its arguments.
@@ -199,6 +202,13 @@ test("wikipedia and weather: Markdown from what the sites send, and nothing aske
                  "a place of two words as wttr.in takes it; Fahrenheit when the argument says us");
     assert.match(h.run("weather", [], { NODI_QUERY: "Here" }), /^# Sowcarpet, India\n\n\*\*31°C\*\*/, "here: no place asked, the station named");
     assert.equal(h.run("weather", [], { NODI_QUERY: "zzzzqqx" }), "wttr.in knows no place called *zzzzqqx*.\n");
+    // What is asked: the ends trimmed, so " Here " is here; a space is +,
+    // and a + of the place's own %2B, as wttr.in reads + as a space
+    // (Cursor 2026-10-10).
+    h.stub("curl", CURL + 'printf "%s\\n" "$url" >> "$HOME/urls"; : > "$out"; printf 404\n');
+    for (const q of ["  Here ", "   ", "a+b", "new  york", "50%"]) h.run("weather", [], { NODI_QUERY: q });
+    assert.deepEqual(readFileSync(join(h.dir, "urls"), "utf8").trim().split("\n"),
+      ["https://wttr.in/?format=j1", "https://wttr.in/?format=j1", "https://wttr.in/a%2Bb?format=j1", "https://wttr.in/new++york?format=j1", "https://wttr.in/50%25?format=j1"]);
     // Any other status: wttr.in's trouble, said, and the answer failed.
     h.stub("curl", CURL + ': > "$out"; printf 503\n');
     assert.throws(() => h.run("weather", [], { NODI_QUERY: "chennai" }), e => e.status === 1 && /wttr\.in did not answer \(503\)\./.test(String(e.stderr)));

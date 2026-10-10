@@ -10,17 +10,21 @@ set -u
 q=${NODI_QUERY-}
 unit=C
 [ "${1-}" = us ] && unit=F
-place=$q
+# Its ends trimmed, so " here " is here; wttr.in reads + as a space, so
+# a + of the place's own is %2B (Cursor 2026-10-10).
+place=${q#"${q%%[![:space:]]*}"}; place=${place%"${place##*[![:space:]]}"}
 case $(printf '%s' "$place" | tr '[:upper:]' '[:lower:]') in here|"") place="" ;; esac
-where=$(printf '%s' "$place" | jq -sRr 'gsub(" "; "+") | @uri | gsub("%2B"; "+")')
+where=$(printf '%s' "$place" | jq -sRr '@uri | gsub("%20"; "+")')
 # wttr.in answers a place it does not know with an error status, which is
 # said as that, not as wttr.in being down (Fable 2026-10-07).
 body=$(mktemp) || exit 1
 trap 'rm -f -- "$body"' EXIT
 # At most 1 MB, over https only: a body past it fails the request; -q
-# first, so no ~/.curlrc turns on a redirect.
+# first, so no ~/.curlrc turns on a redirect. No place, no variable: a
+# curl before 8.22 fails one that is empty (CI's 8.5, 2026-10-10).
+if [ -n "$where" ]; then at=(--variable %NODI_WHERE --expand-url 'https://wttr.in/{{NODI_WHERE}}?format=j1'); else at=('https://wttr.in/?format=j1'); fi
 code=$(NODI_WHERE=$where curl -q -sS --max-time 10 --max-filesize 1048576 --proto =https -A "curl (Nodi)" -o "$body" -w '%{http_code}' \
-         --variable %NODI_WHERE --expand-url 'https://wttr.in/{{NODI_WHERE}}?format=j1') || { printf 'wttr.in did not answer.\n' >&2; exit 1; }
+         "${at[@]}") || { printf 'wttr.in did not answer.\n' >&2; exit 1; }
 case $code in
   200) got=$(cat -- "$body") ;;
   404|500) printf 'wttr.in knows no place called *%s*.\n' "$q"; exit 0 ;;
