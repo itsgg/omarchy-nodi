@@ -46,6 +46,11 @@ test("what closes everything asks twice; what runs nothing copies its keys, belo
 
 test("Nodi's own key is not offered, and an app named as well comes first", () => {
   assert.ok(!run("keys ").some(r => r.title === "Nodi"));
+  // A row's own hotkey: its row is Nodi's already, and its record is never
+  // read as a command (the marketplace's review, 2026-10-10).
+  const K = load("providers/keys.js");
+  const mine = [{ modmask: 64, key: "J", description: "Nodi: Q3 report", dispatcher: "exec", arg: "touch PWNED" }];
+  assert.deepEqual(plain(K.provider.match("keys ", { request: () => ({ state: "ready", value: mine }) }) || []).filter(r => /Q3/.test(r.title || "")), []);
   const all = run("keys ").filter(r => r.provider === "keys");
   assert.equal(all.length, 12);
   assert.deepEqual(plain(all.slice(0, 3).map(r => r.title)), ["Terminal", "Full screen", "Close window"], "in Omarchy's order");

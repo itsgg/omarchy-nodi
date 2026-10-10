@@ -33,6 +33,8 @@ import "lib/PickLog.js" as PickLog
 import "lib/Markdown.js" as Markdown
 import "lib/Appearance.js" as Appearance
 import "lib/Ansi.js" as Ansi
+import "lib/Toasts.js" as Toasts
+import "lib/Reminders.js" as Reminders
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -105,7 +107,7 @@ Item {
   property var hiddenApps: ({})
   property var history: ({})        // row key -> { n, t }: what was run, how often, when (lib/History.js)
   property var picks: ({})          // query -> row key -> { n, t }: what was picked for what was typed
-  property var reminders: []        // Omarchy's pending reminders, for the home view
+  property var reminders: []        // Nodi's own pending reminders (lib/Reminders.js)
   property var windows: []
   property var activeWorkspace: null
   property var clipboard: []
@@ -117,6 +119,7 @@ Item {
   property var toggleStates: ({})
   property var themes: ({ list: [], current: "" })
   property bool cacheReady: false
+  property bool foldersWarned: false
 
   // ---------------------------------------------------------------- look
 
@@ -199,7 +202,10 @@ Item {
     // Sizes change at once until the card is up (startReads).
     card.animated = false
     var payload = {}
-    try { payload = JSON.parse(payloadJson || "{}") || {} } catch (e) {}
+    // bin/nodi carries its payload in a file (Carried.qml); a path in no
+    // folder of its own opens the bar as nothing asked.
+    var carriedJson = carried.read(payloadJson)
+    try { payload = JSON.parse(carriedJson || "{}") || {} } catch (e) {}
     // A pick stays open only for its own opening: anything else that opens
     // the bar ends it, nothing chosen.
     if (root.pickSession && payload.pick !== root.pickSession.id) root.endPick("cancel")
@@ -235,6 +241,7 @@ Item {
     root.readAhead(true)
     launchFeedback.opened()
     root.opens++
+    root.makeFolders()
     root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
     root.aliasRow = null
     root.endCapture()
@@ -313,7 +320,7 @@ Item {
     root.refreshAppearance()
     themeColors.reload()
     root.refreshThemes()
-    root.refreshReminders()
+    root.checkReminders()
     root.refreshZones()
     requests.request("omarchy-commands")
     requests.request("agent-usage")
@@ -916,8 +923,8 @@ Item {
   function warnPrefs(why) {
     if (root.prefsWarned === why) return
     root.prefsWarned = why
-    Quickshell.execDetached(["notify-send", "-a", "Nodi", "prefs.json has an error",
-      why + ". Nothing you set from Ctrl+K is saved over it until it is fixed: " + root.stateDir + "/prefs.json"])
+    root.toast("prefs.json has an error",
+      why + ". Nothing you set from Ctrl+K is saved over it until it is fixed: " + root.stateDir + "/prefs.json")
   }
   // The row an alias is being made for: the field takes the word, Enter
   // saves it, Esc gives up.
@@ -987,8 +994,8 @@ Item {
     var next = Prefs.withRule(root.prefs, w.cls, w.app, a.change)
     // Past fifty, or past what one hyprctl call takes: said, not dropped
     // without a word (Fable 2026-10-07). Floating this window needs no rule.
-    if (!next) Quickshell.execDetached(["notify-send", "-a", "Nodi", "Window rule not kept",
-      "Nodi keeps fifty at most, and they must fit one hyprctl call. Take one back in ?mine."])
+    if (!next) root.toast("Window rule not kept",
+      "Nodi keeps fifty at most, and they must fit one hyprctl call. Take one back in ?mine.")
     else {
       root.savePrefs(next)
       root.applyRules()
@@ -1027,8 +1034,17 @@ Item {
     var keysChanged = rowKeys(root.prefs) !== rowKeys(next)
     root.prefs = next
     if (root.prefsBroken) root.warnPrefs(root.prefsBroken)
-    else if (root.prefsLoaded) { root.prefsText = Prefs.serialize(next); prefsFile.setText(root.prefsText) }
+    // Once its folder is made his alone: FileView makes a missing one 0755
+    // (the marketplace's review, 2026-10-10); a change before then waits.
+    else if (root.prefsLoaded && root.cacheReady) { root.prefsText = Prefs.serialize(next); prefsFile.setText(root.prefsText) }
+    else if (root.prefsLoaded) root.prefsWaiting = true
     if (keysChanged) root.ensureHotkey()
+  }
+  property bool prefsWaiting: false
+  onCacheReadyChanged: {
+    if (!root.cacheReady) return
+    if (root.prefsWaiting) { root.prefsWaiting = false; root.savePrefs(root.prefs) }
+    if (root.remindersWaiting) { root.remindersWaiting = false; root.saveReminders() }
   }
 
   // A row that runs only once a word is typed (Rows confirmWord): the field
@@ -1096,8 +1112,15 @@ Item {
     return f && Date.now() - f.at < root.foundMs ? f.row : null
   }
 
+  // What bin/nodi carries in a file, never an IPC argument (Carried.qml):
+  // an agent's search, a row's key, Ask's tool server's messages. A path
+  // in no folder of bin/nodi's is refused, never read.
+  Carried { id: carried }
+
   // `nodi mcp`'s search: the rows as JSON, each kept for a run.
-  function search(query) {
+  function search(carriedQuery) {
+    var query = carried.read(carriedQuery)
+    if (query === null) return "[]"
     var rows = root.agentRows(query)
     var found = {}
     var order = root.foundOrder.slice()
@@ -1147,7 +1170,9 @@ Item {
 
   // What a row is, for `nodi mcp` to show before it is run: JSON, or
   // "unknown row".
-  function describeRow(key) {
+  function describeRow(carriedKey) {
+    var key = carried.read(carriedKey)
+    if (key === null) return "unknown row"
     var k = String(key || "")
     var a = root.keySnapshot(k, true)
     if (!a || !a.s || !a.s.run) return "unknown row"
@@ -1163,17 +1188,17 @@ Item {
 
   // `nodi mcp`'s run: a row its search found, else a saved one; a row that
   // asks first is refused.
-  function runFound(key) { return root.runKey(key, false, true) }
+  function runFound(key) { var k = carried.read(key); return k === null ? "unknown row" : root.runKey(k, false, true) }
 
   // A row an agent proposed and he chose with Enter (`nodi mcp` propose):
   // that Enter is the row's second one, so a row that asks runs; one that
   // asks for a typed word still does not.
-  function runProposed(key) { return root.runKey(key, true, true) }
+  function runProposed(key) { var k = carried.read(key); return k === null ? "unknown row" : root.runKey(k, true, true) }
 
   // Ask's tool server (`nodi mcp --ask`): one message from the agent Ask
   // holds, with its session's token, as the one argument the shell's
   // facade passes (components/Ask.qml serveCall).
-  function askMcp(arg) { return askSession.serveCall(arg) }
+  function askMcp(arg) { var a = carried.read(arg); return a === null ? "unknown" : askSession.serveCall(a) }
 
   // A pick whose asker went away (`nodi mcp`'s client closed): ended, and
   // the bar with it, only if it is still the open one.
@@ -1189,7 +1214,12 @@ Item {
   // what the row ran when the hotkey or the link was set, never what an
   // agent's search found (Fable 2026-10-06: a hotkey ran an agent's stale
   // copy for ten minutes).
-  function runRow(key) { return root.runKey(key, false, false) }
+  function runRow(key) {
+    var k = carried.read(key)
+    // A hotkey's bind names its keys: the row is its own in prefs.json.
+    if (k !== null && /^hotkey:/.test(k)) k = Prefs.rowOfHotkey(root.prefs, k) || null
+    return k === null ? "unknown row" : root.runKey(k, false, false)
+  }
 
   // A proposed row runs as it was shown (shownRows). Over IPC it takes one
   // argument, so neither flag can be set from there.
@@ -1319,7 +1349,18 @@ Item {
     } else if (row.nodi === "saveDesktop" && row.data) {
       var saved = Prefs.withDesktop(root.prefs, row.data.name, row.data.apps, Date.now())
       if (saved) root.savePrefs(saved)
-      Quickshell.execDetached(["notify-send", "-a", "Nodi", "Desktop \"" + row.data.name + "\" saved", row.subtitle])
+      root.toast("Desktop \"" + row.data.name + "\" saved", row.subtitle)
+      root.finish()
+      return
+    } else if (row.nodi === "remindSet" && row.data) {
+      root.setReminder(row.data)
+      root.finish()
+      return
+    } else if (row.nodi === "remindClear") {
+      // Enter twice, as Omarchy's own clear asked.
+      if (root.armedKey !== row.key) { root.armedKey = row.key; return }
+      root.armedKey = ""
+      root.clearReminders()
       root.finish()
       return
     } else if (row.nodi === "forgetDesktop" && row.data) {
@@ -1380,7 +1421,7 @@ Item {
   // becomes the query the bar remembers.
   readonly property var pickSession: picks.current
 
-  function pick(argJson) { return picks.request(argJson, input.text) }
+  function pick(argJson) { var a = carried.read(argJson); return a === null ? "refused" : picks.request(a, input.text) }
   // Asked by bin/nodi while it waits, so a bar reloaded mid-pick ends it.
   function pickAlive(id) { return picks.alive(id) }
   function endPick(answer) { picks.end(answer) }
@@ -1630,8 +1671,8 @@ Item {
     var hotkey = String(root.config.hotkey || "").trim()
     if (hotkey && !Hotkey.parseCombo(hotkey) && root.hotkeyWarned !== hotkey) {
       root.hotkeyWarned = hotkey
-      Quickshell.execDetached(["notify-send", "-a", "Nodi", "Nodi has no hotkey",
-        "\"" + hotkey + "\" is not a key combination. Write it as \"SUPER + SPACE\" in ~/.config/omarchy/extensions/nodi.json."])
+      root.toast("Nodi has no hotkey",
+        "\"" + hotkey + "\" is not a key combination. Write it as \"SUPER + SPACE\" in ~/.config/omarchy/extensions/nodi.json.")
     }
     root.lastBinds = bindsJson
     var p = Hotkey.plan(bindsJson, hotkey, root.toggleShortcut, { scrim: root.scrim.a, card: root.background.a }, root.hotkeyFresh)
@@ -1642,7 +1683,7 @@ Item {
     for (var c = 0; c < rows.conflicts.length; c++) {
       if (root.rowConflictsWarned[rows.conflicts[c]]) continue
       root.rowConflictsWarned[rows.conflicts[c]] = true
-      Quickshell.execDetached(["notify-send", "-a", "Nodi", "A row's hotkey is taken", rows.conflicts[c] + " is bound to something else now; set the row another one from Ctrl+K."])
+      root.toast("A row's hotkey is taken", rows.conflicts[c] + " is bound to something else now; set the row another one from Ctrl+K.")
     }
     var lua = p.lua.concat(rows.lua)
     if (lua.length > 0) evalReader.run(["/usr/bin/hyprctl", "eval", lua.join("\n")])
@@ -1656,8 +1697,8 @@ Item {
     if (p.conflict && root.warnedConflict !== hotkey) {
       root.warnedConflict = hotkey
       console.warn("nodi: " + hotkey + " is already used by \"" + p.conflict + "\"; not binding it")
-      Quickshell.execDetached(["notify-send", "-a", "Nodi", "Nodi has no hotkey",
-        hotkey + " already opens \"" + p.conflict + "\". Set another \"hotkey\" in ~/.config/omarchy/extensions/nodi.json."])
+      root.toast("Nodi has no hotkey",
+        hotkey + " already opens \"" + p.conflict + "\". Set another \"hotkey\" in ~/.config/omarchy/extensions/nodi.json.")
     }
     if (!p.conflict) root.conflictRetried = false
   }
@@ -1789,7 +1830,7 @@ Item {
     root.configWarned = error
     var keeping = root.userConfigGood ? "Keeping the last settings that worked."
       : "Using the defaults until it is fixed; the hotkey is " + String(root.config.hotkey || "") + "."
-    Quickshell.execDetached(["notify-send", "-a", "Nodi", "nodi.json has an error", error + ". " + keeping])
+    root.toast("nodi.json has an error", error + ". " + keeping)
   }
 
   // ---------------------------------------------------------------- cache
@@ -1797,7 +1838,22 @@ Item {
   Reader {
     id: cacheMaker
     timeoutMs: 3000
-    onFinished: function(text, ok) { root.cacheReady = ok; if (ok) root.describeApps() }
+    // Once made, ready for good: a later open's install failing (a slow
+    // disk past the 3 s) does not hold writes back again; one that never
+    // succeeds says so, once (Fable 2026-10-10: changes waited unsaid).
+    onFinished: function(text, ok) {
+      if (ok && !root.cacheReady) { root.cacheReady = true; root.describeApps() }
+      else if (!ok && !root.cacheReady && !root.foldersWarned) {
+        root.foldersWarned = true
+        root.toast("Nodi cannot make its folders", root.cacheDir + " and " + root.stateDir + ": what you change is kept until they can be made, at the next open.")
+      }
+    }
+  }
+  // Each his alone (0700), made so or made so now; again at each open, so
+  // one deleted while the shell runs is not made again at 0755 by the next
+  // write (the marketplace's review, 2026-10-10).
+  function makeFolders() {
+    cacheMaker.run(["/usr/bin/install", "-d", "-m", "700", root.cacheDir, root.stateDir, root.cacheDir + "/ask", root.dataDir])
   }
 
   FileView {
@@ -1848,12 +1904,33 @@ Item {
   // What Omarchy's launcher shows while a slow app starts.
   LaunchFeedback { id: launchFeedback }
 
+  // Nodi's own notices (components/Toast.qml), never a notification:
+  // notify-send held the words in its arguments, and Omarchy's
+  // notification host puts each popup's text in bash arguments, where
+  // another local user can read them in /proc (the marketplace's review,
+  // 2026-10-10).
+  Toast { id: toaster; look: look }
+
+  // root.toast(title, body) from Nodi itself; over IPC (`omarchy-shell shell
+  // call <id> toast "@file:<path>"`, the TOAST of a detached script, Run.js)
+  // only a payload carried in a nodi-ipc folder (Carried.qml), so no words
+  // ever ride in the call's argument.
+  function toast(title, body) {
+    if (body !== undefined) { toaster.show(title, body); return "ok" }
+    var a = String(title === undefined || title === null ? "" : title)
+    var text = a.indexOf("@file:") === 0 ? carried.read(a) : null
+    var t = text === null ? null : Toasts.fromCarried(text)
+    if (!t) return "unknown"
+    toaster.show(t.title, t.body)
+    return "ok"
+  }
+
   // Actions that say how to take them back (lib/Undo.js).
   Undoer {
     id: undoer
     env: ({ PATH: Quickshell.env("PATH") || "" })
     onEntriesChanged: if (root.opened) root.recompute()
-    onFailed: function(title, why) { Quickshell.execDetached(["notify-send", "-a", "Nodi", (title || "An action") + " failed", why]) }
+    onFailed: function(title, why) { root.toast((title || "An action") + " failed", why) }
   }
 
   // An answer a program of yours streams (providers/answers.js).
@@ -2248,14 +2325,14 @@ Item {
     // Ask's model when Ask holds Claude; another agent's model means
     // nothing to claude.
     var model = askSession.agent === "claude" && root.config.ask && root.config.ask.model ? String(root.config.ask.model) : "haiku"
-    describer.run(Describe.argv(model, list, root.cacheDir + "/ask"), list)
+    describer.run(Describe.argv(model, list, root.cacheDir + "/ask"), { list: list, env: { NODI_TEXT: Describe.request(list) } })
   }
 
   Reader {
     id: describer
     timeoutMs: 60000
     onFinished: function(text, ok, tag) {
-      var fresh = ok ? Describe.parse(text, tag || []) : null
+      var fresh = ok ? Describe.parse(text, (tag && tag.list) || []) : null
       if (!fresh) {
         root.describeFailedAt = Date.now()
         console.warn("nodi: describing apps failed; asking again in an hour")
@@ -2408,17 +2485,82 @@ Item {
 
   // ---------------------------------------------------------------- reminders
 
-  function refreshReminders() {
-    remindersReader.run(["/usr/bin/bash", "-c", "omarchy-reminder show --json"])
+  // Nodi's own (lib/Reminders.js), kept in its 0700 state folder and shown
+  // as its own toast: Omarchy's reminder held the words in the arguments of
+  // its timer and its notifications (the marketplace's review, 2026-10-10),
+  // and asking it for its list made its own jq hold each one. Looked at by
+  // the wall clock every fifteen seconds while one is set, at each open
+  // and at the shell's start, so one due while the machine slept or the
+  // shell was off is shown as soon as it can be, said as late.
+  property bool remindersLoaded: false
+  property bool remindersWaiting: false
+  property int remindersMade: 0
+  readonly property bool clock24: !(root.config.time && root.config.time.clock24 === false)
+
+  FileView {
+    id: remindersFile
+    path: root.stateDir + "/reminders.json"
+    printErrors: false
+    atomicWrites: true
+    // Read once, at the start: those set before it was read are kept with
+    // its own; a file with an error is left as it is (Reminders.broken).
+    onLoaded: {
+      var why = Reminders.broken(text())
+      var held = root.reminders
+      root.remindersBroken = why
+      if (why) root.toast("reminders.json has an error",
+        why + ". Nodi neither reads it nor writes over it until it is fixed or removed and the shell restarted: " + root.stateDir + "/reminders.json")
+      else root.reminders = Reminders.merged(Reminders.parse(text()), held)
+      root.remindersLoaded = true
+      if (held.length) root.saveReminders()
+      root.checkReminders()
+    }
+    onLoadFailed: { root.remindersLoaded = true; if (root.reminders.length) root.saveReminders(); root.checkReminders() }
+  }
+  property string remindersBroken: ""
+
+  // Once its folder is made his alone, as prefs.json is (savePrefs).
+  function saveReminders() {
+    if (!root.remindersLoaded) return
+    if (root.remindersBroken) return
+    if (!root.cacheReady) { root.remindersWaiting = true; return }
+    remindersFile.setText(Reminders.serialize(root.reminders))
   }
 
-  Reader {
-    id: remindersReader
-    timeoutMs: 3000
-    onFinished: function(text, ok) {
-      root.reminders = Sources.reminders(text)
-      if (root.opened && !root.queryNow().trim()) root.recompute()
+  function checkReminders() {
+    if (!root.remindersLoaded) return
+    var now = Date.now()
+    var d = Reminders.due(root.reminders, now)
+    if (!d.fire.length) return
+    for (var i = 0; i < d.fire.length; i++) {
+      var t = Reminders.toast(d.fire[i], now, root.clock24)
+      root.toast(t.title, t.body)
     }
+    root.reminders = d.keep
+    root.saveReminders()
+    if (root.opened) root.recompute()
+  }
+
+  Timer {
+    interval: 15000
+    repeat: true
+    running: root.reminders.length > 0
+    onTriggered: root.checkReminders()
+  }
+
+  function setReminder(data) {
+    var now = Date.now()
+    var made = Reminders.add(root.reminders, data.minutes, data.message, now, now.toString(36) + "-" + (++root.remindersMade))
+    if (!made) { root.toast("Reminder not set", "Fifty are set already, or the time is out of range"); return }
+    root.reminders = made.list
+    root.saveReminders()
+    root.toast(made.entry.message || "Reminder set", "At " + Reminders.clock(made.entry.at, root.clock24))
+  }
+
+  function clearReminders() {
+    root.reminders = []
+    root.saveReminders()
+    root.toast("Reminders cleared", "")
   }
 
   // ---------------------------------------------------------------- themes
@@ -2466,7 +2608,7 @@ Item {
     // Each his alone (0700), made so or made so now: they hold what he
     // typed, pinned and set (codex's review, 2026-10-09).
     agentProbe.look()
-    cacheMaker.run(["/usr/bin/install", "-d", "-m", "700", root.cacheDir, root.stateDir, root.cacheDir + "/ask", root.dataDir])
+    root.makeFolders()
     appsDebounce.restart()
     requests.request("omarchy-commands")
   }

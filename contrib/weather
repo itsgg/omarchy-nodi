@@ -2,28 +2,37 @@
 # Nodi's `weather` answer (contrib/README.md): `weather chennai`, then
 # Enter: the weather there now and the next three days, as Markdown in the
 # pane, in Celsius unless an argument says "us" (Fahrenheit). Asks wttr.in
-# once; "here" asks for where your connection appears to be.
+# once; "here" asks for where your connection appears to be. The place is
+# NODI_QUERY, and reaches no program's arguments, which any local user can
+# read in /proc: curl takes it by --variable, jq by $ENV (the marketplace's
+# review, 2026-10-10).
 set -u
-q=${!#}
+q=${NODI_QUERY-}
 unit=C
-[ $# -ge 2 ] && [ "$1" = us ] && unit=F
-place=$q
+[ "${1-}" = us ] && unit=F
+# Its ends trimmed, so " here " is here; wttr.in reads + as a space, so
+# a + of the place's own is %2B (Cursor 2026-10-10).
+place=${q#"${q%%[![:space:]]*}"}; place=${place%"${place##*[![:space:]]}"}
 case $(printf '%s' "$place" | tr '[:upper:]' '[:lower:]') in here|"") place="" ;; esac
-where=$(printf '%s' "$place" | jq -sRr 'gsub(" "; "+") | @uri | gsub("%2B"; "+")')
+where=$(printf '%s' "$place" | jq -sRr '@uri | gsub("%20"; "+")')
 # wttr.in answers a place it does not know with an error status, which is
 # said as that, not as wttr.in being down (Fable 2026-10-07).
 body=$(mktemp) || exit 1
 trap 'rm -f -- "$body"' EXIT
 # At most 1 MB, over https only: a body past it fails the request; -q
-# first, so no ~/.curlrc turns on a redirect.
-code=$(curl -q -sS --max-time 10 --max-filesize 1048576 --proto =https -A "curl (Nodi)" -o "$body" -w '%{http_code}' "https://wttr.in/$where?format=j1") || { printf 'wttr.in did not answer.\n' >&2; exit 1; }
+# first, so no ~/.curlrc turns on a redirect. No place, no variable: a
+# curl before 8.22 fails one that is empty (CI's 8.5, 2026-10-10).
+if [ -n "$where" ]; then at=(--variable %NODI_WHERE --expand-url 'https://wttr.in/{{NODI_WHERE}}?format=j1'); else at=('https://wttr.in/?format=j1'); fi
+code=$(NODI_WHERE=$where curl -q -sS --max-time 10 --max-filesize 1048576 --proto =https -A "curl (Nodi)" -o "$body" -w '%{http_code}' \
+         "${at[@]}") || { printf 'wttr.in did not answer.\n' >&2; exit 1; }
 case $code in
   200) got=$(cat -- "$body") ;;
   404|500) printf 'wttr.in knows no place called *%s*.\n' "$q"; exit 0 ;;
   *) printf 'wttr.in did not answer (%s).\n' "$code" >&2; exit 1 ;;
 esac
-printf '%s' "$got" | jq -r --arg u "$unit" --arg asked "$q" '
-  def t(c; f): if $u == "F" then f + "°F" else c + "°C" end;
+printf '%s' "$got" | NODI_UNIT=$unit jq -r '
+  $ENV.NODI_UNIT as $u | ($ENV.NODI_QUERY // "") as $asked
+  | def t(c; f): if $u == "F" then f + "°F" else c + "°C" end;
   def sky: (.weatherDesc[0].value // "") | gsub("^\\s+|\\s+$"; "");
   (.nearest_area[0] // {}) as $a
   | (($a.areaName[0].value // "") + (if $a.country[0].value then ", " + $a.country[0].value else "" end)) as $station

@@ -31,6 +31,10 @@ test("a name in settings is made whole; what the entry sets wins; nothing else r
   assert.deepEqual(plain(Filters.list(c.filters).map(x => x.keyword)), ["ob", "i", "dk", "n"]);
   assert.deepEqual(plain(c.answers.map(a => a.command || null)), [[DIR + "/contrib/weather"], null]);
   assert.equal(Config.merge(defaults, { filters: [{ contrib: "obsidian" }] }).filters[0].command, undefined, "no plugin folder known: nothing to run");
+  // Each reads NODI_QUERY: an "argument": true would hand it the words as
+  // one more argument, read as its own (the marketplace's review, 2026-10-10).
+  const a = plain(Config.merge(defaults, { answers: [{ contrib: "weather", argument: true, args: ["us"] }] }, DIR).answers[0]);
+  assert.deepEqual([a.argument, a.command], [undefined, [DIR + "/contrib/weather", "us"]]);
 });
 
 test("every name has its program, executable, and every program its name", () => {
@@ -51,8 +55,8 @@ function home() {
   return {
     dir,
     stub: (name, script) => { writeFileSync(join(bin, name), "#!/bin/bash\n" + script); chmodSync(join(bin, name), 0o755); },
-    run: (name, args = []) => execFileSync(join(root, "contrib", name), args,
-      { env: { HOME: dir, PATH: bin + ":/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8" } }).toString(),
+    run: (name, args = [], env = {}) => execFileSync(join(root, "contrib", name), args,
+      { env: { HOME: dir, PATH: bin + ":/usr/local/bin:/usr/bin:/bin", LANG: "C.UTF-8", ...env } }).toString(),
     done: () => rmSync(dir, { recursive: true, force: true })
   };
 }
@@ -152,35 +156,78 @@ test("containers: running first, stop asked twice, a shell and the logs in a ter
   } finally { h.done(); }
 });
 
+// A stand-in curl that asks real curl what URL its template makes, from
+// the variables it was given, into --expand-write-out: nothing is fetched,
+// and $url is what curl would ask for. Each call's own arguments are kept.
+const CURL = 'printf "%s\\n" "$*" >> "$HOME/argv.log"; printf "%s\\n" "$*" >> "$HOME/curl.log"\n'
+  + 'vars=(); tmpl=; out=; prev=\n'
+  + 'for a; do case $prev in --variable) vars+=(--variable "$a");; --expand-url) tmpl=$a;; -o) out=$a;; *) case $a in https://*) [ -n "$tmpl" ] || tmpl=$a;; esac;; esac; prev=$a; done\n'
+  // As a curl before 8.22 does (CI's 8.5, 2026-10-10): an empty variable
+  // fails, so a script must never hand one over.
+  + 'for v in "${vars[@]}"; do case $v in %*) n=${v#%}; [ -n "${!n-}" ] || { echo "curl: option --variable: variable expansion failure" >&2; exit 2; };; esac; done\n'
+  + 'url=$(/usr/bin/curl -q -s "${vars[@]}" --expand-write-out "$tmpl" -o /dev/null file:///dev/null)\n';
+
+// The other programs a contrib script starts, each keeping its arguments.
+function logged(h, names) {
+  for (const n of names) h.stub(n, 'printf "%s\\n" "$*" >> "$HOME/argv.log"; exec /usr/bin/' + n + ' "$@"\n');
+}
+
 test("wikipedia and weather: Markdown from what the sites send, and nothing asked for a bad language", () => {
   const h = home();
   try {
-    h.stub("curl", 'case "$*" in *list=search*) echo \'{"query":{"search":[{"title":"Tamil language"}]}}\';; '
-      + '*rest_v1/page/summary/Tamil_language*) echo \'{"title":"Tamil language","description":"Dravidian language","extract":"Tamil is old.",'
+    h.stub("curl", CURL + 'case "$url" in *list=search*srsearch=tamil%20language) echo \'{"query":{"search":[{"title":"Tamil language"}]}}\';; '
+      + '*rest_v1/page/summary/Tamil_language) echo \'{"title":"Tamil language","description":"Dravidian language","extract":"Tamil is old.",'
       + '"content_urls":{"desktop":{"page":"https://en.wikipedia.org/wiki/Tamil_language"}}}\';; *) exit 22;; esac\n');
-    assert.equal(h.run("wikipedia", ["tamil language"]),
+    assert.equal(h.run("wikipedia", [], { NODI_QUERY: "tamil language" }),
       "# Tamil language\n\n*Dravidian language*\n\nTamil is old.\n\n[Read the article](https://en.wikipedia.org/wiki/Tamil_language)\n");
-    h.stub("curl", 'echo "$*" >> "$HOME/asked"; echo \'{"query":{"search":[]}}\'\n');
-    assert.equal(h.run("wikipedia", ["zzqx"]), "Wikipedia has no article for *zzqx*.\n");
-    assert.match(h.run("wikipedia", ["e;n", "x"]), /^No Wikipedia is named/);
+    h.stub("curl", CURL + 'echo \'{"query":{"search":[]}}\'\n');
+    assert.equal(h.run("wikipedia", [], { NODI_QUERY: "zzqx" }), "Wikipedia has no article for *zzqx*.\n");
+    assert.match(h.run("wikipedia", ["e;n"], { NODI_QUERY: "x" }), /^No Wikipedia is named/);
     // The summary failing after the search found the article: said, not an empty answer.
-    h.stub("curl", 'case "$*" in *list=search*) echo \'{"query":{"search":[{"title":"Gone"}]}}\';; *) exit 22;; esac\n');
-    assert.throws(() => h.run("wikipedia", ["gone"]), e => /Wikipedia did not answer/.test(String(e.stderr)));
-    assert.equal(readFileSync(join(h.dir, "asked"), "utf8").split("\n").filter(Boolean).length, 1, "the bad language asked nothing");
+    h.stub("curl", CURL + 'case "$url" in *list=search*) echo \'{"query":{"search":[{"title":"Gone"}]}}\';; *) exit 22;; esac\n');
+    assert.throws(() => h.run("wikipedia", [], { NODI_QUERY: "gone" }), e => /Wikipedia did not answer/.test(String(e.stderr)));
+    assert.equal(readFileSync(join(h.dir, "curl.log"), "utf8").split("\n").filter(Boolean).length, 5, "the bad language asked nothing");
     const day = (d, lo, hi) => ({ date: d, mintempC: lo, maxtempC: hi, mintempF: "0", maxtempF: "0", hourly: [{}, {}, {}, {}, { weatherDesc: [{ value: "Sunny " }] }] });
     const j1 = { nearest_area: [{ areaName: [{ value: "Sowcarpet" }], country: [{ value: "India" }] }],
                  current_condition: [{ temp_C: "31", temp_F: "88", FeelsLikeC: "34", FeelsLikeF: "93", weatherDesc: [{ value: " Sunny" }],
                                        humidity: "60", windspeedKmph: "17", windspeedMiles: "11", precipMM: "0.0" }],
                  weather: [day("2026-10-07", "28", "31"), day("2026-10-08", "27", "30")] };
     // As curl -o FILE -w '%{http_code}' does: the body to the file, the status out.
-    h.stub("curl", 'out=; prev=; for a; do [ "$prev" = -o ] && out=$a; prev=$a; done\n'
-      + 'case "$*" in *wttr.in/chennai?format=j1*) cat > "$out" <<"J"\n' + JSON.stringify(j1) + '\nJ\nprintf 200;; *) : > "$out"; printf 404;; esac\n');
-    assert.equal(h.run("weather", ["chennai"]), "# chennai\n\n*Measured near Sowcarpet, India*\n\n**31°C**, Sunny, feels like 34°C\n\n"
+    h.stub("curl", CURL
+      + 'case "$url" in https://wttr.in/chennai?format=j1|https://wttr.in/new+york?format=j1|https://wttr.in/?format=j1) cat > "$out" <<"J"\n' + JSON.stringify(j1) + '\nJ\nprintf 200;; *) : > "$out"; printf 404;; esac\n');
+    assert.equal(h.run("weather", [], { NODI_QUERY: "chennai" }), "# chennai\n\n*Measured near Sowcarpet, India*\n\n**31°C**, Sunny, feels like 34°C\n\n"
       + "Humidity 60%, wind 17 km/h, rain 0.0 mm\n\n| Day | Low | High | Sky |\n|---|---|---|---|\n"
       + "| 2026-10-07 | 28°C | 31°C | Sunny |\n| 2026-10-08 | 27°C | 30°C | Sunny |\n");
-    assert.equal(h.run("weather", ["zzzzqqx"]), "wttr.in knows no place called *zzzzqqx*.\n");
+    assert.match(h.run("weather", ["us"], { NODI_QUERY: "new york" }), /^# new york\n[\s\S]*\*\*88°F\*\*, Sunny, feels like 93°F[\s\S]*wind 11 mph/,
+                 "a place of two words as wttr.in takes it; Fahrenheit when the argument says us");
+    assert.match(h.run("weather", [], { NODI_QUERY: "Here" }), /^# Sowcarpet, India\n\n\*\*31°C\*\*/, "here: no place asked, the station named");
+    assert.equal(h.run("weather", [], { NODI_QUERY: "zzzzqqx" }), "wttr.in knows no place called *zzzzqqx*.\n");
+    // What is asked: the ends trimmed, so " Here " is here; a space is +,
+    // and a + of the place's own %2B, as wttr.in reads + as a space
+    // (Cursor 2026-10-10).
+    h.stub("curl", CURL + 'printf "%s\\n" "$url" >> "$HOME/urls"; : > "$out"; printf 404\n');
+    for (const q of ["  Here ", "   ", "a+b", "new  york", "50%"]) h.run("weather", [], { NODI_QUERY: q });
+    assert.deepEqual(readFileSync(join(h.dir, "urls"), "utf8").trim().split("\n"),
+      ["https://wttr.in/?format=j1", "https://wttr.in/?format=j1", "https://wttr.in/a%2Bb?format=j1", "https://wttr.in/new++york?format=j1", "https://wttr.in/50%25?format=j1"]);
     // Any other status: wttr.in's trouble, said, and the answer failed.
-    h.stub("curl", 'out=; prev=; for a; do [ "$prev" = -o ] && out=$a; prev=$a; done; : > "$out"; printf 503\n');
-    assert.throws(() => h.run("weather", ["chennai"]), e => e.status === 1 && /wttr\.in did not answer \(503\)\./.test(String(e.stderr)));
+    h.stub("curl", CURL + ': > "$out"; printf 503\n');
+    assert.throws(() => h.run("weather", [], { NODI_QUERY: "chennai" }), e => e.status === 1 && /wttr\.in did not answer \(503\)\./.test(String(e.stderr)));
+  } finally { h.done(); }
+});
+
+test("wikipedia and weather: the words reach no program's arguments, only curl's variables and jq's environment (the marketplace's review, 2026-10-10)", () => {
+  const h = home();
+  try {
+    logged(h, ["jq", "tr", "cat", "mktemp", "rm"]);
+    h.stub("curl", CURL + 'case "$url" in *list=search*) echo \'{"query":{"search":[{"title":"Secret merger plan"}]}}\';; '
+      + '*rest_v1/page/summary/Secret_merger_plan) echo \'{"title":"Secret merger plan","extract":"x","content_urls":{"desktop":{"page":"https://x"}}}\';; *) exit 22;; esac\n');
+    assert.match(h.run("wikipedia", [], { NODI_QUERY: "secret merger plan" }), /^# Secret merger plan/, "found, through the variables");
+    h.stub("curl", CURL + 'case "$url" in https://wttr.in/acme+hq+chennai?format=j1) printf "not json" > "$out"; printf 200;; *) : > "$out"; printf 404;; esac\n');
+    assert.throws(() => h.run("weather", [], { NODI_QUERY: "acme hq chennai" }), e => /wttr\.in gave no weather/.test(String(e.stderr)), "asked for the place, through the variable");
+    // Random names (the test's folder, mktemp's file) can spell a word:
+    // "hq" was in one (2026-10-10).
+    const argvs = readFileSync(join(h.dir, "argv.log"), "utf8").split(h.dir).join("<home>").replace(/\/tmp\/tmp\.[A-Za-z0-9]+/g, "<tmp>");
+    assert.ok(argvs.includes("--variable"), "the log has the calls");
+    for (const w of ["secret", "merger", "Secret_merger", "acme", "hq"]) assert.ok(!argvs.toLowerCase().includes(w.toLowerCase()), "in an argument: " + w);
   } finally { h.done(); }
 });

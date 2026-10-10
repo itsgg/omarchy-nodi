@@ -1,8 +1,10 @@
 #!/bin/bash
 # A script filter for the tests: notes whose name holds the query, a line of
 # JSON each, then a line that is not JSON and one without a title.
-q=${1:-}
-[ "$NODI_QUERY" = "$q" ] || { echo '{"title": "NODI_QUERY differs"}'; exit 0; }
+# The query is NODI_QUERY, never an argument (the marketplace's review,
+# 2026-10-10): one given is said.
+q=${NODI_QUERY-}
+[ $# -eq 0 ] || { echo '{"title": "an argument was given"}'; exit 0; }
 # "window" answers with the window it was told of, a field a line.
 if [ "$q" = window ]; then
   for v in "$NODI_WINDOW_ADDRESS" "$NODI_WINDOW_CLASS" "$NODI_WINDOW_TITLE" "$NODI_WINDOW_PID" "$NODI_WINDOW_WORKSPACE"; do

@@ -3,12 +3,13 @@
 .import "../lib/Run.js" as Run
 .import "../lib/Toggles.js" as Toggles
 .import "../lib/Score.js" as Score
+.import "../lib/Reminders.js" as Reminders
 
 // What Omarchy's menu cannot say in one row: a level ("volume 60"), a
 // reminder with its minutes and message, a theme by name, and the toggles
 // the menu has no row for (Bluetooth, Wi-Fi, sound, microphone). Everything
-// runs through Omarchy's own commands, so the OSD, the notifications and the
-// sink resolution are Omarchy's.
+// runs through Omarchy's own commands, so the OSD and the sink resolution
+// are Omarchy's; but reminders are Nodi's own (lib/Reminders.js).
 //
 // From Nodi.qml: ctx.toggleStates (lib/Toggles.js, levels included) and
 // ctx.themes = { list: [{ name, preview }], current }.
@@ -164,38 +165,49 @@ function duration(mins) {
   return (mins % 60 ? h.toFixed(1) : String(h)) + (h === 1 ? " hour" : " hours")
 }
 
-function reminderRows(raw) {
-  var list = /^reminders?\s*$|^reminders?\s+(show|list)$/i.test(raw)
-  if (list) {
-    return [
-      { key: "remind:show", title: "Show Reminders", subtitle: "Pending", icon: "󰂚", score: 97, copy: "",
-        run: Run.exec(["omarchy-reminder", "show"]) },
-      { key: "remind:clear", title: "Clear All Reminders", subtitle: "All pending", icon: "󰂛", score: 96, copy: "",
-        confirm: true, run: Run.exec(["omarchy-reminder", "clear"]) }
-    ]
+// Nodi's own (lib/Reminders.js): set, listed and cleared by the bar itself
+// (`nodi` actions), the words in no program's arguments; Omarchy's reminder
+// put them in systemd-run's, its timer's and its notifications' (the
+// marketplace's review, 2026-10-10). ctx.reminders is the bar's list.
+function clearRow(score) {
+  return { key: "remind:clear", title: "Clear All Reminders", subtitle: "All pending", icon: "󰂛", score: score, copy: "",
+           confirm: true, nodi: "remindClear", actionLabel: "Clear", remember: false }
+}
+
+function reminderRows(raw, ctx) {
+  var nowMs = (ctx.now ? ctx.now() : new Date()).getTime()
+  var h24 = !(ctx.config && ctx.config.time && ctx.config.time.clock24 === false)
+  if (/^reminders?\s*$|^reminders?\s+(show|list)$/i.test(raw)) {
+    var mine = Reminders.pending(ctx.reminders)
+    if (!mine.length) return [{ key: "remind:none", title: "No reminder set", subtitle: "remind <minutes> <message>", icon: "󰂚", score: 97,
+                                copy: "", complete: "remind 15 ", remember: false }]
+    return mine.map(function(r, i) {
+      var d = Reminders.describe(r, nowMs, h24)
+      return { key: "remind:pending:" + r.id, title: d.title, subtitle: d.subtitle, icon: "󰂚", score: 97 - i * 0.01, copy: r.message,
+               remember: false, group: "Reminders" }
+    }).concat([clearRow(90)])
   }
-  if (/^reminders?\s+clear$/i.test(raw)) {
-    return [{ key: "remind:clear", title: "Clear All Reminders", subtitle: "All pending", icon: "󰂛", score: 98, copy: "",
-              confirm: true, run: Run.exec(["omarchy-reminder", "clear"]) }]
-  }
+  if (/^reminders?\s+clear$/i.test(raw)) return [clearRow(98)]
   var m = raw.match(/^remind(?:er)?(?:\s+me)?(?:\s+in)?(?:\s+(\d+(?:\.\d+)?)\s*(m|min|mins|minutes?|h|hr|hrs|hours?)?\b)?(?:\s+(?:to\s+)?(.*))?$/i)
   if (!m) return []
   if (!m[1]) {
-    return [{ key: "remind:prompt", title: "Reminder", subtitle: "Omarchy reminder", icon: "󰂚",
+    return [{ key: "remind:prompt", title: "Reminder", subtitle: "Shown by Nodi when it is due", icon: "󰂚",
               score: 95, copy: "", complete: "remind 15 ", hint: "remind <minutes> <message>" }]
   }
   var mins = minutesOf(m[1], m[2])
-  if (mins < 1 || mins > 7 * 24 * 60) return []
+  if (mins < 1 || mins > Reminders.MAX_MINUTES) return []
   var msg = (m[3] || "").trim()
   return [{
     key: "remind:" + mins,
     title: msg ? "Remind in " + duration(mins) + ": " + msg : "Remind in " + duration(mins),
-    subtitle: "A notification, from omarchy reminder",
+    subtitle: "Shown by Nodi at " + Reminders.clock(nowMs + mins * 60000, h24),
     icon: "󰂚",
     score: 98,
     copy: "",
     actionLabel: "Set",
-    run: Run.exec(msg ? ["omarchy-reminder", String(mins), msg] : ["omarchy-reminder", String(mins)])
+    remember: false,
+    nodi: "remindSet",
+    data: { minutes: mins, message: msg }
   }]
 }
 
@@ -273,7 +285,7 @@ var provider = {
   help: [
     { id: "system", title: "Volume, brightness, reminders, themes", icon: "󰒓", about: "Levels, reminders and themes by name",
       examples: [{ q: "volume 60", note: "Through Omarchy's own volume command and OSD" }, { q: "bright -10", note: "The focused display" },
-                 { q: "remind 15 call mom", note: "A notification in 15 minutes" }, { q: "theme ", note: "Every theme, the current one marked" },
+                 { q: "remind 15 call mom", note: "Nodi says it in 15 minutes, in its own toast" }, { q: "theme ", note: "Every theme, the current one marked" },
                  { q: "bluetooth", note: "Bluetooth, ON or OFF" }] }
   ],
   match: function(query, ctx) {
@@ -282,7 +294,7 @@ var provider = {
     var m
     if ((m = q.match(/^(?:vol|volume)(?:\s+(.*))?$/))) return volumeRows((m[1] || "").trim(), ctx)
     if ((m = q.match(/^(?:bright|brightness)(?:\s+(.*))?$/))) return brightnessRows((m[1] || "").trim(), ctx)
-    if (/^remind/i.test(raw)) return reminderRows(raw)
+    if (/^remind/i.test(raw)) return reminderRows(raw, ctx)
     if ((m = q.match(/^themes?(?:\s+(.*))?$/))) return themeRows((m[1] || "").trim(), ctx)
     if (q.length < 2) return []
     return extraRows(q, ctx)

@@ -11,8 +11,10 @@
 //     { "keyword": "a", "title": "Assistant", "icon": "󰚩", "command": ["my-ask", "--markdown"] }
 //   ]
 //
-// "a why is it slow", then Enter, runs `my-ask --markdown "why is it slow"`:
-// the question, trimmed, is the last argument and NODI_QUERY, the window
+// "a why is it slow", then Enter, runs `my-ask --markdown` with NODI_QUERY
+// "why is it slow": the question, trimmed, in its environment, never its
+// arguments (the marketplace's review, 2026-10-10), the last argument too
+// only with "argument": true; the window
 // you came from NODI_WINDOW_* (providers/filters.js), with the session's
 // PATH, for two minutes at most (`timeoutMs`, up to ten). Escape while it
 // answers stops it, the program and what it started, and so does closing
@@ -36,7 +38,7 @@ function spec(query, settings, window) {
     title: f.title || f.keyword,
     question: hit.query,
     timeoutMs: Math.min(MAX_MS, Math.max(1000, Number(f.timeoutMs) || DEFAULT_MS)),
-    argv: f.command.concat([hit.query]),
+    argv: f.command.concat(f.argument === true ? [hit.query] : []),
     env: Filters.merged({ NODI_QUERY: hit.query }, Filters.windowEnv(window))
   }
 }

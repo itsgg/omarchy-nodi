@@ -23,6 +23,9 @@ Item {
   property var failures: []
   property int proposals: 0
   property int remaining: 21
+  property int carriedCalls: 0
+  property int rawCalls: 0
+  Carried { id: carried }
   readonly property string fake: String(Qt.resolvedUrl("fake-agent.py")).replace(/^file:\/\//, "")
   readonly property string nodi: String(Qt.resolvedUrl("../../bin/nodi")).replace(/^file:\/\//, "")
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
@@ -33,6 +36,7 @@ Item {
   function finished() {
     if (--test.remaining > 0) return
     deadline.stop()
+    if (test.rawCalls !== 0 || test.carriedCalls === 0) test.failures.push("messages in IPC arguments: " + test.rawCalls + " raw, " + test.carriedCalls + " carried")
     test.done(test.failures.length === 0, test.failures.join("; "))
   }
 
@@ -40,7 +44,12 @@ Item {
   // one argument the facade passes: the session its token names.
   IpcHandler {
     target: "nodiAskTest"
-    function askMcp(arg: string): string {
+    function askMcp(carriedArg: string): string {
+      // As Nodi.qml reads it: carried in a file, never the message itself
+      // in the argument (the marketplace's review, 2026-10-10).
+      if (carriedArg.indexOf("@file:") === 0) test.carriedCalls++; else test.rawCalls++
+      var arg = carried.read(carriedArg)
+      if (arg === null) return "unknown"
       var token = ""
       try { token = JSON.parse(arg).token } catch (e) {}
       for (var i = 0; i < test.sessions.length; i++) if (test.sessions[i].token === token) return test.sessions[i].serveCall(arg)

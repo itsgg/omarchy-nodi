@@ -2,7 +2,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, mkdtempSync, mkdirSync, writeFileSync, chmodSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { load, root, plain } from "./load.mjs";
@@ -113,8 +114,9 @@ test("a command that needs an argument fills in the run mode", () => {
 test("the run mode runs a command line in a terminal, or without one", () => {
   const r = top("> htop");
   assert.equal(r.provider, "shell");
-  assert.deepEqual(plain(r.run.argv), ["omarchy-launch-floating-terminal-with-presentation", "htop"]);
-  assert.deepEqual(plain(r.actions[0].run), { kind: "shell", script: "htop" });
+  const Sh = load("providers/shell.js");
+  assert.deepEqual(plain(r.run), { kind: "shell", script: Sh.IN_TERMINAL, args: [], text: "htop" }, "the command line beside it, in the environment");
+  assert.deepEqual(plain(r.actions[0].run), { kind: "shell", script: Sh.WITHOUT, args: [], text: "htop" });
   assert.equal(r.remember, false, "a command line is not offered again from the home");
   assert.equal(run(">").length, 1);
   assert.equal((Engine.mode("> x", config) || {}).label, "Run");
@@ -138,4 +140,28 @@ test("a saved Omarchy command as the catalog has it now, by its program; one the
   assert.equal(row.title, Omarchy.rowFor(one, "exact").title);
   assert.equal(Omarchy.provider.resolve("omarchy:no-such-binary", ctx), null);
   assert.equal(Omarchy.provider.resolve("omarchy:" + one.binary, {}), null, "no catalog read yet: nothing");
+});
+
+test("a command line reaches no argument: the terminal is given a 0600 script that removes itself, or it runs from the environment (the marketplace's review, 2026-10-10)", () => {
+  const Sh = load("providers/shell.js");
+  const t = mkdtempSync(join(tmpdir(), "nodi-shell-"));
+  try {
+    const bin = join(t, "bin"), run = join(t, "run");
+    mkdirSync(bin); mkdirSync(run, { mode: 0o700 });
+    // The launcher as Omarchy's: it runs what it is given, here at once,
+    // and says what it was given.
+    writeFileSync(join(bin, "omarchy-launch-floating-terminal-with-presentation"), '#!/bin/bash\nprintf "%s\\n" "$*" > "$LOG"; stat -c %a "${2%/*}" "$2" >> "$LOG"; "$@"\n');
+    chmodSync(join(bin, "omarchy-launch-floating-terminal-with-presentation"), 0o755);
+    const cmd = "printf '%s' \"secret $((6*7))\" > \"$OUT\"";
+    const log = join(t, "log"), out = join(t, "out");
+    execFileSync("/usr/bin/bash", ["-c", Sh.IN_TERMINAL, "nodi"], { env: { PATH: bin + ":/usr/bin:/bin", XDG_RUNTIME_DIR: run, LOG: log, OUT: out, NODI_TEXT: cmd } });
+    const said = readFileSync(log, "utf8").split("\n");
+    assert.match(said[0], /^bash .*\/nodi-sh\.[A-Za-z0-9]+\/run$/, "the terminal is given a path");
+    assert.ok(!said[0].includes("secret"), "the command line in no argument");
+    assert.deepEqual(said.slice(1, 3), ["700", "600"], "its folder and file his alone");
+    assert.equal(readFileSync(out, "utf8"), "secret 42", "it ran as typed");
+    assert.deepEqual(readdirSync(run).filter(f => f.startsWith("nodi-sh.")), [], "gone once it ran");
+    execFileSync("/usr/bin/bash", ["-c", Sh.WITHOUT, "nodi"], { env: { PATH: "/usr/bin:/bin", OUT: out, NODI_TEXT: "printf '%s' plain > \"$OUT\"" } });
+    assert.equal(readFileSync(out, "utf8"), "plain", "without a terminal, from the environment");
+  } finally { rmSync(t, { recursive: true, force: true }); }
 });

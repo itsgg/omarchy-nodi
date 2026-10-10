@@ -263,6 +263,11 @@ test("--check says whether the adapter is in place, and does nothing else whatev
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
+test("an agent runs under umask 077: what it writes is his alone (2026-10-10)", () => {
+  const r = spawnSync("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "exec", "/usr/bin/bash", "-c", "umask"], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } });
+  assert.deepEqual([r.status, r.stdout.trim()], [0, "0077"]);
+});
+
 test("checkArgv: the start's arguments with --check first, under a shell that reads no profile; none for a program of his own", () => {
   const s = plain(G.spec("claude", "/d", "", "x", [], "/a"));
   const c = plain(G.checkArgv(s.argv));
@@ -349,6 +354,13 @@ test("Ask continues: about the selection, about the window, a new question (ROAD
   assert.match(win.ask.message, /^what is this\n\nThe picture is the window the question is about, titled "notes"\.$/);
   const done = { ask: { phase: "done", question: "what is this", answer: "a formula", model: "haiku" } };
   const fresh = plain(run("ask what is this", done)).find(r => r.key === "ask:fresh");
+  // Continue: the agent opened with no prompt, the question copied to
+  // paste, in no argument (the marketplace's review, 2026-10-10).
+  const cont = plain(run("ask what is this", done)).find(r => r.key === "ask:agent");
+  assert.equal(cont.subtitle, "Opens it, the question copied to paste");
+  assert.deepEqual([cont.run.kind, cont.run.text, cont.run.args], ["shell", "what is this", undefined]);
+  assert.equal(cont.run.script, load("lib/Run.js").COPY + " || exit 1\nexec omarchy-agent --pick", "copied as Run's copy copies, then the agent");
+  assert.ok(!JSON.stringify(load("lib/Run.js").command(cont.run).command).includes("what is this"), "the question in no argument");
   assert.deepEqual([fresh.title, fresh.nodi], ["New question", "askNew"]);
   // A proposal waits on him whatever the field holds (Fable 2026-10-06).
   const prop = { ask: { phase: "proposing", question: "lock my screen", answer: "", model: "haiku",
@@ -473,14 +485,29 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   const { Engine, config, services } = await import("./fixtures.mjs");
   const Registry = load("providers/index.js");
   const ids = [...new Set(Registry.all.map(p => p.id))];
-  const atOnce = ["apps", "windows", "menu", "system", "desktop", "desktops", "keys", "plugins"];
+  const atOnce = ["apps", "windows", "menu", "system", "desktop", "desktops", "plugins"];
   assert.ok(ids.length > 30, "every provider: " + ids.length);
   for (const id of ids) assert.equal(A.refusedAtOnce(id + ":x", id) === "", atOnce.includes(id), id + (atOnce.includes(id) ? " runs at once" : " is proposed"));
   for (const id of atOnce) assert.ok(ids.includes(id), id + " is a provider");
   assert.match(A.refusedAtOnce("shell:rm -rf ~", "shell"), /command line; propose it/);
   assert.match(A.refusedAtOnce("remind:15", "system"), /propose it/, "a reminder's message is the agent's words");
-  assert.equal(A.refusedAtOnce("remind:show", "system"), "");
+  // Nodi's own reminders (2026-10-10): no row of theirs runs at once, the
+  // list's copying a message the agent's words may have set, clearing his.
+  for (const k of ["remind:show", "remind:clear", "remind:pending:r1"]) assert.match(A.refusedAtOnce(k, "system"), /propose it/, k);
   assert.equal(A.refusedAtOnce("volume:60", "system"), "", "a number, clamped");
+  // A change of setting or an install waits for his Enter (his word,
+  // 2026-10-10): DNS, a font, a theme, a toggle, a device, a network.
+  for (const [k, p] of [["menu:setup.network.dns.cloudflare", "menu"], ["menu:install.style.font", "menu"], ["menu:style.theme", "menu"],
+                        ["menu:trigger.toggle.idle-lock", "menu"], ["toggle:wifi", "system"], ["theme:catppuccin", "system"],
+                        ["bluetooth:41:42:28:7B:19:CF", "desktop"], ["wifi:Home", "desktop"], ["output:alsa_output.x", "desktop"], ["menu:remove.package", "menu"],
+                        ["system:bg-next", "system"]])
+    assert.match(A.refusedAtOnce(k, p), /changes a setting or installs; propose it/, k);
+  // A keybinding runs what it is bound to: a toggle, a lock (Fable
+  // 2026-10-10: `keys idle` flipped Stay Awake with no Enter).
+  assert.match(A.refusedAtOnce("keys:SUPER CTRL + I", "keys"), /keybinding runs whatever it is bound to; propose it/);
+  for (const [k, p] of [["app:firefox", "apps"], ["window:0xabc", "windows"], ["menu:trigger.capture.screenshot", "menu"], ["media:org.mpris.MediaPlayer2.spotify", "desktop"],
+                        ["system:shot-region", "system"], ["system:record-full", "system"]])
+    assert.equal(A.refusedAtOnce(k, p), "", k + " still at once");
   assert.match(A.refusedAtOnce("k", undefined), /propose it/);
   const row = plain(run("> rm -rf ~", {}))[0];
   assert.deepEqual([row.key, row.provider], ["shell:rm -rf ~", "shell"]);
@@ -566,4 +593,27 @@ test("with the agent's program not installed, no Ask fallback, and `ask ` says s
 test("a question that could not be asked says why, and Enter asks again", () => {
   const rows = plain(run("ask why", { ask: { phase: "error", question: "why", error: "out of credits", agent: "Claude", model: "haiku" } }));
   assert.deepEqual([rows[0].key, rows[0].title, rows[0].actionLabel, rows[0].nodi], ["ask:error", "Could not ask: out of credits", "Ask again", "ask"]);
+});
+
+test("Continue in your agent: a copy that fails stops it before the agent opens, so the toast says why (Fable 2026-10-10)", async () => {
+  const { execFileSync } = await import("node:child_process");
+  const { mkdtempSync, writeFileSync, readFileSync, existsSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { run } = await import("./fixtures.mjs");
+  const cont = plain(run("ask what is this", { ask: { phase: "done", question: "what is this", answer: "a", model: "haiku" } })).find(r => r.key === "ask:agent");
+  const dir = mkdtempSync(join(tmpdir(), "nodi-continue-"));
+  try {
+    writeFileSync(join(dir, "omarchy-agent"), '#!/bin/bash\necho "$*" > "$0.ran"\n', { mode: 0o755 });
+    const go = copy => {
+      writeFileSync(join(dir, "wl-copy"), "#!/bin/bash\ncat > /dev/null\n" + copy, { mode: 0o755 });
+      rmSync(join(dir, "omarchy-agent.ran"), { force: true });
+      try { execFileSync("/usr/bin/bash", ["--norc", "-c", cont.run.script], { env: { PATH: dir + ":/usr/bin:/bin", NODI_TEXT: cont.run.text }, stdio: "pipe" }); return 0 }
+      catch (e) { return e.status }
+    };
+    assert.equal(go("exit 0\n"), 0);
+    assert.equal(readFileSync(join(dir, "omarchy-agent.ran"), "utf8").trim(), "--pick", "copied: the agent opens");
+    assert.equal(go('echo "no compositor" >&2; exit 1\n'), 1, "a failed copy fails the row");
+    assert.ok(!existsSync(join(dir, "omarchy-agent.ran")), "and the agent is not opened");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

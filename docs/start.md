@@ -13,7 +13,7 @@ Super+Period opens it; `omarchy-shell shell toggle io.github.itsgg.nodi
 Another key goes in
 `~/.config/omarchy/extensions/nodi.json` as `"hotkey": "SUPER + SEMICOLON"`
 ([Settings](settings.md)); a key something else already holds is left
-alone, and a notification says "Nodi has no hotkey" and why. Super+Space
+alone, and Nodi's toast says "Nodi has no hotkey" and why. Super+Space
 is Omarchy's menu: to give it to Nodi, move the menu first, in
 `~/.config/hypr/bindings.lua`, then set `"hotkey": "SUPER + SPACE"`:
 
@@ -28,7 +28,7 @@ brought), and `omarchy plugin remove io.github.itsgg.nodi` removes it,
 releasing its key and the hotkeys you gave rows, turning off the window
 rules you set and stopping Ask's agent. What it keeps of yours
 stays until you delete it: `~/.local/state/nodi/prefs.json` (what you set
-on rows), `~/.cache/nodi/` (its caches), `~/.local/share/nodi/` (Ask's
+on rows) and `reminders.json` beside it, `~/.cache/nodi/` (its caches), `~/.local/share/nodi/` (Ask's
 agent adapters) and `nodi.json` (your settings); the
 [README](../README.md#remove) has the command that deletes them.
 

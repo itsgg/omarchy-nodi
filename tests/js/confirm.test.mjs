@@ -21,7 +21,8 @@ test("the command as a shell would read it back, each kind", () => {
   assert.equal(Run.describe(Run.exec(["helper", "act", "run", "a b", "it's", "$(x)", "--flag=1"])), "helper act run 'a b' 'it'\\''s' '$(x)' --flag=1");
   assert.equal(Run.describe(Run.shell('rm -f "$1"', ["/tmp/a b"])), 'rm -f "$1"\n\n$1 = \'/tmp/a b\'');
   assert.equal(Run.describe(Run.shell("systemctl reboot")), "systemctl reboot");
-  assert.equal(Run.describe(Run.open("https://x.test/a?b=c&d")), "gio open 'https://x.test/a?b=c&d'");
+  assert.equal(Run.describe(Run.open("https://x.test/a?b=c&d")), "Open in the browser:\nhttps://x.test/a?b=c&d");
+  assert.equal(Run.describe(Run.open("/home/u/a b.md")), "gio open '/home/u/a b.md'");
   assert.equal(Run.describe(Run.app("firefox")), "gtk-launch firefox.desktop");
   assert.equal(Run.describe(Run.copy("secret")), "Copy to the clipboard:\nsecret");
   assert.equal(Run.describe(Run.focus("0xab")), "Focus the window at 0xab");

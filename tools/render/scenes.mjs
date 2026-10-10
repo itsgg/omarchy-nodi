@@ -359,6 +359,15 @@ const scenes = [
     return { name: "33-pick", query: "s", rows: plain(Pick.rows("s", given)), mode: { label: "Pick", icon: Pick.PROVIDER.icon },
              selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0, paletteArmed: "", paletteRow: null, armedKey: "" };
   })(),
+  // Nodi's own reminders (lib/Reminders.js), listed: two set, and Clear.
+  scene("64-reminders", "reminders", { reminders: [
+    { id: "r1", at: now + 15 * 60e3, set: now, message: "call mom" },
+    { id: "r2", at: now + 80 * 60e3, set: now - 10 * 60e3, message: "stretch" }] }),
+  // Nodi's own notices (components/ToastCard.qml), drawn alone as the
+  // toast's window shows them: a failed run's line, and a reminder said late.
+  { name: "63-toasts", query: "", rows: [], mode: null, selectedIndex: 0, paletteOpen: false, paletteActions: [], paletteIndex: 0, paletteArmed: "", paletteRow: null, armedKey: "",
+    toasts: [{ id: 1, title: "Sync notes failed", body: "rsync: connection refused" },
+             { id: 2, title: "call mom", body: "Due at 14:05, 1 h 30 min ago: the bar was not running then" }] },
   (() => {
     const firefox = plain(Engine.run("firefox", config, services(base)))[0];
     return { name: "18-alias-prompt", query: "ff", rows: plain(Engine.aliasPrompt("ff", firefox)), mode: { label: "Alias", icon: "󰌌" }, aliasRow: firefox,

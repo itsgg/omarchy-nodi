@@ -139,6 +139,16 @@ test("ics: where an address points: file:// and ~/ are files, webcal is https, a
   assert.deepEqual(got, [["file", "/tmp/a b.ics"], ["file", "/home/u/cal.ics"], ["file", "/abs.ics"], ["web", "https://x.example/c.ics"],
                          [null, "not an https:// or webcal:// address, nor a file"]]);
 });
+test("ics: http only to this machine: elsewhere the calendar and its address would go unencrypted (2026-10-10)", () => {
+  const got = py(["print(json.dumps([ics.where(u) for u in sys.argv[2:]]))"],
+                 ["http://cal.example/x.ics", "HTTP://cal.example/x.ics", "http://127.0.0.1:8080/x.ics", "http://localhost/x.ics", "http://[::1]:9/x.ics", "http://127.0.0.1.evil.example/x.ics", "https://cal.example/x.ics",
+                  "http://localhost:x@cal.example/x.ics", "http://127.0.0.1:8080@cal.example/x.ics", "http://localhost@cal.example/x.ics", "http://me@LOCALHOST:8080/x.ics", "http://[::1/x.ics"]);
+  const refused = [null, "an http:// address would send the calendar unencrypted; use https:// or webcal://"];
+  assert.deepEqual(got, [refused, refused, ["web", "http://127.0.0.1:8080/x.ics"], ["web", "http://localhost/x.ics"], ["web", "http://[::1]:9/x.ics"], refused,
+                         ["web", "https://cal.example/x.ics"],
+                         refused, refused, refused, ["web", "http://me@LOCALHOST:8080/x.ics"], refused], "the host after any user:password@");
+});
+
 
 // A feed served on 127.0.0.1 by `mode`, then fetched by ics.fetch with what
 // `setup` changes first; each fetch's [text or None, state].

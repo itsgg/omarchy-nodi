@@ -74,6 +74,30 @@ var CONTENTS = 'q=${NODI_Q-}; unset NODI_Q; d=(); for x in "$@"; do [ -d "$x" ] 
 // copies, never the user's own.
 var EXCLUDED = ["go/pkg/mod", "node_modules", "site-packages", "__pycache__"]
 
+// A name under home: fd lists the names, ripgrep keeps those whose last
+// part holds the words as fixed text, 60 at most, any case unless the
+// words have a capital (fd's smart case). The words reach ripgrep as a
+// pattern on a descriptor, from the environment, never an argument, which
+// another local user can read in /proc: fd took them as its pattern at
+// each keystroke (the marketplace's review, 2026-10-10). A name holding a
+// newline is left out, as in a folder listing: it would read as two lines,
+// the first a path to something else (Fable 2026-10-02). fd stops when
+// ripgrep has its 60, by SIGPIPE, which is a search done; ripgrep's 1 is
+// none found; fd failing is a search that failed (Fable 2026-10-10: the
+// pipe said "nothing" for it).
+var FIND = 're=${NODI_FIND-}; unset NODI_FIND; home=$1; shift'
+  + "\n" + "/usr/bin/fd --color never --absolute-path --exclude $'*\\n*' \"$@\" -- . \"$home\" 2>/dev/null | /usr/bin/rg --no-config -m 60 -f <(printf '%s\\n' \"$re\")"
+  + "\n" + 's=("${PIPESTATUS[@]}"); { [ "${s[0]}" -eq 0 ] || [ "${s[0]}" -eq 141 ]; } && [ "${s[1]}" -le 1 ]'
+
+// The words as ripgrep's pattern for FIND: fixed text in the last part of
+// a path (a folder's ends in "/"), smart case, on one line: in a pattern
+// file a newline makes two patterns (Fable 2026-10-10: "a\nreport" found
+// every name with an "a").
+function findPattern(q) {
+  var w = String(q).replace(/[\r\n]+/g, " ")
+  return (w === w.toLowerCase() ? "(?i)" : "") + "[^/]*" + w.replace(/[\\.+*?()|\[\]{}^$#&\-~]/g, "\\$&") + "[^/]*/?$"
+}
+
 // The find source's parameter: the kind, then the words, apart by a
 // character no name holds.
 function findParam(kind, q) { return kind ? kind + "\u0001" + q : q }
@@ -166,27 +190,34 @@ function parentOf(path) {
 // read's 6, so a slow one
 // costs the picture, never the labels; one a month unused goes (a use
 // touches it).
-var FILE_HEAD = 'f=$1'
+// The path in the environment and the file on descriptor 3, so no
+// program it starts has the path in its arguments, which another local
+// user can read in /proc (the marketplace's review, 2026-10-10); bat is
+// told only its extension, for the colours, or a name every project has
+// (Makefile, .bashrc), never one of his own (Fable 2026-10-10: a name
+// with no dot went whole).
+var FILE_HEAD = 'f=${NODI_TEXT-}; unset NODI_TEXT'
   + "\n" + 'if [ -d "$f" ]; then'
-  + "\n" + '  [ -r "$f" ] && [ -x "$f" ] || exit 1'
-  + "\n" + '  stat -L -c "%s\t%Y" -- "$f" || exit 1'
+  + "\n" + '  [ -r "$f" ] && [ -x "$f" ] && exec 3< "$f" || exit 1'
+  + "\n" + '  stat -L -c "%s\t%Y" /dev/fd/3 || exit 1'
   + "\n" + '  printf "inode/directory\nlist\n"'
-  + "\n" + '  ls -A -p -q --group-directories-first -- "$f" 2>/dev/null | head -n 200'
+  + "\n" + '  cd -- "$f" && ls -A -p -q --group-directories-first 2>/dev/null | head -n 200'
   + "\n" + '  exit 0'
   + "\n" + 'fi'
-  + "\n" + '[ -f "$f" ] || exit 1'
-  + "\n" + 'st=$(stat -L -c "%s\t%Y" -- "$f") || exit 1'
+  + "\n" + '[ -f "$f" ] && exec 3< "$f" || exit 1'
+  + "\n" + 'st=$(stat -L -c "%s\t%Y" /dev/fd/3) || exit 1'
   + "\n" + 'printf "%s\n" "$st"'
-  + "\n" + 'm=$(file -L -b --mime-type -- "$f")'
+  + "\n" + 'm=$(file -L -b --mime-type /dev/fd/3)'
   + "\n" + 'printf "%s\n" "$m"'
   + "\n" + 'case "$m" in'
   + "\n" + '  text/*|application/json|application/xml|application/javascript|application/x-shellscript|application/toml|application/x-yaml|application/sql|inode/x-empty)'
   + "\n" + '    if command -v bat >/dev/null; then'
   + "\n" + '      printf "ansi\n"'
-  + "\n" + '      head -c 4096 -- "$f" | bat --color=always --theme=ansi --style=plain --paging=never --file-name "$f" 2>/dev/null'
+  + "\n" + '      e=${f##*/}; case $e in Makefile|makefile|GNUmakefile|Dockerfile|Containerfile|PKGBUILD|Gemfile|Rakefile|Vagrantfile|Justfile|justfile|.bashrc|.bash_profile|.zshrc|.zprofile|.profile|.gitignore|.gitconfig|.gitattributes|.editorconfig) ;; ?*.?*) e=x.${e##*.} ;; *) e=x ;; esac'
+  + "\n" + '      head -c 4096 <&3 | bat --color=always --theme=ansi --style=plain --paging=never --file-name "$e" 2>/dev/null'
   + "\n" + '    else'
   + "\n" + '      printf "text\n"'
-  + "\n" + '      head -c 4096 -- "$f"'
+  + "\n" + '      head -c 4096 <&3'
   + "\n" + '    fi;;'
   + "\n" + '  application/pdf|video/*)'
   + "\n" + '    d="$HOME/.cache/nodi/thumbs"'
@@ -196,8 +227,8 @@ var FILE_HEAD = 'f=$1'
   + "\n" + '    if [ -s "$out" ]; then touch -c -- "$out"; else'
   + "\n" + '      w=$(mktemp -d -- "$d/.work.XXXXXX") || { printf "none\n"; exit 0; }; tmp="$w/t"'
   + "\n" + '      case "$m" in'
-  + "\n" + '        application/pdf) command -v pdftoppm >/dev/null && timeout -k 1 4 pdftoppm -jpeg -jpegopt quality=85 -f 1 -l 1 -singlefile -scale-to 1000 "$f" "$tmp" >/dev/null 2>&1 && mv -fT -- "$tmp.jpg" "$out";;'
-  + "\n" + '        *) command -v ffmpegthumbnailer >/dev/null && timeout -k 1 4 ffmpegthumbnailer -i "$f" -o "$tmp.jpg" -s 1000 -c jpeg -q 8 >/dev/null 2>&1 && mv -fT -- "$tmp.jpg" "$out";;'
+  + "\n" + '        application/pdf) command -v pdftoppm >/dev/null && timeout -k 1 4 pdftoppm -jpeg -jpegopt quality=85 -f 1 -l 1 -singlefile -scale-to 1000 /dev/fd/3 "$tmp" >/dev/null 2>&1 && mv -fT -- "$tmp.jpg" "$out";;'
+  + "\n" + '        *) command -v ffmpegthumbnailer >/dev/null && timeout -k 1 4 ffmpegthumbnailer -i /dev/fd/3 -o "$tmp.jpg" -s 1000 -c jpeg -q 8 >/dev/null 2>&1 && mv -fT -- "$tmp.jpg" "$out";;'
   + "\n" + '      esac'
   + "\n" + '      rm -rf -- "$w"'
   + "\n" + '      find "$d" -maxdepth 1 -name "*.jpg" -mtime +30 -delete 2>/dev/null'
@@ -407,7 +438,8 @@ var provider = {
   id: "files",
   sources: {
     "file-head": {
-      argv: function(path) { return String(path).charAt(0) === "/" ? ["/usr/bin/bash", "-c", FILE_HEAD, "nodi", String(path)] : null },
+      argv: function(path) { return String(path).charAt(0) === "/" ? ["/usr/bin/bash", "-c", FILE_HEAD, "nodi"] : null },
+      environment: function(path) { return { NODI_TEXT: String(path) } },
       parse: parseHead,
       maxAgeMs: 30 * 1000,
       // A picture made the first time, once: a video's frame took 0.7 s.
@@ -416,9 +448,7 @@ var provider = {
       // a read cut at its cap is no read at all.
       maxBytes: 65536
     },
-    // A name under home: fixed text, never a pattern; 60 at most. A name
-    // holding a newline is left out, as in a folder listing: it would read
-    // as two lines, the first a path to something else (Fable 2026-10-02).
+    // A name under home (FIND).
     find: {
       argv: function(param, env) {
         var p = String(param)
@@ -431,9 +461,9 @@ var provider = {
         // installed per project hold thousands of names (`dns`, `uuid`,
         // `terminal`) a search under home meant none of (2026-10-10, driven
         // live). Hidden folders and what a .gitignore names fd leaves out.
-        return ["/usr/bin/fd", "--fixed-strings", "--max-results", "60", "--color", "never", "--absolute-path",
-                "--exclude", "*\n*"].concat(EXCLUDED.reduce(function(a, x) { return a.concat(["--exclude", x]) }, []), only, ["--", q, env.home])
+        return ["/usr/bin/bash", "-c", FIND, "nodi-find", env.home].concat(EXCLUDED.reduce(function(a, x) { return a.concat(["--exclude", x]) }, []), only)
       },
+      environment: function(param) { var p = String(param); var cut = p.indexOf("\u0001"); return { NODI_FIND: findPattern(cut === -1 ? p : p.slice(cut + 1)) } },
       parse: function(text, ok, param) { var p = String(param); var cut = p.indexOf("\u0001"); return parseFound(text, ok, cut === -1 ? p : p.slice(cut + 1)) },
       maxAgeMs: 10 * 1000,
       timeoutMs: 4000,
