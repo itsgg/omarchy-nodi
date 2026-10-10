@@ -11,8 +11,11 @@
 //     { "keyword": "n", "title": "Notes", "icon": "󰎞", "command": ["my-notes", "--nodi"] }
 //   ]
 //
-// Typing "n meet" runs `my-notes --nodi meet`: the words after the keyword,
-// trimmed, are the last argument, and NODI_QUERY too; the window you came
+// Typing "n meet" runs `my-notes --nodi` with NODI_QUERY "meet": the words
+// after the keyword, trimmed, in its environment, never its arguments,
+// which any local user can read in /proc while it runs (the marketplace's
+// review, 2026-10-10). "argument": true also makes them the last argument,
+// as Alfred's and Walker's programs read them. The window you came
 // from is NODI_WINDOW_ADDRESS, _CLASS, _TITLE, _PID and _WORKSPACE. It runs again as you
 // type, a new keystroke ending the run before it (components/Reader.qml
 // sends TERM to the program and what it started every 50 ms until it ends),
@@ -60,9 +63,10 @@
 // bar closes. A step never runs twice by itself: it may do what it says.
 //
 // "format": "rofi" runs a rofi script as rofi does (rofi-script(5)): first
-// with no argument and ROFI_RETV=0, then on Enter with the entry as its
-// argument, ROFI_RETV=1 (2 for what was typed, offered as a row unless the
-// script says no-custom), ROFI_INFO and ROFI_DATA, each run once. A line
+// with no argument and ROFI_RETV=0, then on Enter with the entry as
+// NODI_PICK (its argument too with "argument": true, which a rofi script
+// reading $1 needs), ROFI_RETV=1 (2 for what was typed, offered as a row
+// unless the script says no-custom), ROFI_INFO and ROFI_DATA, each run once. A line
 // is an entry, its options after a NUL as key\x1fvalue pairs (icon, meta,
 // info, nonselectable, display); a line starting with a NUL sets data,
 // message (shown under the field) or no-custom.
@@ -278,11 +282,11 @@ var shown = Object.create(null)
 // half a second: the reader's own timeout kills this one at a second, and
 // one that ignored TERM then lived on (Fable 2026-10-04). A list is read
 // once for every query: no query, and no window.
-// The program under its own deadline, the query its last argument, as a
-// script filter's contract has it (docs/extend.md).
+// The program under its own deadline, the query its last argument only
+// when the filter says "argument": true (docs/extend.md); NODI_QUERY always.
 function argvOf(param) {
   var p = JSON.parse(param)
-  return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000)].concat(p.command, p.list ? [] : [p.query])
+  return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000)].concat(p.command, p.list || p.argument !== true ? [] : [p.query])
 }
 
 function envOf(param) {
@@ -305,7 +309,7 @@ function paramOf(f, query, ctx) {
   // A list follows its refresh; rerun is for a run on each query.
   var p = { keyword: f.keyword, title: f.title || f.keyword, icon: f.icon || "", command: f.command, timeoutMs: timeoutOf(f) }
   if (f.list === true) { p.list = true; p.refreshMs = refreshOf(f) }
-  else { p.query = query; p.window = ctx.window || null; p.rerunMs = rerunOf(f) }
+  else { p.query = query; p.window = ctx.window || null; p.rerunMs = rerunOf(f); if (f.argument === true) p.argument = true }
   return JSON.stringify(p)
 }
 
@@ -388,8 +392,10 @@ function stepOf(f, ctx) {
 
 function stepRows(f, q, step, ctx) {
   var title = f.title || f.keyword
-  var param = JSON.stringify({ keyword: f.keyword, title: title, icon: f.icon || "", command: f.command, format: f.format === "rofi" ? "rofi" : "",
-                               timeoutMs: timeoutOf(f), step: step })
+  var p = { keyword: f.keyword, title: title, icon: f.icon || "", command: f.command, format: f.format === "rofi" ? "rofi" : "",
+            timeoutMs: timeoutOf(f), step: step }
+  if (f.argument === true) p.argument = true
+  var param = JSON.stringify(p)
   var got = ctx.request ? ctx.request("filter-step", param) : { state: "pending" }
   var v = got.value
   if (got.state === "error" && !v) return [{ title: title + " could not answer", subtitle: String(got.error || ""), score: 40, copy: "", remember: false }]
@@ -493,7 +499,7 @@ var provider = {
       argv: function(param) {
         var p = JSON.parse(param)
         var s = p.step
-        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000)].concat(p.command, p.format === "rofi" && s.depth > 0 ? [s.pick] : [])
+        return ["/usr/bin/timeout", "-k", "0.5", String(p.timeoutMs / 1000)].concat(p.command, p.format === "rofi" && s.depth > 0 && p.argument === true ? [s.pick] : [])
       },
       environment: function(param) {
         var p = JSON.parse(param)

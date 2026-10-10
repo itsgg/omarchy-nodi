@@ -41,6 +41,7 @@ Rectangle {
   }
 
   Text {
+    textFormat: Text.PlainText
     visible: !tile.hasSwatch && !tile.hasImage
     anchors.centerIn: parent
     text: tile.glyph

@@ -8,7 +8,7 @@ import { mkdtempSync, writeFileSync, chmodSync, readFileSync, rmSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { plain } from "./load.mjs";
-import { run, top } from "./fixtures.mjs";
+import { run, top, config } from "./fixtures.mjs";
 
 const levels = { toggleStates: { volume: { on: null, value: "40" }, brightness: { on: null, value: "75" }, bluetooth: { on: false, value: "0" } } };
 const themes = { themes: { current: "Tokyo Night", list: [
@@ -75,17 +75,29 @@ test("brightness", () => {
   assert.deepEqual(plain(top("bright 0", levels).run.argv), ["omarchy-brightness-display", "1%"], "never fully dark by a number");
 });
 
-test("reminders", () => {
+test("reminders are Nodi's own: set, listed and cleared by the bar, the words in no command (the marketplace's review, 2026-10-10)", () => {
   const r = top("remind 15 call mom");
   assert.equal(r.title, "Remind in 15 min: call mom");
-  assert.deepEqual(plain(r.run.argv), ["omarchy-reminder", "15", "call mom"]);
-  assert.deepEqual(plain(top("remind me in 1h to stretch").run.argv), ["omarchy-reminder", "60", "stretch"]);
-  assert.deepEqual(plain(top("reminder 5").run.argv), ["omarchy-reminder", "5"]);
+  assert.equal(r.subtitle, "Shown by Nodi at 14:15", "the fixtures' clock is 14:00");
+  assert.deepEqual(plain([r.nodi, r.data, r.run]), ["remindSet", { minutes: 15, message: "call mom" }, null], "set by Nodi, no command");
+  assert.deepEqual(plain(top("remind me in 1h to stretch").data), { minutes: 60, message: "stretch" });
+  assert.deepEqual(plain(top("reminder 5").data), { minutes: 5, message: "" });
+  assert.equal(top("reminder 5").title, "Remind in 5 min");
+  assert.deepEqual(plain(top("remind 5 -rf --help").data), { minutes: 5, message: "-rf --help" }, "the message is text");
   assert.equal(top("remind").complete, "remind 15 ");
-  assert.equal(top("reminders").title, "Show Reminders");
+  assert.ok(!run("remind 0 x").some(r => r.key && r.key.startsWith("remind:")) && !run("remind 20000 x").some(r => r.key === "remind:20000"), "out of range: none");
+  // The list is the bar's (ctx.reminders), soonest first, then Clear.
+  const at = new Date(2026, 8, 23, 14, 0).getTime();
+  const reminders = [{ id: "b", at: at + 40 * 60000, set: at, message: "stretch" }, { id: "a", at: at + 5 * 60000, set: at, message: "tea" }];
+  const list = run("reminders", { reminders }).filter(r => r.key.startsWith("remind:"));
+  assert.deepEqual(plain(list.map(r => [r.title, r.subtitle])), [["tea", "In 5 min, at 14:05"], ["stretch", "In 40 min, at 14:40"], ["Clear All Reminders", "All pending"]]);
+  assert.equal(list[0].copy, "tea", "Enter copies its words");
+  assert.equal(top("reminders", { reminders: [] }).title, "No reminder set");
   const clear = top("reminders clear");
-  assert.equal(clear.title, "Clear All Reminders"); assert.equal(clear.confirm, true);
-  assert.deepEqual(plain(top("remind 5 -rf --help").run.argv), ["omarchy-reminder", "5", "-rf --help"], "the message is one argument");
+  // Its second Enter is Nodi.qml's own (doNodi arms it, as an undo's).
+  assert.deepEqual(plain([clear.title, clear.nodi, clear.run]), ["Clear All Reminders", "remindClear", null]);
+  const twelve = run("reminders", { reminders }, Object.assign({}, config, { time: Object.assign({}, config.time, { clock24: false }) }))[0];
+  assert.equal(twelve.subtitle, "In 5 min, at 2:05 PM");
 });
 
 test("themes come from Omarchy's list, user themes included, the current one marked", () => {
@@ -112,10 +124,12 @@ test("toggles the menu has no row for", () => {
 test("defects found in the old bar stay fixed", () => {
   // agy's palette built its generic action from run.target, which argv rows
   // do not have, and ran "bash -c undefined"; every row here carries a valid run.
-  for (const q of ["bluetooth", "volume 50", "remind 5 x", "reload hyprland"]) {
+  for (const q of ["bluetooth", "volume 50", "reload hyprland"]) {
     const r = top(q, levels);
     assert.ok(r.run && r.run.kind === "exec" && r.run.argv.every(a => typeof a === "string"), q);
   }
+  // A reminder is Nodi's own verb, no command at all (2026-10-10).
+  assert.equal(top("remind 5 x", levels).nodi, "remindSet");
   // "Change Font" ran `omarchy menu font`, which omarchy-menu rejects; the
   // font list is opened through the menu route (menu.test.mjs, "font").
   // Themes were a fixed list of 23; now whatever Omarchy lists, Dark Knight from ~/.config included.

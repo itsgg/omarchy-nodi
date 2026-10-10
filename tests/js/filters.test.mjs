@@ -98,9 +98,18 @@ test("while a run is on its way the rows before stay; the first time, it says it
   assert.deepEqual(plain(run("n meeti", { filter: () => undefined }).map(r => r.title)), ["Meeting notes"]);
 });
 
-test("the program gets the query as its last argument and NODI_QUERY, under its own deadline", () => {
+test("the program gets the query in NODI_QUERY, as its last argument only when the filter says so, under its own deadline", () => {
   const param = JSON.stringify({ keyword: "n", command: ["prog", "--flag"], query: "a b; $(x)", timeoutMs: 3000, window: { title: "secret.pdf" } });
-  assert.deepEqual(plain(F.provider.sources.filter.argv(param)), ["/usr/bin/timeout", "-k", "0.5", "3", "prog", "--flag", "a b; $(x)"]);
+  // In no argument by default: any local user can read one in /proc (the
+  // marketplace's review, 2026-10-10).
+  assert.deepEqual(plain(F.provider.sources.filter.argv(param)), ["/usr/bin/timeout", "-k", "0.5", "3", "prog", "--flag"]);
+  const asked = JSON.stringify(Object.assign(JSON.parse(param), { argument: true }));
+  assert.deepEqual(plain(F.provider.sources.filter.argv(asked)), ["/usr/bin/timeout", "-k", "0.5", "3", "prog", "--flag", "a b; $(x)"], "\"argument\": true");
+  const params = [];
+  const cfgs = argument => Object.assign({}, config, { filters: [{ keyword: "n", command: ["prog"], argument }] });
+  for (const a of [undefined, true, "yes"]) Engine.run("n meet", cfgs(a), services({ asked: params }));
+  assert.deepEqual(params.filter(k => k.startsWith("filter:")).map(k => JSON.parse(k.slice("filter:".length)).argument), [undefined, true, undefined],
+                   "only true asks for it");
   assert.deepEqual(plain(F.provider.sources.filter.environment(param)), { NODI_QUERY: "a b; $(x)",
     NODI_WINDOW_ADDRESS: "", NODI_WINDOW_CLASS: "", NODI_WINDOW_TITLE: "secret.pdf", NODI_WINDOW_PID: "", NODI_WINDOW_WORKSPACE: "" },
     "the query and the window in the environment, the title in no argument (the marketplace's review, 2026-10-08)");
@@ -123,10 +132,11 @@ test("rows keep distinct keys: by id, else by place", () => {
 
 test("a program that ignores TERM is ended when a newer keystroke replaces it", async () => {
   const { spawn } = await import("node:child_process");
-  const { mkdtempSync, existsSync } = await import("node:fs");
+  const { mkdtempSync, existsSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
   const Sources = load("lib/Sources.js");
   const dir = mkdtempSync(join(tmpdir(), "nodi-filter-"));
+  try {
   // Five seconds to the mark, read at 6 s, so the kill has room while other
   // test files run beside this one (2026-10-09: at 1.5 s it lost, now and
   // then, to the CPU the Ask launch tests take).
@@ -144,6 +154,7 @@ test("a program that ignores TERM is ended when a newer keystroke replaces it", 
   }
   await new Promise(r => setTimeout(r, 5700));
   assert.equal(existsSync(join(dir, "survived")), false, "it was killed before it could finish");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 // A list (ROADMAP 57): read once, found as you type, at root with "root".
@@ -225,7 +236,8 @@ test("at root: three at most, by initials too, and a failed refresh keeps its ro
 // a step at a time as Nodi.qml's stepInto keeps them.
 const ROFI = join(root, "tests/js/fixtures/filters/rofi.sh");
 const STEPS = join(root, "tests/js/fixtures/filters/steps.sh");
-const rofi = { keyword: "r", title: "Rofi", command: [ROFI], format: "rofi" };
+// A rofi script reads the entry picked as $1: it says "argument": true.
+const rofi = { keyword: "r", title: "Rofi", command: [ROFI], format: "rofi", argument: true };
 const stepper = { keyword: "s", title: "Steps", command: [STEPS] };
 const runIn = (f, q, trail) => Engine.run(q, Object.assign({}, config, { filters: [f] }),
   services({ filter: read, session: 1, filterStep: trail ? { keyword: f.keyword, trail } : null }));
@@ -263,6 +275,21 @@ test("a rofi script runs first with nothing, a pick runs it with the entry, and 
   assert.deepEqual(plain(runIn(rofi, "r ", [at("first", "", "start", 2)]).map(r => r.title)), ["typed first"], "ROFI_RETV=2");
   const done = runIn(rofi, "r ", [at("Alpha", "a1", "start", 1), at("Alpha one", "", "", 1)]);
   assert.deepEqual(plain(done.map(r => r.nodi)), ["filterDone"], "nothing printed after a pick: done");
+});
+
+test("a rofi script that does not say \"argument\": true has the entry picked in NODI_PICK, never as an argument (the marketplace's review, 2026-10-10)", () => {
+  const plainRofi = Object.assign({}, rofi);
+  delete plainRofi.argument;
+  const asked = [];
+  Engine.run("r ", Object.assign({}, config, { filters: [plainRofi] }), services({ filter: read, asked, session: 1, filterStep: { keyword: "r", trail: [at("Alpha", "a1", "start", 1)] } }));
+  const param = asked.find(k => k.startsWith("filter-step:")).slice("filter-step:".length);
+  const src = F.provider.sources["filter-step"];
+  assert.deepEqual(plain(src.argv(param)), ["/usr/bin/timeout", "-k", "0.5", "3", ROFI], "no argument");
+  assert.equal(src.environment(param).NODI_PICK, "Alpha");
+  assert.deepEqual(plain(runIn(plainRofi, "r ", [at("Alpha", "a1", "start", 1)]).map(r => r.nodi)), ["filterDone"], "a script reading $1 finds nothing there");
+  const withArg = asked.length;
+  Engine.run("r ", Object.assign({}, config, { filters: [rofi] }), services({ filter: read, asked, session: 1, filterStep: { keyword: "r", trail: [at("Alpha", "a1", "start", 1)] } }));
+  assert.deepEqual(plain(src.argv(asked[withArg].slice("filter-step:".length)).slice(-1)), ["Alpha"], "with it, as rofi gives it");
 });
 
 test("Nodi's own lines step on with next: NODI_PICK, NODI_INFO, NODI_DATA, NODI_STEP, and no argument", () => {

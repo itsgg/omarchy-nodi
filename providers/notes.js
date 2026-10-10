@@ -15,8 +15,11 @@ var DEFAULT = "~/Documents/notes.md"
 var LIMIT = 20
 
 // The line, dated as it is added; the folder made if missing, and a file
-// that ends without a newline given one first (Sonnet 2026-10-06).
-var ADD = 't=${NODI_TEXT-}; unset NODI_TEXT; mkdir -p -- "$(dirname -- "$1")" || exit 1; [ -s "$1" ] && [ -n "$(tail -c 1 -- "$1")" ] && printf "\\n" >> "$1"'
+// that ends without a newline given one first (Sonnet 2026-10-06). A new
+// file is his alone (0600, its new folders 0700): under the shell's umask
+// it was 0644, every note readable by another local user (the
+// marketplace's review, 2026-10-10); one that exists keeps its mode.
+var ADD = 'umask 077; t=${NODI_TEXT-}; unset NODI_TEXT; mkdir -p -- "$(dirname -- "$1")" || exit 1; [ -s "$1" ] && [ -n "$(tail -c 1 -- "$1")" ] && printf "\\n" >> "$1"'
   + "\n" + 'printf -- "- %s %s\\n" "$(date "+%Y-%m-%d %H:%M")" "$t" >> "$1"'
 
 // The file in Omarchy's default editor: a terminal editor at the line.

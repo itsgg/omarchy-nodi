@@ -45,7 +45,7 @@ test("open: by the desktop's name, its own or the word desktop; forget by its na
                           "Work", [{ id: "firefox", cls: "firefox", name: "Firefox", workspace: "1" }], 5);
   const row = run("work", { prefs: p }).find(r => r.provider === "desktops");
   assert.equal(row.title, "Open desktop \"Work\"");
-  assert.deepEqual(plain(row.run.args), ["Work"], "only its name: the apps are read when it runs (Sonnet 2026-10-06)");
+  assert.deepEqual(plain([row.run.args, row.run.text]), [[], "Work"], "only its name, in the environment: the apps are read when it runs (Sonnet 2026-10-06; the marketplace's review, 2026-10-10)");
   assert.equal(run("desktop", { prefs: p }).filter(r => r.provider === "desktops").length, 2);
   for (const q of ["wo", "open", "layout", "op"]) assert.ok(!run(q, { prefs: p }).some(r => r.title === "Open desktop \"Home\""), q + ": no wider word");
   const forget = run("forget desktop work", { prefs: p }).find(r => r.provider === "desktops");
@@ -60,7 +60,7 @@ test("open reads the desktop as saved now, starts only what has no window, once,
   const save = desktops => writeFileSync(join(dir, ".local/state/nodi/prefs.json"), JSON.stringify({ version: 1, desktops }));
   writeFileSync(join(dir, "bin/hyprctl"), '#!/bin/bash\nif [ "$1" = clients ]; then [ -n "$NOCLIENTS" ] && exit 1; printf \'[{"class":"firefox"}]\'; exit; fi\nprintf "%s\\n" "$2" >> "$HOME/dispatched"; [ -n "$REFUSE" ] && { echo "error: no"; exit 0; }; echo ok\n');
   chmodSync(join(dir, "bin/hyprctl"), 0o755);
-  const sh = (name, more) => { try { execFileSync("/usr/bin/bash", ["-c", D.OPEN, "nodi", name], { env: { HOME: dir, PATH: join(dir, "bin") + ":/usr/bin", ...more }, stdio: ["ignore", "pipe", "pipe"] }); return 0; }
+  const sh = (name, more) => { try { execFileSync("/usr/bin/bash", ["-c", D.OPEN, "nodi"], { env: { HOME: dir, PATH: join(dir, "bin") + ":/usr/bin", NODI_TEXT: name, ...more }, stdio: ["ignore", "pipe", "pipe"] }); return 0; }
                                catch (e) { return [e.status, String(e.stderr).trim()]; } };
   const sent = () => existsSync(join(dir, "dispatched")) ? readFileSync(join(dir, "dispatched"), "utf8").trim().split("\n") : [];
   try {
@@ -73,7 +73,7 @@ test("open reads the desktop as saved now, starts only what has no window, once,
       'hl.dsp.exec_cmd([[uwsm-app -- gtk-launch nocls.desktop]], { workspace = "5 silent" })',
       'hl.dsp.exec_cmd([[uwsm-app -- gtk-launch back.desktop]], { workspace = "6 silent" })'],
       "firefox is open; code starts once, on its first workspace; an odd name quoted for the shell, which escapes each ] so no ]] can close the Lua bracket");
-    assert.deepEqual(sh("gone"), [1, "no desktop named gone is saved"], "forgotten: nothing starts");
+    assert.deepEqual(sh("gone"), [1, "no desktop of that name is saved"], "forgotten: nothing starts, the name in no message");
     assert.deepEqual(sh("work", { NOCLIENTS: "1" }), [1, "the open windows could not be read"], "no window list: nothing starts");
     assert.deepEqual(sh("work", { REFUSE: "1" }), [1, "error: no"]);
   } finally { rmSync(dir, { recursive: true, force: true }); }

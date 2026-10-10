@@ -86,6 +86,9 @@ QtObject {
   property var paletteRow: null
   property string armedKey: ""
   property var aliasRow: null
+  // Nodi's own notices (components/ToastCard.qml): a scene that has them
+  // is drawn as them alone.
+  property var toasts: []
   property string typed: ""
   readonly property string placeholder: "Search, or try \"100 usd to eur\""
   property point lastPointer: Qt.point(-1, -1)

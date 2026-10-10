@@ -235,7 +235,20 @@ test("row hotkeys: bound to the row's deeplink, never over another bind", () => 
   const p = Hotkey.planRows(j([{ modmask: 64, key: "K", description: "Keybindings" }]), { "SUPER + F": firefox, "SUPER + K": odd }, "io.github.itsgg.nodi");
   assert.deepEqual(plain(p.conflicts), ["SUPER + K"], "a chord Omarchy holds is refused");
   assert.equal(p.lua.length, 1);
-  assert.equal(p.lua[0], 'hl.bind("SUPER + F", hl.dsp.exec_cmd("omarchy-shell shell call io.github.itsgg.nodi runRow \'app:firefox\'"), { description = "Nodi: Firefox" })');
+  assert.equal(p.lua[0], 'hl.bind("SUPER + F", hl.dsp.exec_cmd("omarchy-shell shell call io.github.itsgg.nodi runRow \'hotkey:SUPER + F\'"), { description = "Nodi: Firefox" })',
+               "named by its keys, never the row's key, which would be in the arguments at each press (the marketplace's review, 2026-10-10)");
+  const Prefs = load("lib/Prefs.js");
+  const prefs = { hotkeys: { "SUPER + F": firefox } };
+  assert.equal(Prefs.rowOfHotkey(prefs, "hotkey:SUPER + F"), "app:firefox");
+  assert.equal(Prefs.rowOfHotkey(prefs, "hotkey:SUPER + G"), "", "a hotkey no longer set runs nothing");
+  assert.equal(Prefs.rowOfHotkey(prefs, "hotkey:constructor"), "");
+  assert.equal(Prefs.rowOfHotkey(prefs, "app:firefox"), "", "only a hotkey's name");
+  // A title's commas and control characters never reach the description,
+  // which Omarchy's records split at commas (the marketplace's review, 2026-10-10).
+  const crafted = { key: "file:/home/u/x.pdf", s: { title: "Q3 report,exec,touch PWNED #\n\t.pdf" + "x".repeat(80), run: { kind: "open", target: "/home/u/x.pdf" } } };
+  const desc = Hotkey.planRows(j([]), { "SUPER + J": crafted }, "x").lua[0].match(/description = "(.*)" \}\)$/)[1];
+  assert.ok(!/[,\t]|\\n|\\t/.test(desc) && desc.length <= 66, desc);
+  assert.equal(desc.slice(0, 40), "Nodi: Q3 report exec touch PWNED # .pdfx");
   const stale = Hotkey.planRows(j([{ modmask: 64, key: "G", description: "Nodi: Old" }, { modmask: 64, key: "F", description: "Nodi: Firefox" }]), { "SUPER + F": firefox }, "x");
   assert.deepEqual(plain(stale.lua.slice(0, 1)), ['hl.unbind("SUPER + G")'], "a row bind no longer wanted goes");
   const known = Hotkey.planRows(j([{ modmask: 64, key: "F", description: "Nodi: Firefox" }]), { "SUPER + F": firefox }, "x", { "SUPER + F": "app:firefox" });
@@ -244,7 +257,7 @@ test("row hotkeys: bound to the row's deeplink, never over another bind", () => 
   assert.deepEqual(plain(written.lua), [], "a key written by hand as super+f is the same bind, left alone");
   const moved = Hotkey.planRows(j([{ modmask: 64, key: "F", description: "Nodi: Firefox" }]), { "SUPER + F": { key: "app:chromium", s: { title: "Chromium", run: {} } } }, "x", { "SUPER + F": "app:firefox" });
   assert.equal(moved.lua[0], 'hl.unbind("SUPER + F")', "a chord moved to another row is bound again");
-  assert.match(moved.lua[1], /runRow 'app:chromium'.*Nodi: Chromium/);
+  assert.match(moved.lua[1], /runRow 'hotkey:SUPER \+ F'.*Nodi: Chromium/);
   assert.deepEqual(plain(moved.bound), { "SUPER + F": "app:chromium" });
   assert.match(Hotkey.captureStartLua(), /define_submap\("nodi-capture", "reset", function\(\) hl\.unbind\("ESCAPE"\); hl\.bind\("ESCAPE".*non_consuming = true/);
   assert.equal(Hotkey.captureEndLua(), 'hl.dispatch(hl.dsp.submap("reset"))');
@@ -278,9 +291,11 @@ test("find: every file under home by name, the closer name first", () => {
   assert.equal(top("find zzz", { found: { q: "zzz", list: [] } }).title, "No file named \"zzz\"");
   assert.equal(top("find report", {}).title, "Searching for report...");
   assert.equal(top("f report", { files }).provider, "files", "f stays recent files");
-  // The query reaches fd as fixed text, after --.
-  const argv = F.provider.sources.find.argv("-rf *", { home: "/home/u" });
-  assert.deepEqual(plain(argv.slice(-3)), ["--", "-rf *", "/home/u"]); assert.ok(argv.includes("--fixed-strings"));
+  // The query reaches no argument: ripgrep's pattern, from the
+  // environment, as fixed text (the marketplace's review, 2026-10-10).
+  const argv = plain(F.provider.sources.find.argv("-rf *", { home: "/home/u" }));
+  assert.ok(!argv.some(a => a.includes("-rf *")));
+  assert.equal(plain(F.provider.sources.find.environment("-rf *")).NODI_FIND, "(?i)[^/]*\\-rf \\*[^/]*/?$");
 });
 
 test("fallbacks: what nothing answers can still be searched", () => {

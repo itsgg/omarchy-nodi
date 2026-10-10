@@ -3,8 +3,8 @@
 Your settings are `~/.config/omarchy/extensions/nodi.json` (type `nodi
 settings` in the bar to open it). It holds only what you change; the rest
 comes from [`config.default.json`](../config.default.json). A change applies
-when the file is saved. A file that does not parse changes nothing: a
-notification, "nodi.json has an error", says where, and the last settings
+when the file is saved. A file that does not parse changes nothing: Nodi's
+toast, "nodi.json has an error", says where, and the last settings
 that worked are kept (the defaults, if none has worked since the shell
 started).
 
@@ -16,7 +16,7 @@ started).
   // Merged with the default keywords; "disabled": true removes one.
   "keywords": [
     { "keyword": "g", "title": "Search DuckDuckGo", "open": "https://duckduckgo.com/?q={q}", "suggest": true },
-    { "keyword": "say", "title": "Notify", "run": "notify-send \"$1\"" },
+    { "keyword": "todo", "title": "Add a todo", "run": "printf '%s\\n' \"$1\" >> ~/todo.txt" },
     { "keyword": "map", "title": "Directions",
       "open": "https://www.google.com/maps/dir/{argument name=\"from\"}/{argument name=\"to\"}" }
   ],
@@ -42,16 +42,16 @@ started).
 
 | Setting | What it does |
 |---|---|
-| `"hotkey"` | The key that opens the bar, as `"SUPER + PERIOD"`; one something else holds is left alone, and a notification says so |
+| `"hotkey"` | The key that opens the bar, as `"SUPER + PERIOD"`; one something else holds is left alone, and Nodi's toast says so |
 | `"providers"` | What Nodi searches, in order; where two take the same word, the earlier wins |
 | `"fallbacks"` | What a query nothing answers offers: `"keywords"` (your searches, Google's first), `"find"` (files), `"ask"` (your agent) |
 | `"teach"` | `false` stops [showing a row's keys](keys.md) after you run it from the bar |
 | `"picks"` | `true` keeps the last 1000 rows run from a query, with the queries typed for each, in `~/.cache/nodi/picks-log.json`, for `make picks` and `make replay` when working on Nodi's ranking |
 | `"keywords"` | Searches and commands by a word of yours (below); they merge with the defaults by keyword |
 | `"snippets"` | Text pasted by a word of yours (below) |
-| `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts` |
-| `"filters"` | [Script filters](extend.md#script-filters), and the ones that [come with Nodi](extend.md#extensions-that-come-with-nodi) |
-| `"answers"` | [Answers](extend.md#answers): a program's answer, streamed beside the list |
+| `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts`; `"arguments"`: `true` gives a script what you type as `$1`, `$2` ... too, as Raycast's scripts read it (always `NODI_ARGUMENT1`, ...) |
+| `"filters"` | [Script filters](extend.md#script-filters), and the ones that [come with Nodi](extend.md#extensions-that-come-with-nodi); on an entry, `"argument": true` makes what you type its last argument too (always `NODI_QUERY`) |
+| `"answers"` | [Answers](extend.md#answers): a program's answer, streamed beside the list; `"argument": true` as a filter's |
 | `"ask"` | [Ask](ask.md): `"agent"` (`"claude"`, `"codex"`, `"gemini"`, or one of your own by its `"command"`; Omarchy's default agent unless set), `"model"` (the agent's own name for it; `haiku` for Claude unless set, which also describes apps), `"actions"` (`false` keeps the agent to answers, without the bar's rows), `"mcpServers"` (servers its answers may use, each call on your Enter), `"environment"` (names of variables of yours the agent is given, past those Ask passes) |
 | `"apps"` | `"describe"`: a few words from Claude for an app with no description of its own |
 | `"math"` | `"precision"`: significant digits in an answer (10) |
@@ -74,9 +74,8 @@ With that, `g omarchy` searches DuckDuckGo, with DuckDuckGo's
 suggestions for what you type under it (`"suggest": true`, which the
 built-in `g`, `yt` and `wiki` have; a keyword of yours by the same word
 replaces the built-in one whole, so it says `"suggest": true` itself),
-`say hello` posts a
-notification, `map home office` gives directions, `sig` pastes a
-signature and `mt Ravi 4pm` a filled-in sentence (Enter pastes it where
+`todo buy milk` adds a line to `~/todo.txt`, `map home office` gives
+directions, `sig` pastes a signature and `mt Ravi 4pm` a filled-in sentence (Enter pastes it where
 you were, Ctrl+Enter copies it). Placeholders, in `open` and in snippets:
 `{q}` or `{argument name="..." default="..."}` for the words typed after
 the keyword (the last one takes the rest), `{clipboard}`, `{date}`,

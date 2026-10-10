@@ -22,6 +22,21 @@
 //      (tests/js/ask.test.mjs): Nodi.qml's agentRows is Engine.agentRows,
 //      and runKey asks AskTools.refusedAtOnce before an agent's run
 //      (codex's review, 2026-10-09: removing either passed every test).
+//   6. Every Text, TextEdit, TextArea and Label in Nodi.qml and
+//      components/ says its textFormat: rich text fetches an <img> with no
+//      click (the marketplace's review, 2026-10-10).
+//   7. Nodi sends no notification: notify-send and omarchy-notification-
+//      send hold their words in arguments, and Omarchy's notification host
+//      puts each popup's text in bash arguments, where another local user
+//      can read them (the marketplace's review, 2026-10-10). Its notices go
+//      to its own toast (components/Toast.qml, Run.js TOAST). Allowed: a
+//      comment, and a command of his own that Nodi only shows as an
+//      example (providers/shell.js's `> notify-send hi`). What no test
+//      reaches in Nodi.qml is held here: its toast over IPC takes only a
+//      payload carried in a file; clearing the reminders, Nodi's own verb,
+//      asks a second Enter; a reminders.json with an error is never
+//      written over; a hotkey's bind finds its row through
+//      Prefs.rowOfHotkey; and each open makes the folders 0700 again.
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -59,13 +74,18 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
 // contract this protects), template literals, a script returned by a
 // helper.
 const WRITTEN = {
-  "providers/keywords.js": ["cmd.run"],               // a keyword's `run` as written; what is typed is its $1
-  "providers/menu.js": ["item.action"],               // a menu row's action
-  "providers/shell.js": ["cmd"]                       // the command line typed after `>`
+  "providers/keywords.js": ["TAKE + cmd.run"],        // a keyword's `run` as written, after the constant line that makes the words typed its $1
+  "providers/menu.js": ["item.action"]                // a menu row's action
 };
+// Run.TOAST, a constant of Run.js's (nodi_toast, rule 7), may lead one:
+// it is held to literals itself below.
 function literalsOnly(expr) {
-  const rest = expr.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, "").replace(/[\s+]/g, "");
+  const rest = expr.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"/g, "").replace(/\bRun\.TOAST\b/g, "").replace(/[\s+]/g, "");
   return rest === "" && /['"]/.test(expr);
+}
+{
+  const decl = read("lib/Run.js").match(/var TOAST = ([\s\S]*?)\n(?=\S|\n)/);
+  if (!decl || /\bRun\.TOAST\b/.test(decl[1]) || !literalsOnly(decl[1])) problems.push("lib/Run.js: TOAST is not a constant of literals");
 }
 // The expression from `at` up to the comma or bracket that ends it.
 function scriptArgument(src, at) {
@@ -137,6 +157,52 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
   const body = (src.match(/function runKey\(key, confirmed, agent\) \{[\s\S]*?\n  \}\n/) || [""])[0];
   if (!/agent === true && !proposed && s \? AskTools\.refusedAtOnce\(k, s\.provider\)/.test(body) || !/if \(refused\) return refused/.test(body))
     problems.push("Nodi.qml: runKey does not refuse an agent's run at once through AskTools.refusedAtOnce");
+}
+
+// 6. Text formats. Scope: Nodi.qml and components/*.qml. A Text with no
+// textFormat renders a line holding a tag as rich text, and Qt fetches an
+// <img> in it with no click: copied text, a filter's badge or a title
+// reached the network so (the marketplace's review, 2026-10-10). Each
+// Text, TextEdit, TextArea and Label says its format.
+for (const rel of ["Nodi.qml", ...files("components")]) {
+  const lines = read(rel).split("\n");
+  lines.forEach((line, i) => {
+    if (!/^\s*(Text|TextEdit|TextArea|Label)\s*\{/.test(line)) return;
+    let depth = 0, j = i, body = "";
+    do { depth += (lines[j].match(/\{/g) || []).length - (lines[j].match(/\}/g) || []).length; body += lines[j] + "\n"; j++; } while (depth > 0 && j < lines.length);
+    if (!/textFormat\s*:/.test(body)) problems.push(`${rel}:${i + 1}: a ${line.trim().split(/\s/)[0]} without textFormat`);
+  });
+}
+
+// 7. Notifications
+{
+  const NOTIFY = /\bnotify-send\b|\bomarchy-notification-send\b/;
+  const scripts = readdirSync(join(root, "contrib")).filter(f => !/\./.test(f)).map(f => join("contrib", f));
+  for (const rel of ["Nodi.qml", "bin/nodi", ...files("components"), ...files("lib"), ...files("providers"), ...scripts]) {
+    const lines = read(rel).split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!NOTIFY.test(line)) continue;
+      const code = line.replace(/^\s*(\/\/|#).*$/, "");
+      if (!NOTIFY.test(code)) continue;
+      if (rel === "providers/shell.js" && code.includes('{ q: "> notify-send hi"')) continue;
+      problems.push(`${rel}:${i + 1}: a notification, which holds its words in arguments; use Nodi's toast (Run.js TOAST, root.toast)`);
+    }
+  }
+  const nodi = read("Nodi.qml");
+  if (!/var text = a\.indexOf\("@file:"\) === 0 \? carried\.read\(a\) : null/.test(nodi))
+    problems.push("Nodi.qml: toast over IPC takes more than a payload carried in a file");
+  if (!/row\.nodi === "remindClear"\) \{\s*(\/\/[^\n]*\s*)?if \(root\.armedKey !== row\.key\) \{ root\.armedKey = row\.key; return \}/.test(nodi))
+    problems.push("Nodi.qml: clearing the reminders does not ask a second Enter");
+  if (!/function saveReminders\(\) \{\s*if \(!root\.remindersLoaded\) return\s*if \(root\.remindersBroken\) return/.test(nodi))
+    problems.push("Nodi.qml: saveReminders may write over a reminders.json with an error");
+  // A hotkey's bind names its keys, never the row (Hotkey.planRows): runRow
+  // finds the row in prefs.json (Fable 2026-10-10).
+  if (!/function runRow\(key\) \{\s*var k = carried\.read\(key\)[\s\S]{0,200}if \(k !== null && \/\^hotkey:\/\.test\(k\)\) k = Prefs\.rowOfHotkey\(root\.prefs, k\) \|\| null/.test(nodi))
+    problems.push("Nodi.qml: runRow does not take a hotkey's bind to its row through Prefs.rowOfHotkey");
+  // Its folders made his alone again at each open, before any write.
+  const opener = (nodi.match(/\n  function open\(payloadJson\) \{[\s\S]*?\n  \}\n/) || [""])[0];
+  if (!/root\.makeFolders\(\)/.test(opener)) problems.push("Nodi.qml: open() does not make Nodi's folders 0700 again");
 }
 
 if (problems.length) {

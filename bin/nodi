@@ -36,6 +36,14 @@ id=io.github.itsgg.nodi
 OMARCHY_PATH=${OMARCHY_PATH:-/usr/share/omarchy}
 export OMARCHY_PATH
 ipc=$OMARCHY_PATH/bin/omarchy-shell
+# The user's own runtime folder, for the bar's payloads and a pick's rows.
+# Codex clears it too: then logind's /run/user/<uid>, as Qt (and so the
+# shell's IPC) takes it; components/Carried.qml reads only under it
+# (Fable 2026-10-10: to /tmp, every tool call was "cannot be reached").
+if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ] && [ -O "/run/user/$(id -u)" ]; then
+  XDG_RUNTIME_DIR=/run/user/$(id -u)
+  export XDG_RUNTIME_DIR
+fi
 
 usage() { sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; }
 
@@ -62,8 +70,15 @@ ask() {
 
 open_with() {
   local payload
-  payload=$(jq -cn --arg q "$1" '{query: $q}') || fail "could not encode the query"
-  out=$(ask summon "$id" "$payload") || exit $?
+  payload=$(NODI_Q=$1 jq -cn '{query: $ENV.NODI_Q}') || fail "could not encode the query"
+  carry_init
+  carry "$payload" || fail "could not hand the bar its query"
+  # The bar reads it when Nodi opens, and at the shell's start that waits
+  # for Nodi to load (shell.qml queues the payload): the folder goes a
+  # minute later, not at exit (Fable 2026-10-10: the bar opened empty).
+  trap - EXIT
+  ( sleep "${NODI_CARRY_KEEP:-60}"; rm -rf -- "$carry_dir" ) >/dev/null 2>&1 &
+  out=$(ask summon "$id" "$CARRIED") || exit $?
   [ "$out" = ok ] || fail "Nodi did not open ($out)"
 }
 
@@ -78,9 +93,11 @@ pick() {
     shift
   done
   runtime=${XDG_RUNTIME_DIR:-/tmp}
+  # The payload's folder first, so its trap holds if the next mktemp fails.
+  carry_init
   dir=$(mktemp -d "${runtime%/}/nodi-pick.XXXXXXXX") || fail "no directory for the rows"
   rid=${dir##*.}
-  trap 'rm -rf -- "$dir"' EXIT
+  trap 'rm -rf -- "$dir" "$carry_dir"' EXIT
   # Ended from outside (`nodi mcp`'s client went away, Ctrl-C under a slow
   # producer): the directory goes, and the bar is told, so no question
   # waits there for nobody (Fable 2026-10-06: set this late, a signal
@@ -96,9 +113,10 @@ pick() {
   # Read and write: opening it so never waits for a writer, and Nodi's
   # write never waits for this reader.
   exec 3<>"$dir/answer"
-  req=$(jq -cn --arg dir "$dir" --arg id "$rid" --arg p "$placeholder" --argjson json "$json" \
-    '{dir: $dir, id: $id, placeholder: $p, json: $json}') || fail "could not encode the request"
-  out=$(ask call "$id" pick "$req") || exit $?
+  req=$(NODI_P=$placeholder jq -cn --arg dir "$dir" --arg id "$rid" --argjson json "$json" \
+    '{dir: $dir, id: $id, placeholder: $ENV.NODI_P, json: $json}') || fail "could not encode the request"
+  carry "$req" || fail "could not hand the bar the pick"
+  out=$(ask call "$id" pick "$CARRIED") || exit $?
   [ "$out" = ok ] || fail "Nodi refused the pick ($out)"
   reply=""
   while ! IFS= read -r -t 2 reply <&3; do
@@ -167,6 +185,26 @@ mcp_text() {
 # else it could not be reached (Fable 2026-10-06).
 mcp_why() { if [ "$1" -eq 2 ]; then echo "Nodi failed to answer; the shell's log says why"; else echo "The bar cannot be reached"; fi; }
 
+# What goes to the bar through a file, never an IPC argument, which
+# another local user can read in /proc while the call runs (the
+# marketplace's review of f444138, 2026-10-10): an agent's searches and
+# messages, a row's key. One folder a server, 0700 by mktemp -d, gone when
+# it ends; components/Carried.qml reads "@file:<folder>/payload" and
+# nothing else. The text goes in by printf, a builtin, so it is in no
+# argument either.
+carry_dir=""
+carry_init() {
+  local runtime=${XDG_RUNTIME_DIR:-/tmp}
+  carry_dir=$(mktemp -d "${runtime%/}/nodi-ipc.XXXXXXXXXX") || fail "no private directory for the bar's calls"
+  trap 'rm -rf -- "$carry_dir"' EXIT
+}
+# carry TEXT: TEXT in the folder, and CARRIED the argument that names it.
+CARRIED=""
+carry() {
+  ( umask 077; printf '%s' "$1" > "$carry_dir/payload.part" ) && mv -f -- "$carry_dir/payload.part" "$carry_dir/payload" || return 1
+  CARRIED="@file:$carry_dir/payload"
+}
+
 mcp_ask() {
   local s
   printf '%s\n' "$2" | "$0" pick --json --placeholder "$1" >/dev/null 2>&1 &
@@ -180,8 +218,7 @@ mcp_call() {
   local mid=$1 msg=$2 name key q out info row s
   # Params of any shape: what is not an object names nothing.
   name=$(jq -r '((try .params.name catch null) // "") | tostring' <<<"$msg")
-  # A query or a key goes to the shell as one argument, which holds 128 KB:
-  # past 64 KB it is refused here, never sent to fail as an unreachable bar.
+  # A query or a key the bar reads whole: past 64 KB it is refused here.
   q=$(jq -r '((try .params.arguments.query catch null) // "") | tostring' <<<"$msg")
   key=$(jq -r '((try .params.arguments.key catch null) // "") | tostring' <<<"$msg")
   # Bytes, not characters: 60000 Tamil letters are 180000 bytes (Fable 2026-10-06).
@@ -192,13 +229,16 @@ mcp_call() {
     || { mcp_error "$mid" -32602 "arguments must be an object"; return; }
   case $name in
     search)
-      out=$(ask call "$id" search "$q") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+      carry "$q" || { mcp_text "$mid" "$(mcp_why 3)" true; return; }
+      out=$(ask call "$id" search "$CARRIED") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
       mcp_text "$mid" "$out" ;;
     run)
-      out=$(ask call "$id" runFound "$key") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+      carry "$key" || { mcp_text "$mid" "$(mcp_why 3)" true; return; }
+      out=$(ask call "$id" runFound "$CARRIED") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
       if [ "$out" = ok ]; then mcp_text "$mid" "Ran $key"; else mcp_text "$mid" "Not run: $out" true; fi ;;
     propose)
-      info=$(ask call "$id" describeRow "$key") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+      carry "$key" || { mcp_text "$mid" "$(mcp_why 3)" true; return; }
+      info=$(ask call "$id" describeRow "$CARRIED") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
       jq -e . >/dev/null 2>&1 <<<"$info" || { mcp_text "$mid" "Not run: $info" true; return; }
       # A row that asks for a typed word is never run for an agent: say so
       # before his Enter, which could not be honoured (Fable 2026-10-06).
@@ -209,7 +249,8 @@ mcp_call() {
                     preview: {title: (.title | gsub("[[:cntrl:]]"; " ")), subtitle: (if .risk != "" then .risk else .subtitle end), markdown: ("```\n" + .command + "\n```")}}' <<<"$info")
       mcp_ask "An agent asks to run this: Enter runs it, Escape refuses" "$row"; s=$?
       if [ $s -eq 0 ]; then
-        out=$(ask call "$id" runProposed "$key") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
+        carry "$key" || { mcp_text "$mid" "$(mcp_why 3)" true; return; }
+        out=$(ask call "$id" runProposed "$CARRIED") || { mcp_text "$mid" "$(mcp_why $?)" true; return; }
         if [ "$out" = ok ]; then mcp_text "$mid" "He ran it"; else mcp_text "$mid" "Not run: $out" true; fi
       elif [ $s -eq 1 ]; then mcp_text "$mid" "He refused it"
       elif [ $s -eq 4 ]; then mcp_text "$mid" "Not asked: another question took the bar first" true
@@ -257,6 +298,7 @@ mcp() {
   # The client gone (its transport ends the server): a pick it left in the
   # bar goes too (Fable 2026-10-06).
   trap '[ -n "$MCP_PICK" ] && kill -TERM "$MCP_PICK" 2>/dev/null; exit 0' TERM INT HUP
+  carry_init
   # A message is 16 MB at most (an approve's input, a file written whole,
   # can be large), a query or a key in it 64 KB (mcp_call).
   while :; do
@@ -307,6 +349,7 @@ ask_relay() {
   OMARCHY_SHELL_IPC_TIMEOUT=${OMARCHY_SHELL_IPC_TIMEOUT:-10s}
   export OMARCHY_SHELL_IPC_TIMEOUT
   trap 'exit 0' TERM INT HUP
+  carry_init
   # A line past 64 KB could never go to the shell (below): it is read to
   # its end and refused, never held whole.
   while :; do
@@ -316,9 +359,11 @@ ask_relay() {
     [ -n "${line//[[:space:]]/}" ] || continue
     # The shell's facade takes one argument (shell.qml call(id, method,
     # arg); Fable 2026-10-07: two were refused, every message with them):
-    # the token and the line as one JSON object, which one IPC argument
-    # holds to 128 KB; past 64 KB it is refused here.
-    req=$(jq -cn --arg t "$NODI_ASK_SESSION" --arg l "$line" '{token: $t, line: $l}' 2>/dev/null) || req=""
+    # the token and the line as one JSON object, carried in a file (carry);
+    # past 64 KB it is refused here.
+    # In jq's environment, not its arguments: the message, and the token
+    # that is the tool server's word to Ask (the marketplace's review, 2026-10-10).
+    req=$(NODI_T=$NODI_ASK_SESSION NODI_L=$line jq -cn '{token: $ENV.NODI_T, line: $ENV.NODI_L}' 2>/dev/null) || req=""
     if [ -z "$req" ] || [ "$(LC_ALL=C; echo ${#req})" -gt 65536 ]; then
       mid=$(jq -c 'if type == "object" and has("id") and has("method") then .id else empty end' <<<"$line" 2>/dev/null)
       [ -n "$mid" ] && mcp_error "$mid" -32602 "Too long: a message is 64 KB at most"
@@ -326,7 +371,7 @@ ask_relay() {
     fi
     # "" for a notification; "ok" is the facade's word for nothing returned,
     # "error" for a function that threw, "unknown" for no Nodi loaded.
-    if out=$("$ipc" shell call "$id" askMcp "$req" 2>/dev/null); then
+    if carry "$req" && out=$("$ipc" shell call "$id" askMcp "$CARRIED" 2>/dev/null); then
       case $out in
         ""|ok) why="The bar gave no answer" ;;
         error) why="Nodi failed to answer; the shell's log says why" ;;

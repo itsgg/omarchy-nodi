@@ -120,8 +120,10 @@ var provider = {
     var fields = q ? fieldsOf(list) : null
     for (var i = 0; i < list.length; i++) {
       var b = list[i]
-      // Nodi's own key, and a bind left by the bar it replaced, open nothing new.
-      if (b.description === "Nodi" || b.description === "Command bar") continue
+      // Nodi's own key, a bind left by the bar it replaced, and a row's own
+      // hotkey (its row is Nodi's already, and its record is read from a
+      // title: the marketplace's review, 2026-10-10) open nothing new.
+      if (b.description === "Nodi" || b.description === "Command bar" || /^Nodi: /.test(String(b.description || ""))) continue
       if (inMenu && b.dispatcher === "exec" && inMenu[String(b.arg).trim()]) continue
       var t = !q ? "prefix" : Score.tier(q, fields[i])
       if (t) hits.push({ b: b, t: t, s: Score.TIER[t] })

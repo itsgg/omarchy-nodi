@@ -196,10 +196,12 @@ test("ics: a redirect is followed, but never from https to anything else (codex'
     "    except urllib.error.HTTPError as e:",
     "        return 'refused: ' + e.msg",
     "print(json.dumps([go('https://a.example/x', 'https://b.example/y'), go('https://a.example/x', 'http://b.example/y'),",
-    "  go('http://a.example/x', 'http://b.example/y'), go('http://a.example/x', 'ftp://b.example/y'),",
+    "  go('http://localhost/x', 'http://127.0.0.1:8080/y'), go('http://a.example/x', 'ftp://b.example/y'),",
+    "  go('http://localhost/x', 'http://b.example/y'), go('http://localhost/x', 'https://b.example/y'),",
     "  any(isinstance(x, ics.HttpsOnly) for x in ics.OPENER.handlers)]))"].join("\n"), join(root, "lib")]).toString();
-  assert.deepEqual(JSON.parse(out), ["https://b.example/y", "refused: a redirect away from https", "http://b.example/y",
-                                     "refused: a redirect to no web address", true]);
+  // To http only on this machine, as where() takes one (Fable 2026-10-10).
+  assert.deepEqual(JSON.parse(out), ["https://b.example/y", "refused: a redirect away from https", "http://127.0.0.1:8080/y",
+                                     "refused: a redirect to no web address", "refused: a redirect to http elsewhere", "https://b.example/y", true]);
 });
 
 test("ics: a redirect to no web address, through the real opener, says so (codex's review, 2026-10-09)", () => {

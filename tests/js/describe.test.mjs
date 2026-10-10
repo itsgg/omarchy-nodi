@@ -27,17 +27,31 @@ test("only a site's host and a program's name are sent, never a path or argument
     { id: "Disk Space", name: "Disk Space", program: "ncdu", terminal: true },
     { id: "cockos-reaper", name: "REAPER", program: "reaper" }
   ]);
-  assert.ok(!JSON.stringify(Describe.argv("haiku", list, "/tmp")).includes("T0WORKSPACE"), "Slack's workspace id stays here");
+  assert.ok(!JSON.stringify(Describe.request(list)).includes("T0WORKSPACE"), "Slack's workspace id stays here");
   assert.equal(Describe.program("env FOO=1 /usr/bin/obsidian --flag %U"), "obsidian");
   assert.equal(Describe.program("xdg-terminal-exec --app-id=TUI.tile -e omarchy-launch-docker"), "omarchy-launch-docker");
   assert.equal(Describe.site("omarchy-launch-webapp 'HTTPS://me:pw@WWW.Example.org:8443/x'"), "example.org");
 });
 
-test("the request is one argument after a constant script", () => {
-  const argv = Describe.argv("haiku", Describe.wanted([netflix], {}, needs), "/home/u/.cache/nodi/ask");
-  assert.deepEqual(plain(argv.slice(0, 5)), ["bash", "-lc", 'cd -- "$1" && shift && exec claude "$@"', "nodi-describe", "/home/u/.cache/nodi/ask"]);
-  assert.ok(argv[argv.length - 1].includes('"site":"netflix.com"'));
+test("the request goes on claude's stdin, from the environment, in no argument (the marketplace's review, 2026-10-10)", async () => {
+  const list = Describe.wanted([netflix], {}, needs);
+  const argv = plain(Describe.argv("haiku", list, "/home/u/.cache/nodi/ask"));
+  assert.deepEqual(argv.slice(1, 2).concat(argv.slice(3, 5)), ["-lc", "nodi-describe", "/home/u/.cache/nodi/ask"]);
+  assert.ok(!argv.some(a => a.includes("netflix")), "the apps in no argument");
+  assert.ok(Describe.request(list).includes('"site":"netflix.com"'));
   assert.ok(argv.includes("--safe-mode") && argv.includes("--strict-mcp-config"));
+  // A stand-in claude: the request arrives on its stdin.
+  const { mkdtempSync, writeFileSync, chmodSync, readFileSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { execFileSync } = await import("node:child_process");
+  const t = mkdtempSync(join(tmpdir(), "nodi-describe-"));
+  try {
+    writeFileSync(join(t, "claude"), '#!/bin/bash\ncat > "$HOME/stdin"; printf "%s\\n" "$@" > "$HOME/args"\n'); chmodSync(join(t, "claude"), 0o755);
+    execFileSync("/usr/bin/bash", ["-c", argv[2], ...argv.slice(3, 4), t, ...argv.slice(5)], { env: { PATH: t + ":/usr/bin:/bin", HOME: t, NODI_TEXT: Describe.request(list) } });
+    assert.equal(readFileSync(join(t, "stdin"), "utf8"), Describe.request(list));
+    assert.ok(!readFileSync(join(t, "args"), "utf8").includes("netflix"));
+  } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
 test("an answer is read as id to text, fences and all; a junk answer is nothing", () => {

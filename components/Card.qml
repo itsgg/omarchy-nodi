@@ -183,6 +183,7 @@ BorderSurface {
       // does (Fable 2026-10-05).
       Text {
         id: promptGlyph
+        textFormat: Text.PlainText
         anchors.left: parent.left
         anchors.leftMargin: Style.spacing.lg + nodi.rowInsetLeft
         anchors.verticalCenter: parent.verticalCenter
@@ -220,6 +221,7 @@ BorderSurface {
         Accessible.ignored: !visible
 
         Text {
+          textFormat: Text.PlainText
           anchors.fill: parent
           verticalAlignment: Text.AlignVCenter
           // Not over a composition either (Sonnet 2026-10-07: it drew on it).
@@ -266,6 +268,7 @@ BorderSurface {
         Accessible.ignored: !visible
 
         Text {
+          textFormat: Text.PlainText
           anchors.fill: parent
           verticalAlignment: Text.AlignVCenter
           visible: !paletteInput.text
@@ -301,6 +304,7 @@ BorderSurface {
           anchors.centerIn: parent
           spacing: Style.spacing.md
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             text: nodi.mode ? (nodi.mode.icon || "") : ""
             visible: text !== ""
@@ -309,6 +313,7 @@ BorderSurface {
             font.pixelSize: Style.font.body
           }
           Text {
+            textFormat: Text.PlainText
             anchors.verticalCenter: parent.verticalCenter
             text: nodi.mode ? nodi.mode.label : ""
             color: nodi.selectedInk
@@ -329,6 +334,7 @@ BorderSurface {
         spacing: Style.spacing.md
         Keycap { label: "?"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
         Text {
+          textFormat: Text.PlainText
           anchors.verticalCenter: parent.verticalCenter
           text: "for help"
           color: nodi.secondary
@@ -388,7 +394,7 @@ BorderSurface {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: Style.spacing.md
         Keycap { label: "?"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground; fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
-        Text { anchors.verticalCenter: parent.verticalCenter; text: "Help"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.bodySmall }
+        Text { textFormat: Text.PlainText; anchors.verticalCenter: parent.verticalCenter; text: "Help"; color: nodi.secondary; font.family: nodi.fontFamily; font.pixelSize: Style.font.bodySmall }
       }
     }
 

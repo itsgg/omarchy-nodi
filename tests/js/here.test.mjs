@@ -9,6 +9,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { load, plain } from "./load.mjs";
 import { run } from "./fixtures.mjs";
+import { toastShell, toasts, toastArgv } from "./toastfake.mjs";
+import { statSync } from "node:fs";
 
 const H = load("providers/here.js");
 const window = { address: "0xabc", class: "chromium", title: "Docs", pid: "4242", workspace: "2", stableId: "1a2b" };
@@ -27,6 +29,28 @@ test("its text and a screenshot of it, by their words, with the window's own han
   assert.equal(own(run("text", extra({ window: Object.assign({}, window, { stableId: "" }) }))).length, 0, "no handle: no capture");
   assert.equal(own(run("text", extra({ window: {} }))).length, 0, "no window: none");
   assert.equal(own(run("t", extra())).length, 0, "one letter: none");
+});
+
+test("a screenshot, run with stub grim: his alone (0600) under any umask, said in Nodi's toast, never a notification (the marketplace's review, 2026-10-10)", () => {
+  const home = mkdtempSync(join(tmpdir(), "nodi-shot-"));
+  const bin = join(home, "bin");
+  mkdirSync(bin);
+  toastShell(bin);
+  writeFileSync(join(bin, "grim"), '#!/usr/bin/bash\nprintf png > "$3"\n', { mode: 0o755 });
+  writeFileSync(join(bin, "wl-copy"), "#!/usr/bin/bash\ncat > /dev/null\n", { mode: 0o755 });
+  try {
+    const s = mine(run("screenshot window", extra())).find(r => r.key === "here:shot");
+    execFileSync("/usr/bin/bash", ["-c", "umask 022; " + s.run.script, "nodi"].concat(s.run.args),
+                 { env: { HOME: home, PATH: bin + ":/usr/bin:/bin", XDG_RUNTIME_DIR: home, OMARCHY_SCREENSHOT_DIR: join(home, "shots") } });
+    const said = toasts(bin);
+    assert.equal(said.length, 1);
+    assert.match(said[0].title, /^Screenshot of /);
+    const file = said[0].body.replace(/^Saved to the clipboard and /, "");
+    assert.equal((statSync(file).mode & 0o777).toString(8), "600", "the picture his alone");
+    assert.equal((statSync(join(home, "shots")).mode & 0o777).toString(8), "700", "and a folder it made");
+    assert.ok(!toastArgv(bin).includes("Saved to"), "the words in no argument");
+    assert.ok(!s.run.script.includes("notify-send"));
+  } finally { rmSync(home, { recursive: true, force: true }); }
 });
 
 test("its folder in Files when a shell runs in it, by its path from home", () => {

@@ -87,6 +87,7 @@ export function requester(data, asked) {
       : name === "clipboard-text" ? data.clipboardText
       : name === "pkg-repo" ? data.pkgRepo
       : name === "pkg-aur" ? data.pkgAur
+      : name === "pkg-installed" ? data.pkgInstalled
       : name === "define" ? data.define
       : name === "notes-file" ? data.notes
       : name === "suggest" ? data.suggest

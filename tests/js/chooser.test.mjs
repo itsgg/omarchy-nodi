@@ -79,16 +79,19 @@ test("chooser: a path's folders type themselves in, the folder itself first", ()
   const directory = { path: "/home/u/Work", entries: [{ name: "GG", dir: true }, { name: "notes.txt", dir: false }] };
   const rows = Engine.run("~/Work/", config, services({ window: portal, directory }));
   eq(rows.map(r => [r.title, r.run.script === C.TYPE ? "type" : r.run.kind]), [["~/Work", "type"], ["GG", "type"], ["notes.txt", "open"]]);
-  eq(plain(rows[1].run.args), ["0x5a1", "/home/u/Work/GG/"]);
+  eq(plain([rows[1].run.args, rows[1].run.text]), [["0x5a1"], "/home/u/Work/GG/"]);
   eq(Engine.run("~/Work/", config, services({ directory }))[0].title, "Open ~/Work", "no dialog: as ever");
 });
 
 test("chooser: Enter types the path into the dialog, focused first, a slash after it", () => {
   const row = typing(Engine.run("downloads", config, services({ window: portal, chooserFolders: folders })))[0];
-  eq(row.run, { kind: "shell", script: C.TYPE, paste: true, args: ["0x5a1", "/home/u/Downloads/"] });
-  const argv = plain(Run.command(row.run, null, "", "0x5a1"));
+  eq(row.run, { kind: "shell", script: C.TYPE, paste: true, args: ["0x5a1"], text: "/home/u/Downloads/" });
+  const c = plain(Run.command(row.run, null, "", "0x5a1"));
+  const argv = c.command;
   assert.equal(argv[2], Run.FOCUS_FIRST, "the dialog focused again first (ROADMAP 69)");
   assert.equal(argv[4], "0x5a1");
+  assert.deepEqual(c.environment, { NODI_TEXT: "/home/u/Downloads/" }, "the path beside it, in the environment");
+  assert.ok(!argv.some(a => a.includes("Downloads")), "and in no argument");
 });
 
 test("chooser: the typing waits for nothing else: another window with the focus gets no keys", () => {
@@ -98,14 +101,14 @@ test("chooser: the typing waits for nothing else: another window with the focus 
     mkdirSync(bin);
     const log = join(dir, "wtype.log");
     writeFileSync(join(bin, "hyprctl"), '#!/usr/bin/bash\nprintf \'{"address":"%s"}\\n\' "$ACTIVE"\n');
-    writeFileSync(join(bin, "wtype"), '#!/usr/bin/bash\nprintf "%s|" "$@" >> "' + log + '"; printf "\\n" >> "' + log + '"\n');
+    writeFileSync(join(bin, "wtype"), '#!/usr/bin/bash\nprintf "%s|" "$@" >> "' + log + '"; printf "stdin:%s\\n" "$(cat)" >> "' + log + '"\n');
     chmodSync(join(bin, "hyprctl"), 0o755);
     chmodSync(join(bin, "wtype"), 0o755);
     const env = { PATH: bin + ":/usr/bin:/bin", ACTIVE: "0x5a1" };
-    execFileSync("/usr/bin/bash", ["-c", C.TYPE, "nodi", "0x5a1", "/home/u/My Files/"], { env });
-    assert.equal(readFileSync(log, "utf8"), "-k|Home|--|/home/u/My Files/|\n", "one wtype: no moment between Home and the path");
+    execFileSync("/usr/bin/bash", ["-c", C.TYPE, "nodi", "0x5a1"], { env: { ...env, NODI_TEXT: "/home/u/My Files/" } });
+    assert.equal(readFileSync(log, "utf8"), "-k|Home|-|stdin:/home/u/My Files/\n", "one wtype: no moment between Home and the path, the path on its stdin, in no argument");
     rmSync(log);
-    const other = spawnSync("/usr/bin/bash", ["-c", C.TYPE, "nodi", "0x5a1", "/home/u/"], { env: Object.assign({}, env, { ACTIVE: "0x777" }) });
+    const other = spawnSync("/usr/bin/bash", ["-c", C.TYPE, "nodi", "0x5a1"], { env: Object.assign({}, env, { ACTIVE: "0x777", NODI_TEXT: "/home/u/" }) });
     assert.equal(other.status, 1);
     assert.match(other.stderr.toString(), /no longer has the focus/);
     assert.ok(!existsSync(log), "not a key typed");

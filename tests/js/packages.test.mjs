@@ -9,19 +9,24 @@ const P = load("providers/packages.js");
 const D = load("providers/dictionary.js");
 
 const repoOut = "extra/fd 10.5.0-3 [installed]\n    Simple, fast and user-friendly alternative to find\nextra/fd-find 1.0-1\n    Not real\nextra/sfd 2.0-1\n    Has fd inside\n";
-const aurOut = "aur/fd-git 10.2.0.r12-1 (+2 0.00) [3d1h] \n    fd from git\naur/fd 9.0-1 (+0 0.00) [1d] \n    a duplicate name\n";
+const aurOut = JSON.stringify({ resultcount: 3, type: "search", results: [{ Name: "fd-git", Version: "10.2.0.r12-1", Description: "fd from git" },
+  { Name: "fd", Version: "9.0-1", Description: "a duplicate name" }, { Name: "bad name; x", Version: "1" }] });
 
-test("pacman's and yay's lines: name, version, installed, description", () => {
+test("pacman's lines and the AUR's answer: name, version, installed, description", () => {
   assert.deepEqual(plain(P.parse(repoOut)), [
     { repo: "extra", name: "fd", version: "10.5.0-3", installed: true, description: "Simple, fast and user-friendly alternative to find" },
     { repo: "extra", name: "fd-find", version: "1.0-1", installed: false, description: "Not real" },
     { repo: "extra", name: "sfd", version: "2.0-1", installed: false, description: "Has fd inside" }]);
-  assert.deepEqual(plain(P.parse(aurOut).map(p => [p.repo, p.name, p.installed])), [["aur", "fd-git", false], ["aur", "fd", false]]);
-  assert.equal(P.literal("c++"), "c\\+\\+", "pacman -Ss takes a pattern: the text typed, as it is");
+  assert.deepEqual(plain(P.parseAur(aurOut).map(p => [p.repo, p.name, p.installed, p.description])), [["aur", "fd-git", false, "fd from git"], ["aur", "fd", false, "a duplicate name"]],
+                   "a name no package could have left out");
+  assert.throws(() => P.parseAur(JSON.stringify({ type: "error", error: "Too many package results." })), /the AUR: Too many package results\./);
+  assert.throws(() => P.parseAur("<html>"), /did not read/);
+  assert.throws(() => P.parseAur("null"), /it refused/);
+  assert.deepEqual(plain(P.parseAur("{}")), []);
 });
 
 test("pkg: one list by name, the repositories' before the AUR's at each, Enter installing in Omarchy's terminal", () => {
-  const rows = run("pkg fd", { pkgRepo: P.parse(repoOut), pkgAur: P.parse(aurOut) }).filter(r => r.provider === "packages");
+  const rows = run("pkg fd", { pkgRepo: P.parse(repoOut), pkgAur: P.parseAur(aurOut) }).filter(r => r.provider === "packages");
   assert.deepEqual(plain(rows.map(r => r.title)), ["fd", "fd-find", "fd-git", "sfd"], "the AUR's fd-git by its name before a description's match");
   assert.deepEqual([rows[0].badge, rows[0].actionLabel], ["Installed", "Open its page"]);
   assert.equal(rows[0].actions.find(a => /^Remove/.test(a.label)).confirm, true, "removing asks twice");
@@ -29,6 +34,10 @@ test("pkg: one list by name, the repositories' before the AUR's at each, Enter i
                    "Done whatever happens, so a failure stays to be read (Sonnet 2026-10-06)");
   assert.deepEqual(plain(rows[2].run.argv.slice(-3)), ['omarchy-pkg-aur-add "$1"; omarchy-show-done', "nodi-pkg", "fd-git"]);
   assert.match(rows[2].subtitle, /^aur, /);
+  // What is installed now marks every row once read: the repositories'
+  // list is five minutes old (Fable 2026-10-10).
+  const now = run("pkg fd", { pkgRepo: P.parse(repoOut), pkgAur: P.parseAur(aurOut), pkgInstalled: ["sfd", "fd-git"] }).filter(r => r.provider === "packages");
+  assert.deepEqual(plain(now.map(r => [r.title, r.badge])), [["fd", ""], ["fd-find", ""], ["fd-git", "Installed"], ["sfd", "Installed"]], "fd removed, sfd installed since");
   const many = Array.from({ length: 40 }, (_, i) => ({ repo: "extra", name: "haskell-zed" + i, version: "1", installed: false, description: "zed" }));
   const capped = run("pkg zed", { pkgRepo: many, pkgAur: [{ repo: "aur", name: "zed-bin", version: "1", installed: false, description: "" }] }).filter(r => r.provider === "packages");
   assert.equal(capped[0].title, "zed-bin", "the AUR's own by name, ahead of thirty description matches (Sonnet 2026-10-06)");
@@ -38,10 +47,29 @@ test("pkg: one list by name, the repositories' before the AUR's at each, Enter i
   assert.deepEqual([third.run, third.actionLabel], [null, ""], "a third party's repository has no page on Arch's");
 });
 
-test("several words are several terms; the AUR not answering says so", () => {
-  assert.deepEqual(plain(P.provider.sources["pkg-repo"].argv("noto  font").slice(2)), ["--", "noto", "font"]);
-  assert.deepEqual(plain(P.provider.sources["pkg-aur"].argv("noto font").slice(-2)), ["noto", "font"]);
-  assert.throws(() => P.provider.sources["pkg-aur"].parse("", false), /did not answer/);
+test("the words in no argument: every package listed and searched here, the AUR by its longest word from the environment (the marketplace's review, 2026-10-10)", () => {
+  const S = P.provider.sources;
+  assert.deepEqual(plain(S["pkg-repo"].argv("noto font")), ["/usr/bin/pacman", "-Ss"]);
+  assert.deepEqual(plain(S["pkg-installed"].argv()), ["/usr/bin/pacman", "-Qq"]);
+  assert.ok(!plain(S["pkg-aur"].argv("noto")).some(a => a.includes("noto")));
+  assert.match(urlOf(S["pkg-aur"], "நொடி font"), /^https:\/\/aur\.archlinux\.org\/rpc\/v5\/search\/%E0%AE[^/?]*%20font\?by=name-desc$/, "encoded by curl");
+  assert.ok(needsEnvironment(S["pkg-aur"], "noto"), "from the environment only");
+  const a = plain(S["pkg-aur"].argv());
+  assert.deepEqual([a[1], a[a.indexOf("--proto") + 1], a.includes("-L")], ["-q", "=https", false]);
+  assert.equal(P.aurWord("ttf noto font"), "noto");
+  assert.throws(() => S["pkg-aur"].parse("", false), /did not answer/);
+  assert.throws(() => S["pkg-repo"].parse("", false), /could not list/);
+  assert.throws(() => S["pkg-installed"].parse("", false), /could not list/);
+  assert.deepEqual(plain(S["pkg-installed"].parse("fd\nzed\n\nbad name\n", true)), ["fd", "zed"]);
+  // Several words: each in the name or the description, as pacman -Ss and
+  // the AUR's own search find them; an installed AUR package says so.
+  const repo = [{ repo: "extra", name: "noto-fonts", version: "1", installed: false, description: "Google Noto TTF fonts" },
+                { repo: "extra", name: "noto-tools", version: "1", installed: false, description: "Tools" }];
+  const found = run("pkg Noto font", { pkgRepo: repo, pkgAur: [{ repo: "aur", name: "noto-fonts-cjk-git", version: "1", installed: false, description: "Noto CJK fonts" }],
+                                       pkgInstalled: ["noto-fonts-cjk-git"] }).filter(r => r.provider === "packages");
+  assert.deepEqual(plain(found.map(r => [r.title, r.badge])), [["noto-fonts", ""], ["noto-fonts-cjk-git", "Installed"]]);
+  assert.deepEqual(plain(run("pkg a b", { pkgRepo: [{ repo: "extra", name: "ab", version: "1", installed: false, description: "" }] }).filter(r => r.provider === "packages").map(r => r.title)),
+                   ["ab"], "words of one letter: the AUR is not asked");
   const rows = run("pkg qqqq", { pkgRepo: [], failed: { "pkg-aur": "Error during AUR search" } }).filter(r => r.provider === "packages");
   assert.deepEqual(plain(rows.map(r => r.title)), ["The AUR did not answer"], "never \"no package\" when the AUR was not asked");
 });

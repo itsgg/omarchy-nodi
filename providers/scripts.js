@@ -6,8 +6,10 @@
 
 // Script commands: executable files in a folder, described by a header of
 // `@nodi.` lines. Raycast's script commands use the same keys under
-// `@raycast.`, which is read too, so the scripts in raycast/script-commands
-// work as they are; a key given both ways takes the first.
+// `@raycast.`, which is read too; a key given both ways takes the first.
+// What is typed reaches a script as NODI_ARGUMENT1 ..., and as $1 ... too,
+// as raycast/script-commands read it, only with "scripts": { "arguments":
+// true } (his word, 2026-10-10: arguments are in /proc for anyone).
 //
 //   #!/bin/bash
 //   # @nodi.title Copy Git Branch
@@ -27,7 +29,11 @@
 // argument is not taken: the bar's field shows what is typed and Nodi
 // remembers queries. The script runs in its own folder, or in
 // currentDirectoryPath, under a login shell, its arguments never re-read
-// as shell.
+// as shell. What is typed for them is NODI_ARGUMENT1, NODI_ARGUMENT2, ...
+// in its environment, never its arguments, which any local user can read
+// in /proc while it runs (the marketplace's review, 2026-10-10); with
+// "scripts": { "arguments": true } it is $1, $2 ... too, as Raycast's
+// scripts read it.
 
 var MODES = { silent: true, compact: true, fullOutput: true, inline: true }
 
@@ -128,36 +134,77 @@ function argumentsFor(script, typed) {
       else v = pick
     }
     if (!v && !a.optional) out.missing.push(a.placeholder)
+    // No unit separator, which ends each value where they are packed, nor
+    // NUL, which no environment holds (Fable 2026-10-10: a pasted one
+    // moved every later value a place over).
+    v = String(v).replace(/[\u0000\u001f]/g, "")
     out.values.push(a.percentEncoded ? encodeURIComponent(v) : v)
   }
   // An optional argument left empty is passed as "", as Raycast passes it.
   return out
 }
 
-// Run without a window; the last line of output, or the failure, as a
-// notification. $1 the title, $2 the folder, then the script and its
-// arguments, none of them read as shell. A folder that cannot be entered
-// stops it: run where Nodi was, a script's relative paths were someone
-// else's files (codex 2026-10-04).
-var QUIET = 'title=$1; cd -- "$2" 2>/dev/null || { notify-send -a Nodi -u critical -- "$title failed" "Cannot enter $2"; exit 0; }; '
+// What is typed for a script's arguments, each ended by the unit
+// separator (an empty one is still one), as one text: Run.shell hands it
+// to the script below as NODI_TEXT, in the environment.
+function packed(values) { return values.map(function(v) { return String(v) + "\u001f" }).join("") }
+
+// Run without a window; the last line of output, or the failure, as Nodi's
+// own toast (Run.js TOAST): what a script prints may be anyone's business,
+// and a notification holds it in arguments another local user can read
+// (the marketplace's review, 2026-10-10). First $NODI_TEXT as
+// NODI_ARGUMENT1, NODI_ARGUMENT2 ..., exported by bash's own export, so in
+// no program's arguments, and gone. $1 the title, $2 the folder, then the
+// script, and its arguments only when the settings ask, none of them read
+// as shell. A folder that cannot be entered stops it: run where Nodi was,
+// a script's relative paths were someone else's files (codex 2026-10-04).
+var QUIET = Run.TOAST + '\nmapfile -d $\'\\x1f\' -t v < <(printf "%s" "${NODI_TEXT-}"); unset NODI_TEXT; '
+          + 'for i in "${!v[@]}"; do export "NODI_ARGUMENT$((i + 1))=${v[$i]}"; done; '
+          + 'title=$1; cd -- "$2" 2>/dev/null || { nodi_toast "$title failed" "Cannot enter $2"; exit 0; }; '
           + 'shift 2; out=$("$@" 2>&1); code=$?; last=$(printf "%s" "$out" | tail -n 1); '
-          + 'if [ "$code" -eq 0 ]; then [ -n "$last" ] && notify-send -a Nodi -- "$title" "$last"; '
-          + 'else notify-send -a Nodi -u critical -- "$title failed" "${last:-exit $code}"; fi; true'
+          + 'if [ "$code" -eq 0 ]; then [ -n "$last" ] && nodi_toast "$title" "$last"; '
+          + 'else nodi_toast "$title failed" "${last:-exit $code}"; fi; true'
 
 // In Omarchy's floating terminal, held open until a key, as `> command`.
-var LOUD = 'cd -- "$1" 2>/dev/null || { echo "Cannot enter $1"; omarchy-show-done; exit 1; }; '
-         + 'shift; omarchy-show-logo 2>/dev/null; "$@"; code=$?; [ "$code" -ne 130 ] && omarchy-show-done; exit "$code"'
+// What is typed reaches it in a file of a 0700 folder of its own, named by
+// the third argument, never as the terminal's arguments: the terminal is
+// started by another process (uwsm-app), which keeps no environment of
+// Nodi's. Read, the folder goes, before anything can stop it (Fable
+// 2026-10-10: a folder that could not be entered left it), then the
+// script runs.
+var LOUD = 'p=$2 d=$3; '
+         + 'if [ -n "$d" ]; then mapfile -d $\'\\x1f\' -t v < "$d/arguments"; rm -rf -- "$d"; '
+         + 'for i in "${!v[@]}"; do export "NODI_ARGUMENT$((i + 1))=${v[$i]}"; done; fi; '
+         + 'cd -- "$1" 2>/dev/null || { echo "Cannot enter $1"; omarchy-show-done; exit 1; }; '
+         + 'shift 3; '
+         + 'omarchy-show-logo 2>/dev/null; "$p" "$@"; code=$?; [ "$code" -ne 130 ] && omarchy-show-done; exit "$code"'
+
+// The terminal, started with that folder made and written: $1 LOUD, $2 the
+// folder to run in, $3 the script, $4 its title, then its arguments only
+// when the settings ask. A terminal that never starts, or is closed before
+// it reads, never removes it: it goes a minute later whatever happens
+// (Fable 2026-10-10).
+var TERMINAL = 'l=$1 f=$2 p=$3 t=$4; shift 4; d=""; '
+             + 'if [ -n "${NODI_TEXT-}" ]; then d=$(umask 077; mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/nodi-arguments.XXXXXXXXXX") || exit 1; '
+             + '( umask 077; printf "%s" "$NODI_TEXT" > "$d/arguments" ) || { rm -rf -- "$d"; exit 1; }; '
+             + '( sleep "${NODI_ARGUMENTS_KEEP:-60}"; rm -rf -- "$d" ) >/dev/null 2>&1 & fi; unset NODI_TEXT; '
+             + 'exec uwsm-app -- xdg-terminal-exec --app-id=org.omarchy.terminal "--title=$t" -e bash -c "$l" nodi "$f" "$p" "$d" "$@"'
 
 function folderOf(script, home) {
   return script.cwd ? expand(script.cwd, home) : script.path.replace(/\/[^\/]*$/, "") || "/"
 }
 
-function quiet(script, values, home) { return Run.shell(QUIET, [script.title, folderOf(script, home), script.path].concat(values)) }
-
-function loud(script, values, home) {
-  return Run.exec(["uwsm-app", "--", "xdg-terminal-exec", "--app-id=org.omarchy.terminal", "--title=" + script.title,
-                   "-e", "bash", "-c", LOUD, "nodi", folderOf(script, home), script.path].concat(values))
+// `positional`: "scripts": { "arguments": true }, for a script reading $1.
+function quiet(script, values, home, positional) {
+  return Run.shell(QUIET, [script.title, folderOf(script, home), script.path].concat(positional ? values : []), packed(values))
 }
+
+function loud(script, values, home, positional) {
+  return Run.shell(TERMINAL, [LOUD, folderOf(script, home), script.path, script.title].concat(positional ? values : []),
+                   values.length ? packed(values) : undefined)
+}
+
+function asArguments(ctx) { return !!(ctx.settings && ctx.settings.arguments === true) }
 
 function scriptsOf(ctx) {
   var home = String(ctx.home || "")
@@ -203,7 +250,8 @@ function row(script, typed, ctx, extra) {
     out.remember = false
     return extend(out, extra)
   }
-  out.actions[0].run = loud(script, args.values, home)
+  var asArgs = asArguments(ctx)
+  out.actions[0].run = loud(script, args.values, home, asArgs)
   // One that asks twice asks from Ctrl+K too, and is never run to fill its
   // row (codex 2026-10-04).
   out.actions[0].confirm = script.confirm
@@ -213,7 +261,7 @@ function row(script, typed, ctx, extra) {
     out.subtitle = line || (got.state === "error" ? "Failed: " + (got.error || "no output") : got.value === undefined ? "Running..." : "(no output)")
     out.copy = line
   }
-  out.run = script.mode === "fullOutput" ? loud(script, args.values, home) : quiet(script, args.values, home)
+  out.run = script.mode === "fullOutput" ? loud(script, args.values, home, asArgs) : quiet(script, args.values, home, asArgs)
   if (script.mode === "fullOutput") out.actions.shift()
   out.actionLabel = "Run"
   out.confirm = script.confirm

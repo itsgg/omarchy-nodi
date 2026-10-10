@@ -124,7 +124,7 @@ for (const page of all) {
 // to be read somewhere in the code, so this list cannot outlive it.
 const EXTRA = ["ics", "me", "language", "file", "preview", "mcpServers", "home", "clock24", "root", "contents", "dirs", "suggest",
                "disabled", "keyword", "title", "open", "run", "name", "text", "icon", "command", "args", "contrib", "list", "refresh",
-               "rerun", "timeoutMs", "format", "placeholder"];
+               "rerun", "timeoutMs", "format", "placeholder", "argument", "arguments"];
 const settingsPage = join(docs, "settings.md");
 if (existsSync(settingsPage)) {
   const source = ["lib", "providers", "components"].flatMap(d => readdirSync(join(root, d)).filter(n => /\.(js|qml)$/.test(n)).map(n => read(join(root, d, n)))).join("\n") + read(join(root, "Nodi.qml"));

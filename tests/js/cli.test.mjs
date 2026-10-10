@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { root } from "./load.mjs";
@@ -21,13 +21,20 @@ const NODI = join(root, "bin/nodi");
 const FAKE = `#!/usr/bin/bash
 printf '%s\\n' "$*" >> "$FAKE_LOG"
 [ "$FAKE_DOWN" = 1 ] && { echo "omarchy-shell is not running" >&2; exit 1; }
+# A payload bin/nodi carried in a file (components/Carried.qml reads it so):
+# the text, and the modes of its folder and file.
+arg=\${5-}; [ "\${2-}" = summon ] && arg=\${4-}
+case $arg in @file:*) p=\${arg#@file:}; stat -c '%a' "\${p%/*}" "$p" | paste -sd ' ' > "$FAKE_LOG.carried"; arg=$(cat -- "$p") ;; esac
+# What each call handed the bar, the payload read: never seen in "$*".
+[ "\${2-}" = call ] && printf '%s %s\\n' "\${4-}" "$arg" >> "$FAKE_LOG.calls"
+[ "\${2-}" = summon ] && printf 'summon %s\\n' "$arg" >> "$FAKE_LOG.calls"
 case "$2" in
   summon) echo ok ;;
   call)
     case "$4" in
       runRow|runFound) echo "$FAKE_RUNROW" ;;
       runProposed) echo "\${FAKE_RUNPROPOSED:-ok}" ;;
-      search) printf '%s\\n' "\${FAKE_SEARCH:-[]}" ;;
+      search) printf '%s' "$arg" > "$FAKE_LOG.search"; printf '%s\\n' "\${FAKE_SEARCH:-[]}" ;;
       describeRow) printf '%s\\n' "\${FAKE_DESCRIBE:-unknown row}" ;;
       pickAlive)
         # FAKE_ANSWER_ON_ALIVE: the answer lands as the bar says the pick is
@@ -38,17 +45,17 @@ case "$2" in
         # As the facade, one argument: { token, line }. Ask answers: an echo
         # of the message's id, "" for a notification.
         [ $# -eq 5 ] || { echo "Too many arguments provided" >&2; exit 1; }
-        line=$(printf '%s' "$5" | /usr/bin/jq -r .line)
+        line=$(printf '%s' "$arg" | /usr/bin/jq -r .line)
         printf '%s\n' "$line" >> "$FAKE_LOG.ask"
-        [ "$(printf '%s' "$5" | /usr/bin/jq -r .token)" = "$FAKE_TOKEN" ] || { echo unknown; exit 0; }
+        [ "$(printf '%s' "$arg" | /usr/bin/jq -r .token)" = "$FAKE_TOKEN" ] || { echo unknown; exit 0; }
         [ "$FAKE_EMPTY" = 1 ] && exit 0
         [ "$FAKE_EMPTY" = ok ] && { echo ok; exit 0; }
         [ "$FAKE_EMPTY" = error ] && { echo error; exit 0; }
         printf '%s' "$line" | /usr/bin/jq -c 'if has("id") then {jsonrpc: "2.0", id: .id, result: {seen: .method}} else empty end' ;;
       pick)
-        dir=$(printf '%s' "$5" | /usr/bin/jq -r .dir)
+        dir=$(printf '%s' "$arg" | /usr/bin/jq -r .dir)
         printf '%s' "$dir" > "$FAKE_LOG.dir"
-        printf '%s\\n' "$5" > "$FAKE_LOG.req"
+        printf '%s\\n' "$arg" > "$FAKE_LOG.req"
         cp "$dir/rows" "$FAKE_LOG.rows"
         stat -c %a "$dir" > "$FAKE_LOG.mode"
         if [ "$FAKE_PICK" != none ]; then
@@ -73,27 +80,32 @@ function nodi(t, args, opts = {}) {
     OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"), LANG: "C.UTF-8",
     FAKE_PICK: opts.pick || "cancel", FAKE_ALIVE: opts.alive || "yes", FAKE_RUNROW: opts.runRow || "ok", FAKE_DOWN: opts.down ? "1" : "0",
     FAKE_SEARCH: opts.search || "[]", FAKE_DESCRIBE: opts.describe || "unknown row", FAKE_RUNPROPOSED: opts.runProposed || "ok",
-    FAKE_TOKEN: "t0k", ...(opts.env || {})
+    FAKE_TOKEN: "t0k", NODI_CARRY_KEEP: "1", ...(opts.env || {})
   };
-  const r = spawnSync(NODI, args, { env, input: opts.input || "", timeout: opts.timeout || 15000 });
-  return { status: r.status, out: r.stdout.toString(), err: r.stderr.toString(), log: (() => { try { return readFileSync(join(t, "log"), "utf8") } catch (e) { return "" } })() };
+  const r = spawnSync(opts.program || NODI, args, { env, input: opts.input || "", timeout: opts.timeout || 15000 });
+  const read = f => { try { return readFileSync(join(t, f), "utf8") } catch (e) { return "" } };
+  return { status: r.status, out: r.stdout.toString(), err: r.stderr.toString(), log: read("log"), calls: read("log.calls") };
 }
 
 test("words open the bar with them typed, encoded whole; no words open it empty", () => {
   const t = setup();
   try {
+    // What the bar was handed, read from the file it was carried in; the
+    // words in no argument (the marketplace's review, 2026-10-10).
+    const summoned = r => r.calls.trim().split("\n").pop().replace(/^summon /, "");
     let r = nodi(t, ["hello", "world"]);
     assert.equal(r.status, 0, r.err);
-    assert.equal(r.log, 'shell summon io.github.itsgg.nodi {"query":"hello world"}\n');
+    assert.equal(summoned(r), '{"query":"hello world"}');
+    assert.match(r.log, /^shell summon io\.github\.itsgg\.nodi @file:.*\/nodi-ipc\.[A-Za-z0-9]+\/payload\n$/);
     rmSync(join(t, "log"));
     r = nodi(t, ['a "b" \\ நொடி $(x)']);
-    assert.equal(JSON.parse(r.log.trim().split(" ").slice(3).join(" ")).query, 'a "b" \\ நொடி $(x)', "quotes, backslashes and Tamil reach the bar as typed");
+    assert.equal(JSON.parse(summoned(r)).query, 'a "b" \\ நொடி $(x)', "quotes, backslashes and Tamil reach the bar as typed");
     rmSync(join(t, "log"));
     r = nodi(t, []);
-    assert.equal(r.log, "shell summon io.github.itsgg.nodi {}\n");
+    assert.equal(summoned(r), "{}");
     rmSync(join(t, "log"));
     r = nodi(t, ["--", "run", "x"]);
-    assert.equal(JSON.parse(r.log.trim().split(" ").slice(3).join(" ")).query, "run x", "-- types a word nodi would take as a command");
+    assert.equal(JSON.parse(summoned(r)).query, "run x", "-- types a word nodi would take as a command");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
@@ -177,7 +189,7 @@ test("a bar that closes without answering ends the wait; a shell that is down is
 
 // nodi mcp (ROADMAP 45, 46): JSON-RPC a line each way.
 function mcp(t, messages, opts = {}) {
-  writeFileSync(join(t, "log"), "");
+  writeFileSync(join(t, "log"), ""); writeFileSync(join(t, "log.calls"), "");
   const input = messages.map(m => typeof m === "string" ? m : JSON.stringify(m)).join("\n") + "\n";
   const r = nodi(t, ["mcp"], { ...opts, input });
   const replies = r.out.split("\n").filter(Boolean).map(l => JSON.parse(l));
@@ -243,8 +255,8 @@ test("nodi mcp: search and run go to the bar; a refusal and an unreachable bar a
     let r = mcp(t, [call(1, "search", { query: "lock" }), call(2, "run", { key: "menu:system.lock" })], { search: rows });
     assert.equal(text(r.byId[1]), rows);
     assert.equal(text(r.byId[2]), "Ran menu:system.lock");
-    assert.match(r.log, /call io\.github\.itsgg\.nodi search lock\n/);
-    assert.match(r.log, /call io\.github\.itsgg\.nodi runFound menu:system\.lock\n/, "an agent's run may name a row its search found, a hotkey's may not");
+    assert.match(r.calls, /^search lock\n/m);
+    assert.match(r.calls, /^runFound menu:system\.lock\n/m, "an agent's run may name a row its search found, a hotkey's may not");
     r = mcp(t, [call(1, "run", { key: "menu:system.reboot" })], { runRow: "it asks before it runs; open it in the bar" });
     assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Not run: it asks before it runs; open it in the bar", true]);
     r = mcp(t, [call(1, "search", { query: "x" })], { search: "error" });
@@ -277,7 +289,7 @@ test("nodi mcp: propose shows the row with its command; his Enter runs it, Escap
     const describe = JSON.stringify({ key: "menu:system.reboot", title: "Reboot", subtitle: "System", command: "omarchy-cmd-reboot", risk: "Restarts the computer", asks: "a second Enter" });
     let r = mcp(t, [call(1, "propose", { key: "menu:system.reboot" })], { describe, pick: "pick 0" });
     assert.equal(text(r.byId[1]), "He ran it");
-    assert.match(r.log, /call io\.github\.itsgg\.nodi runProposed menu:system\.reboot\n/);
+    assert.match(r.calls, /^runProposed menu:system\.reboot\n/m);
     const shown = JSON.parse(readFileSync(join(t, "log.rows"), "utf8"));
     assert.deepEqual([shown.title, shown.subtitle, shown.preview.subtitle], ["Run Reboot", "omarchy-cmd-reboot", "Restarts the computer"]);
     assert.match(readFileSync(join(t, "log.req"), "utf8"), /An agent asks to run this/);
@@ -423,5 +435,67 @@ test("nodi mcp --ask: under 64 KB in letters but past it in bytes, a message is 
     r = nodi(t, ["mcp", "--ask"], { input: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/list" }) + "\n",
                                     env: { NODI_ASK_SESSION: "t0k", FAKE_EMPTY: "error" } });
     assert.deepEqual(JSON.parse(r.out).error, { code: -32603, message: "Nodi failed to answer; the shell's log says why" });
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("a summon's payload outlives the call, for a bar that reads it once Nodi has loaded, then goes (Fable 2026-10-10)", async () => {
+  const t = setup();
+  try {
+    const r = nodi(t, ["hello"], { env: { NODI_CARRY_KEEP: "2" } });
+    assert.equal(r.status, 0, r.err);
+    const path = r.log.match(/@file:(\S+)/)[1];
+    assert.equal(readFileSync(path, "utf8"), '{"query":"hello"}', "still there when nodi has returned");
+    await new Promise(res => setTimeout(res, 3500));
+    assert.deepEqual(readdirSync(join(t, "run")).filter(f => f.startsWith("nodi-ipc.")), [], "gone after its time");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+// Bash runs an EXIT trap when SIGPIPE ends it (5.3); Fable's review
+// (2026-10-10) asked whether a payload outlives a relay ended so.
+test("an Ask relay whose agent has gone dies by SIGPIPE at its next answer, and its payload folder goes with it", () => {
+  const t = setup();
+  try {
+    const line = JSON.stringify(call("x", "search", { query: "q" }));
+    writeFileSync(join(t, "in"), line + "\n" + line + "\n");
+    // Its reader gone before the answer is written. --norc: bash -c with
+    // a socket for stdin, as Node gives it, reads ~/.bashrc, whose
+    // OMARCHY_PATH would point nodi at the real shell.
+    const r = nodi(t, ["--norc", "--noprofile", "-c", '"$0" mcp --ask < "$1" | true; echo "${PIPESTATUS[0]}"', NODI, join(t, "in")], { env: { NODI_ASK_SESSION: "t0k" }, program: "/usr/bin/bash" });
+    assert.equal(r.out.trim(), "141", "ended by the pipe: " + r.err);
+    assert.match(r.log, /askMcp @file:/, "the bar was asked first");
+    assert.deepEqual(readdirSync(join(t, "run")).filter(f => f.startsWith("nodi-ipc.")), [], "no payload left behind");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("with no XDG_RUNTIME_DIR (Codex clears it), payloads go to logind's folder for this user, where the bar reads them (Fable 2026-10-10)", () => {
+  const t = setup();
+  try {
+    const uid = process.getuid(), own = `/run/user/${uid}`;
+    let mine = false;
+    try { mine = statSync(own).isDirectory() && statSync(own).uid === uid; } catch (e) {}
+    const r = mcp(t, [call(1, "search", { query: "x" })], { env: { XDG_RUNTIME_DIR: undefined } });
+    assert.equal(r.status, 0, r.err);
+    const path = r.log.match(/search @file:(\S+)/)[1];
+    assert.ok(path.startsWith((mine ? own : "/tmp") + "/nodi-ipc."), path);
+    assert.ok(!existsSync(path.replace(/\/payload$/, "")), "and gone when it ends");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("an agent's search, a row's key and Ask's messages reach the bar in a 0700 folder's file, never an argument (the marketplace's review, 2026-10-10)", () => {
+  const t = setup();
+  try {
+    const secret = "the merger with Acme நொடி";
+    let r = mcp(t, [call(1, "search", { query: secret }), call(2, "run", { key: "file:/home/u/" + secret + ".md" })]);
+    assert.equal(r.status, 0, r.err);
+    assert.equal(readFileSync(join(t, "log.search"), "utf8"), secret, "the search reached the bar whole");
+    assert.equal(readFileSync(join(t, "log.carried"), "utf8").trim(), "700 600", "its folder and file owner-only");
+    assert.ok(!r.log.includes("merger") && !r.log.includes("Acme"), "in an argument: " + r.log);
+    assert.match(r.log, /call io\.github\.itsgg\.nodi search @file:.*\/nodi-ipc\.[A-Za-z0-9]+\/payload\n/);
+    const line = JSON.stringify(call("x", "search", { query: secret }));
+    r = nodi(t, ["mcp", "--ask"], { input: line + "\n", env: { NODI_ASK_SESSION: "t0k3n-secret", FAKE_TOKEN: "t0k3n-secret" } });
+    assert.equal(r.status, 0, r.err);
+    assert.equal(readFileSync(join(t, "log.ask"), "utf8").trim(), line, "the message reached Ask whole");
+    assert.ok(!r.log.includes("merger") && !r.log.includes("t0k3n"), "the message or the token in an argument: " + r.log);
+    assert.deepEqual(readdirSync(join(t, "run")).filter(f => f.startsWith("nodi-ipc.")), [], "each server's folder gone when it ends");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });

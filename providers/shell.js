@@ -8,6 +8,19 @@
 //
 //   > htop, > omarchy theme set "Tokyo Night", > git -C ~/Work/x pull
 
+// The command line in no argument, which another local user can read in
+// /proc for as long as it runs (the marketplace's review, 2026-10-10): it
+// comes in the environment and goes, for a terminal, into a script of its
+// own, 0600 in a 0700 folder under $XDG_RUNTIME_DIR, whose first line
+// removes the folder; the terminal is given its path. One the terminal
+// never started goes after five minutes. Without a terminal it runs from
+// the environment.
+var IN_TERMINAL = 't=${NODI_TEXT-}; unset NODI_TEXT; umask 077; d=$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/nodi-sh.XXXXXXXXXX") || exit 1'
+  + "\n" + "printf '%s\\n' 'rm -rf -- \"${BASH_SOURCE%/*}\"' \"$t\" > \"$d/run\" || exit 1"
+  + "\n" + '( sleep 300; rm -rf -- "$d" ) >/dev/null 2>&1 &'
+  + "\n" + 'exec omarchy-launch-floating-terminal-with-presentation bash "$d/run"'
+var WITHOUT = 't=${NODI_TEXT-}; unset NODI_TEXT; eval "$t"'
+
 var provider = {
   id: "shell",
   name: "Run",
@@ -36,8 +49,8 @@ var provider = {
       score: 98,
       copy: cmd,
       actionLabel: "Run",
-      run: Run.exec(["omarchy-launch-floating-terminal-with-presentation", cmd]),
-      actions: [{ label: "Run without a terminal", icon: "󰐊", run: Run.shell(cmd) }]
+      run: Run.shell(IN_TERMINAL, [], cmd),
+      actions: [{ label: "Run without a terminal", icon: "󰐊", run: Run.shell(WITHOUT, [], cmd) }]
     }]
   }
 }

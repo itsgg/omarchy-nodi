@@ -1,21 +1,27 @@
 # When something is wrong
 
-## What a notification means
+## What a toast means
+
+Nodi says these in its own toast, a small popup at the top of the
+screen, never a desktop notification; it goes after a few seconds, or
+at a click.
 
 | It says | What happened, and what to do |
 |---|---|
 | Nodi has no hotkey | The `"hotkey"` is not a key combination (write it as `"SUPER + SEMICOLON"`), or something else already opens on it, which it names: Super+Space is Omarchy's menu until you move it ([Getting started](start.md)). Set another in `nodi.json`. |
 | A row's hotkey is taken | A key you gave a row from Ctrl+K is bound to something else now. Give the row another from Ctrl+K. |
-| nodi.json has an error | Your settings file does not parse, or holds no object of settings; the notification says why, and where for a typo. Nothing in it applies until it does: the last settings that worked are kept, or the defaults, if none has worked since the shell started. |
+| nodi.json has an error | Your settings file does not parse, or holds no object of settings; the toast says why, and where for a typo. Nothing in it applies until it does: the last settings that worked are kept, or the defaults, if none has worked since the shell started. |
 | (a row's name) failed | A command a row ran exited with an error: the text is the last line it wrote, a script command's exit status if it wrote none, or why an action that can be undone failed. A command of a menu row or a script filter's that fails without a word, or a program you close, says nothing. |
 | prefs.json has an error | `~/.local/state/nodi/prefs.json`, where what you set from Ctrl+K is kept, does not parse (often a hand edit's trailing comma). Nothing is saved over it until it is fixed, so nothing in it is lost; the bar reads it again at each open. |
 | Window rule not kept | Nodi keeps fifty window rules at most, fewer for very long app names; take one back in `?mine`. |
+| Reminder not set | Fifty reminders are set already, or the time is more than a week away; `reminders` lists them, and `reminders clear` takes them all back. |
+| A reminder that says it is late | It came due while the shell was not running, or the machine was asleep, so Nodi says it as soon as it can, with when it was due. |
 
 ## Nothing opens on the key
 
 `omarchy plugin list` should show `io.github.itsgg.nodi` enabled;
 `omarchy plugin enable io.github.itsgg.nodi` enables it. If the key is
-held by something else, a notification said so when the bar loaded, and
+held by something else, Nodi's toast said so when the bar loaded, and
 `"hotkey"` in [Settings](settings.md) takes another.
 
 ## Ask says why it failed

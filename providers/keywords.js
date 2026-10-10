@@ -61,9 +61,14 @@ function build(cmd, q, ctx) {
                                                   selection: ctx && ctx.selection ? ctx.selection.text : "" })
     return Run.open(filled.text)
   }
-  if (cmd.run && !outdated(cmd)) return Run.shell(cmd.run, [String(q)])
+  if (cmd.run && !outdated(cmd)) return Run.shell(TAKE + cmd.run, [], String(q))
   return null
 }
+
+// A `run` keyword's words: "$1" in its script as before, but carried in
+// its environment, never an argument, which another local user can read
+// in /proc (the marketplace's review, 2026-10-10).
+var TAKE = 'set -- "${NODI_TEXT-}"; unset NODI_TEXT\n'
 
 // What a row will do, said plainly: the site it opens or the command it runs.
 function describe(run, cmd) {

@@ -119,7 +119,7 @@ Levels, reminders and themes by name.
 
 - `volume 60`: Through Omarchy's own volume command and OSD
 - `bright -10`: The focused display
-- `remind 15 call mom`: A notification in 15 minutes
+- `remind 15 call mom`: Nodi says it in 15 minutes, in its own toast
 - `theme `: Every theme, the current one marked
 - `bluetooth`: Bluetooth, ON or OFF
 

@@ -174,13 +174,17 @@ test("the OCR script leaves what does not fit in 3 s to the next read", () => {
   } finally { rmSync(h.dir, { recursive: true, force: true }); }
 });
 
-test("send to a device: an entry is copied first, an image goes as its file", () => {
+test("send to a device: a text goes as a file of Nodi's own, his alone, an image as its file", () => {
   const rows = run("cb ", { clipboard: history });
   const send = r => r.actions.find(a => a.label === "Send to a device").run;
   const text = send(rows[0]);
   assert.equal(text.kind, "shell");
-  assert.deepEqual(plain(text.args), ["0"], "named by its place, never its text");
-  assert.match(text.script, /--copy-only --history-index "\$1" && exec omarchy-menu-share clipboard/);
+  // Omarchy's own share of the clipboard leaves it in a /tmp file (the
+  // marketplace's review, 2026-10-10): the pinned texts' script, the text
+  // in the environment.
+  assert.equal(text.script, load("providers/clipboard.js").SHARE_TEXT);
+  assert.equal(text.text, history[0].text);
+  assert.equal(text.args, undefined, "nothing in an argument");
   assert.deepEqual(plain(send(rows[1]).argv), ["omarchy-menu-share", "file", "/s/clipboard-images/aa.png"]);
 });
 

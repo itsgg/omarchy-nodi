@@ -32,19 +32,32 @@ Window {
 
   // What is grabbed: the card on the bar's scrim over an opaque backdrop
   // (the scrim is translucent), with a margin round it.
+  // A scene of toasts (components/ToastCard.qml) is drawn as them alone,
+  // as Toast.qml shows them over the desktop, with no scrim.
+  readonly property bool toasting: fake.toasts.length > 0
   Rectangle {
     id: frame
-    width: card.width + 120
-    height: card.height + 80
+    width: (win.toasting ? toastCards.width : card.width) + 120
+    height: (win.toasting ? toastCards.height : card.height) + 80
     color: Qt.darker(look.background, 1.4)
 
-    Rectangle { anchors.fill: parent; color: look.scrim }
+    Rectangle { anchors.fill: parent; color: look.scrim; visible: !win.toasting }
 
     Card {
       id: card
       nodi: fake
       x: 60
       y: 40
+      visible: !win.toasting
+    }
+
+    ToastCard {
+      id: toastCards
+      look: look
+      items: fake.toasts
+      x: 60
+      y: 40
+      visible: win.toasting
     }
   }
 
@@ -65,6 +78,7 @@ Window {
     fake.ctrlHeld = !!s.ctrlHeld
     fake.reads = s.reads || ({})
     fake.aliasRow = s.aliasRow || null
+    fake.toasts = s.toasts || []
     fake.answerShown = s.answer || ""
     fake.askPane = s.askPane || null
     fake.streamed = s.streamed || null
@@ -140,8 +154,8 @@ Window {
       frame.grabToImage(function(result) {
         result.saveToFile(win.outDir + "/" + name + ".png")
         // How far the card would run past the screen's bottom gap, placed
-        // as Nodi.qml places it: none (item 70).
-        console.log("SHOT " + name + " " + Math.max(0, Math.round(look.cardTop + card.height - (look.screenHeight - Style.gapsOut))))
+        // as Nodi.qml places it: none (item 70). Toasts sit at the top.
+        console.log("SHOT " + name + " " + (win.toasting ? 0 : Math.max(0, Math.round(look.cardTop + card.height - (look.screenHeight - Style.gapsOut)))))
         win.next()
       })
     }

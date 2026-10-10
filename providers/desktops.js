@@ -27,9 +27,11 @@ var FORGET = /^\s*(?:forget|remove|delete)\s+desktop\s+(.+?)\s*$/i
 // bracket its text cannot close, the desktop entry quoted for the shell.
 // Its fields apart by the unit separator, which no id holds: tab is blank
 // to `read`, and @tsv's escapes stay escaped (Sonnet 2026-10-06).
-var OPEN = 'p="$HOME/.local/state/nodi/prefs.json"'
-  + "\n" + 'apps=$(jq -r --arg n "$1" \'.desktops[]? | select((.name | ascii_downcase) == ($n | ascii_downcase)) | .apps[] | [.cls, .id, .workspace] | join("\\u001f")\' "$p" 2>/dev/null)'
-  + "\n" + '[ -n "$apps" ] || { echo "no desktop named $1 is saved" >&2; exit 1; }'
+// Its name in the environment, never an argument (the marketplace's
+// review, 2026-10-10).
+var OPEN = 'n=${NODI_TEXT-}; unset NODI_TEXT; p="$HOME/.local/state/nodi/prefs.json"'
+  + "\n" + 'apps=$(NODI_N=$n jq -r \'.desktops[]? | select((.name | ascii_downcase) == ($ENV.NODI_N | ascii_downcase)) | .apps[] | [.cls, .id, .workspace] | join("\\u001f")\' "$p" 2>/dev/null)'
+  + "\n" + '[ -n "$apps" ] || { echo "no desktop of that name is saved" >&2; exit 1; }'
   + "\n" + 'c=$(hyprctl clients -j) && open=$(jq -r \'.[].class\' <<< "$c") || { echo "the open windows could not be read" >&2; exit 1; }'
   + "\n" + 'while IFS=$\'\\x1f\' read -r cls id ws; do'
   + "\n" + '  [[ $ws =~ ^[1-9][0-9]{0,2}$ ]] || continue'
@@ -70,7 +72,7 @@ function openRow(d, q) {
   var t = Score.tier(q, Score.prepare({ name: d.name, keywords: ["desktop desktops"] }))
   if (!t) return null
   return { key: "desktop:" + d.name.toLowerCase(), title: "Open desktop \"" + d.name + "\"", subtitle: said(d.apps), icon: ICON,
-           run: Run.shell(OPEN, [d.name]), tier: t, kind: "action", copy: "" }
+           run: Run.shell(OPEN, [], d.name), tier: t, kind: "action", copy: "" }
 }
 
 function savedNames(prefs) {

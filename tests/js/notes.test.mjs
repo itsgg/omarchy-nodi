@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { load, plain } from "./load.mjs";
@@ -18,7 +18,7 @@ test("note: one dated line added to the notes file, made if missing", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-notes-"));
   try {
     const file = join(dir, "deep/notes.md");
-    const add = (f, text) => execFileSync("/usr/bin/bash", ["-c", N.ADD, "nodi", f], { env: { PATH: "/usr/bin", NODI_TEXT: text } });
+    const add = (f, text) => execFileSync("/usr/bin/bash", ["-c", "umask 022; " + N.ADD, "nodi", f], { env: { PATH: "/usr/bin", NODI_TEXT: text } });
     add(file, "call the bank");
     add(file, "--not an option");
     const lines = readFileSync(file, "utf8").split("\n");
@@ -29,6 +29,14 @@ test("note: one dated line added to the notes file, made if missing", () => {
     writeFileSync(bare, "no newline at the end");
     add(bare, "next");
     assert.match(readFileSync(bare, "utf8"), /^no newline at the end\n- \d{4}-\d{2}-\d{2} \d{2}:\d{2} next\n$/, "never glued to the last line (Sonnet 2026-10-06)");
+    // His alone when made, whatever the shell's umask; one that exists
+    // keeps its mode (the marketplace's review, 2026-10-10).
+    const mode = f => (statSync(f).mode & 0o777).toString(8);
+    assert.deepEqual([mode(file), mode(join(dir, "deep"))], ["600", "700"], "a new file and its new folder");
+    const shared = join(dir, "shared.md");
+    writeFileSync(shared, "", { mode: 0o640 });
+    add(shared, "kept");
+    assert.equal(mode(shared), "640");
   } finally { rmSync(dir, { recursive: true, force: true }); }
   const other = Engine.run("note x", Object.assign({}, config, { notes: { file: "~/notes/inbox.md" } }), services({}));
   assert.equal(mine(other)[0].subtitle, "Adds a dated line to ~/notes/inbox.md", "the file of nodi.json");

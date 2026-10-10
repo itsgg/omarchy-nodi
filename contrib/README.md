@@ -17,7 +17,10 @@ Nothing here is fetched, and nothing runs until you name it in
 A name fills in the program, its keyword, title and icon. Anything you set
 on the entry wins, so `{ "contrib": "obsidian", "keyword": "o", "root": true }`
 takes `o` and also shows notes in any search; `"args"` are handed to the
-program. None of them does what Nodi does by itself: projects, SSH hosts,
+program. What you type reaches each in `NODI_QUERY`, never as an
+argument, and goes on to curl and jq in their environment: any user of
+the machine can read a running program's arguments in `/proc`. So
+`"argument"` on an entry is not taken. None of them does what Nodi does by itself: projects, SSH hosts,
 `man` and `tldr` pages and pull requests are already rows (`?` lists them).
 
 | Name | Kind | Keyword | What it does |
