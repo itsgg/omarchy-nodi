@@ -66,7 +66,14 @@ test("the pane shows the answer only while the query is its question", () => {
   assert.ok(!A.shown("a q", [helper], Object.assign({}, a, { phase: "idle" })));
   assert.ok(!A.shown("b q", [helper, Object.assign({}, helper, { keyword: "b" })], a), "another answer's keyword");
   const p = plain(Pane.choose({ answer: { question: "q", title: "Assistant", text: "**hi**", seq: 3 }, row: null }));
-  assert.deepEqual(p, { title: "q", subtitle: "Assistant", markdown: "**hi**", follow: true, round: 3 }, "each run its round, so asked again it starts at its top");
+  assert.deepEqual(p, { title: "q", subtitle: "Assistant", markdown: "**hi**", follow: true, round: 3, busy: false, status: "" },
+                   "each run its round, so asked again it starts at its top");
+  // While it runs, the spinner turns, and until its first words it says so
+  // (his report 2026-10-11: the pane said nothing for seconds).
+  const asking = plain(Pane.choose({ answer: { question: "q", title: "Perplexity", text: "", seq: 4, busy: true }, row: null }));
+  assert.deepEqual([asking.busy, asking.status, asking.markdown], [true, "Asking Perplexity...", ""]);
+  const first = plain(Pane.choose({ answer: { question: "q", title: "Perplexity", text: "Med", seq: 4, busy: true }, row: null }));
+  assert.deepEqual([first.busy, first.status], [true, ""], "its words, the spinner still turning");
   assert.equal(Pane.choose({ paletteOpen: true, answer: { question: "q", title: "t", text: "x" } }), null, "Ctrl+K's actions hide it");
   assert.equal(Pane.choose({ ask: { question: "q", model: "haiku", text: "" }, row: null }), null, "nothing asked, nothing on its way: no pane");
   // From the Enter that asks (his report 2026-10-07): open at once, saying
@@ -96,4 +103,31 @@ test("Escape stops an answer on its way before it clears or closes anything", ()
 test("an answer found from the search box by its title, Enter writing its keyword", () => {
   const row = run("assistant").find(r => r.title === "Assistant" && r.complete === "a ");
   assert.ok(row, "the answer's command row");
+});
+
+// The blocks an answer is drawn in while it streams (lib/Markdown.js
+// blocks(), components/PreviewPane.qml): cut at blank lines outside fenced
+// code, so a fence, a table and a list each stay whole.
+test("an answer is cut into blocks at blank lines outside fences", () => {
+  const Markdown = load("lib/Markdown.js");
+  const md = "# T\n\npara one\nline two\n\n```\ncode\n\nmore\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n\n- x\n- y\n\nlast par";
+  assert.deepEqual(plain(Markdown.blocks(md)), ["# T", "para one\nline two", "```\ncode\n\nmore\n```", "| a | b |\n|---|---|\n| 1 | 2 |", "- x\n- y", "last par"]);
+  assert.deepEqual(plain(Markdown.blocks("")), []);
+  assert.deepEqual(plain(Markdown.blocks("```\nopen fence\n\nstill code")), ["```\nopen fence\n\nstill code"], "an unclosed fence runs to the end");
+  assert.deepEqual(plain(Markdown.blocks("~~~~\n```\n\n~~~~\n\nafter")), ["~~~~\n```\n\n~~~~", "after"], "closed only by its own mark, as long");
+});
+
+// From review (Cursor gpt-5.6-sol-high, 2026-10-11): what joins blocks
+// stays in one block, each block being a document of its own.
+test("a loose list, a list item's continuation and a fence on a list item stay one block", () => {
+  const Markdown = load("lib/Markdown.js");
+  assert.deepEqual(plain(Markdown.blocks("Intro.\n\n- one\n\n- two\n\n  more of two\n\nAfter.")),
+                   ["Intro.", "- one\n\n- two\n\n  more of two", "After."]);
+  assert.deepEqual(plain(Markdown.blocks("1. step\n\n2. step\n\nDone.")), ["1. step\n\n2. step", "Done."]);
+  assert.deepEqual(plain(Markdown.blocks("- ```html\n  <b>\n\n  </b>\n  ```\n\nAfter.")), ["- ```html\n  <b>\n\n  </b>\n  ```", "After."]);
+});
+
+test("an answer with a reference-style link is one block", () => {
+  const Markdown = load("lib/Markdown.js");
+  assert.deepEqual(plain(Markdown.blocks("See [Qt][qt].\n\nMore.\n\n[qt]: https://qt.io")), ["See [Qt][qt].\n\nMore.\n\n[qt]: https://qt.io"]);
 });

@@ -7,6 +7,21 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 
 ## Unreleased
 
+Long answers, and pictures on every open (2026-10-11)
+- An answer in the pane, Ask's or a streamed one's, is drawn in blocks as
+  it streams, a finished block laid out once, and read at most every 80 ms.
+  Laid out whole at every word, an 18 KB answer held the GUI thread for
+  280 s, the bar frozen; now 6.9 s over its 34 s of words, measured on the
+  real pane.
+- A streamed answer (`answers` in nodi.json) says it is asking, its spinner
+  turning, until its first words, as Ask does: the pane said nothing for
+  the seconds a program takes to start.
+- A streamed answer's words reach the pane together every 80 ms, not one
+  by one.
+- Every app's icon is decoded once and held, at the sizes the rows draw
+  it, so an open finds them ready and draws them with the rows' words: Qt
+  drops a picture nobody holds within minutes, and they came in late.
+
 Private text out of every argument (the marketplace's review, 2026-10-10)
 - Ask's list of running agent sessions reads each one's last prompt,
   window title, folder and arguments into its JSON by jq's `$ENV`: the

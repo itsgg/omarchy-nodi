@@ -2128,7 +2128,8 @@ Item {
                           error: askSession.phase === "error" ? askSession.error : "" } : null,
       proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
       agent: askSession.agentName,
-      answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
+      answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq,
+                                   busy: answerSession.running } : null,
       word: root.wordAsk,
       // All the actions, not the ones typed for: the pane holds its width
       // while Ctrl+K is filtered (Sonnet 2026-10-06).
@@ -2280,6 +2281,34 @@ Item {
     root.apps = list
     if (root.opened) root.recompute()
     root.describeApps()
+  }
+
+  // Every app's icon, decoded once and held, at the sizes the rows draw them
+  // (components/ResultRow.qml: a row's tile, the top hit's larger one). A
+  // row's picture loads off the GUI thread, and Qt keeps a picture nobody
+  // holds only for a while, dropping a quarter of them every 30 s; the rows
+  // go when the bar closes, so a later open decoded them again, and they
+  // came in after the rows' words (his report 2026-10-11). Held here, every
+  // open finds them in the cache and draws them with the rows. A few MB.
+  readonly property var warmIcons: {
+    var seen = ({})
+    var out = []
+    for (var i = 0; i < root.apps.length; i++) {
+      var icon = root.apps[i].icon
+      if (icon && !seen[icon]) { seen[icon] = true; out.push(icon) }
+    }
+    return out
+  }
+  Item {
+    visible: false
+    Repeater {
+      model: root.warmIcons
+      Item {
+        required property string modelData
+        IconTile { imageSource: root.iconSource(modelData); size: root.tileSize }
+        IconTile { imageSource: root.iconSource(modelData); size: Math.round(root.tileSize * 1.4) }
+      }
+    }
   }
 
   function iconSource(icon) {

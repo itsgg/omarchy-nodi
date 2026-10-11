@@ -70,7 +70,7 @@ QtObject {
   property string answerShown: ""
   // An answer on its way, as Nodi.qml hands Pane.js one: { busy, status, error }.
   property var askPane: null
-  // A streamed answer's { question, title, text }, as Nodi.qml hands Pane.js one.
+  // A streamed answer's { question, title, text, seq, busy }, as Nodi.qml hands Pane.js one.
   property var streamed: null
   // A confirm word being asked: { title, word, run, risk }.
   property var wordAsk: null
