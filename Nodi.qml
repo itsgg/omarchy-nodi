@@ -29,6 +29,7 @@ import "lib/Describe.js" as Describe
 import "lib/Pick.js" as Pick
 import "lib/Pane.js" as Pane
 import "lib/Opens.js" as Opens
+import "lib/Conversations.js" as Conversations
 import "lib/PickLog.js" as PickLog
 import "lib/Markdown.js" as Markdown
 import "lib/Appearance.js" as Appearance
@@ -129,6 +130,7 @@ Item {
          wide: root.preview !== null || (root.paletteOpen && root.anyPreview) }
   readonly property alias background: look.background
   readonly property alias foreground: look.foreground
+  readonly property alias link: look.link
   readonly property alias secondary: look.secondary
   readonly property alias opaqueCard: look.opaqueCard
   readonly property alias secondaryOnSelected: look.secondaryOnSelected
@@ -254,8 +256,10 @@ Item {
     // of one with an error too, and one that broke it stops the saves
     // before any writes over it (codex's review, 2026-10-09).
     if (root.prefsLoaded) prefsFile.reload()
-    // An agent not there is looked for again: one installed since is found.
-    if (root.agentMissing) agentProbe.look()
+    // Every registry program is looked for again at the open cadence: an
+    // installed remembered agent can recover precedence, and a removed
+    // non-current one is disabled before it is selected.
+    agentProbe.look()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -499,9 +503,8 @@ Item {
     // Claude's conversation goes on (ROADMAP 43), so a kept question sent
     // with its text is asked again with it; a run it waits on is refused.
     askSession.hidden()
-    // Nobody sees an answer once the bar is closed: it stops, and the next
-    // open asks afresh.
-    answerSession.reset()
+    // A streamed answer goes on, and its conversation with it, as Ask's
+    // does (components/Answer.qml): reopened on the same question, there it is.
   }
 
   function dismiss() {
@@ -550,6 +553,43 @@ Item {
     onLoadFailed: root.pickLogLoaded = true
   }
 
+  // ---------------------------------------------------------------- conversations
+
+  // Streamed answers' conversations, kept to reopen (lib/Conversations.js),
+  // in a folder his alone, saved once it is made (cacheReady).
+  property var conversations: []
+  property bool conversationsLoaded: false
+
+  function keepConversation() {
+    var s = answerSession
+    if (!s.conversation || !s.text || (s.phase !== "done" && s.phase !== "stopped")) return
+    root.conversations = Conversations.record(root.conversations, { id: s.conversation, keyword: s.keyword, title: s.title, at: Date.now(),
+      turns: s.turns.concat([{ question: s.question, text: s.text }]) })
+    root.saveConversations()
+  }
+  function saveConversations() {
+    if (root.cacheReady && root.conversationsLoaded) conversationsFile.setText(Conversations.serialize(root.conversations))
+  }
+
+  FileView {
+    id: conversationsFile
+    path: root.stateDir + "/conversations.json"
+    printErrors: false
+    atomicWrites: true
+    onLoaded: {
+      var held = root.conversations
+      root.conversations = Conversations.merge(Conversations.parse(text()), held)
+      root.conversationsLoaded = true
+      // Rewrites older entries without their effective request, which could
+      // contain selected text or a previous Ask transcript.
+      root.saveConversations()
+    }
+    onLoadFailed: {
+      root.conversationsLoaded = true
+      if (root.conversations.length) root.saveConversations()
+    }
+  }
+
   // ---------------------------------------------------------------- open times
 
   // Each open's start, first ranking, first frame and Hyprland's openlayer
@@ -594,6 +634,8 @@ Item {
 
   // ---------------------------------------------------------------- queries
 
+  property string askStatus: ""
+
   function services() {
     var desktop = desktopState.snapshot()
     return {
@@ -607,12 +649,16 @@ Item {
       filterStep: root.filterStep,
       session: root.closedAt,
       prefs: root.prefs,
-      ask: { phase: askSession.phase, question: askSession.question, answer: askSession.answer, error: askSession.error,
-             agent: askSession.agentName, model: askSession.modelName, status: askSession.status, activity: askSession.activity,
+      ask: { phase: askSession.phase, question: askSession.question, message: askSession.message, answer: askSession.answer, error: askSession.error,
+             agentId: typeof askSession.agent === "string" ? askSession.agent : "",
+             agent: askSession.agentName, model: askSession.modelName, status: root.askStatus, activity: askSession.activity,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active, install: askSession.install,
-             missing: root.agentMissing ? root.agentProgram : "" },
+             missing: root.agentMissing ? root.agentProgram : "", turns: askSession.turns, agents: root.askAgents },
+      conversations: root.conversations,
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
-                error: answerSession.error },
+                error: answerSession.error, running: answerSession.running, conversation: answerSession.conversation,
+                reopened: answerSession.reopened,
+                follows: answerSession.follows(answerSession.keyword, Answers.freshFor(root.config.answers, answerSession.keyword)) },
       window: root.cameFrom,
       selection: { text: root.selection, fresh: root.selectionFresh, source: root.selectionSource, clipboard: root.lastCopied },
       undo: undoer.entries,
@@ -778,6 +824,15 @@ Item {
     return true
   }
 
+  function openLink(url) {
+    var run = Run.link(url)
+    if (!run) {
+      root.toast("Link not opened", "Only http, https and mail links can open from a preview.")
+      return false
+    }
+    return root.execute(run, "", "", null)
+  }
+
   // ---------------------------------------------------------------- Ctrl+K
 
   // What the palette needs to know besides the row.
@@ -834,7 +889,7 @@ Item {
 
   function runPaletteAction(index) {
     var a = root.paletteActions[index]
-    if (!a) return
+    if (!Rows.activatable(a)) return
     // A word is the action's one confirmation: no second Enter before it
     // (Fable 2026-10-05).
     if (a.confirm && !a.confirmWord && root.paletteArmed !== a.label) {
@@ -884,6 +939,7 @@ Item {
   // Ctrl+K's action, chosen there or by its chord. `own` is the row's own,
   // which a filtered list may not have first.
   function runAction(row, a) {
+    if (!Rows.activatable(a)) return
     if (a.confirmWord) {
       var mine = a.own && row.remember
       root.askWord({ title: a.own ? row.title : a.label, word: a.confirmWord, run: a.run, risk: a.risk,
@@ -895,6 +951,7 @@ Item {
       return
     }
     if (a.nodi === "complete") { root.complete(row); return }
+    if (a.nodi === "askAgent" && a.data) { root.selectAskAgent(a.data.id); return }
     if (a.nodi) { root.setPref(a, row); return }
     var own = !!a.own
     var remembered = own && row.remember
@@ -1045,6 +1102,7 @@ Item {
     if (!root.cacheReady) return
     if (root.prefsWaiting) { root.prefsWaiting = false; root.savePrefs(root.prefs) }
     if (root.remindersWaiting) { root.remindersWaiting = false; root.saveReminders() }
+    root.saveConversations()
   }
 
   // A row that runs only once a word is typed (Rows confirmWord): the field
@@ -1288,14 +1346,18 @@ Item {
       // Claude on a text (the selection, a translation): asked as Ask asks,
       // the field showing the question, so the answer and its paste are Ask's.
       if (askSession.busy() || windowShot.active) return
-      root.askRows = ({})
-      askSession.send(row.ask.question, row.ask.message, row.ask.context)
+      root.askRows = ({ turn: "", rows: ({}) })
+      root.startAsk("", row.ask.question, row.ask.message, row.ask.context)
       input.text = "ask " + row.ask.question
       input.cursorPosition = input.text.length
     } else if (row.nodi === "askNew") {
       if (askSession.busy()) return
       askSession.recycle()
-      input.text = "ask "
+      if (row.data && row.data.prefix) input.text = row.data.prefix + " "
+      else {
+        root.directAskAgent = ""
+        input.text = "ask "
+      }
       input.cursorPosition = input.text.length
     } else if (row.nodi === "askWindow" && row.ask) {
       // The window the bar opened over, captured from its own buffer by
@@ -1303,7 +1365,7 @@ Item {
       // in it; 1280 pixels wide at most (ROADMAP 43).
       var w = root.cameFrom
       if (askSession.busy() || windowShot.active || !w.stableId) return
-      root.askRows = ({})
+      root.askRows = ({ turn: "", rows: ({}) })
       root.shotAsk = row.ask
       // grim scales the window's buffer, which is its layout width times
       // its own monitor's scale (Fable 2026-10-06), else the focused one's.
@@ -1319,7 +1381,13 @@ Item {
     } else if (row.nodi === "ask") {
       var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
       // Not while a window's picture is taken for this question (askWindow).
-      if (q && !askSession.busy() && !windowShot.active) { root.askRows = ({}); askSession.send(q) }
+      if (q && !askSession.busy() && !windowShot.active) {
+        root.askRows = ({ turn: "", rows: ({}) })
+        root.startAsk("", q)
+      }
+    } else if (row.nodi === "askAs" && row.data) {
+      if (!askSession.busy() && !windowShot.active)
+        root.startAsk(row.data.id, row.data.question)
     } else if (row.nodi === "runWord" && root.wordAsk) {
       if (root.queryNow().trim() !== root.wordAsk.word) return
       var w = root.wordAsk
@@ -1337,9 +1405,51 @@ Item {
       var u = undoer.take(row.key)
       if (u) root.execute(u.run, "", "", null, u.title, false)
       return
-    } else if (row.nodi === "answer") {
-      var spec = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom)
-      if (spec) answerSession.start(spec)
+    } else if (row.nodi === "answer" || row.nodi === "answerFresh") {
+      var retryMessage = Answers.retryMessage(root.queryNow(), root.config.answers, answerSession)
+      var spec = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom, retryMessage)
+      if (spec) { spec.fresh = row.nodi === "answerFresh"; answerSession.start(spec) }
+    } else if (row.nodi === "askFallback" && row.data) {
+      // The failed question, asked of the answer "fallback" names: the field
+      // on its keyword, so its rows and its pane are that answer's.
+      input.text = row.data.keyword + " " + row.data.question
+      input.cursorPosition = input.text.length
+      var fbSpec = Answers.spec(input.text, root.config.answers, root.cameFrom, row.data.message)
+      if (fbSpec) { fbSpec.fresh = row.data.fresh === true; answerSession.start(fbSpec) }
+    } else if (row.nodi === "askAgentFallback" && row.data) {
+      // Switch and preserve what the failed turn effectively sent, but keep
+      // it idle: Enter on the prepared Ask row is the first thing that sends.
+      if (row.data.direct) {
+        if (!root.prepareDirectAsk(row.data.id, row.data.question, row.data.message, row.data.context)) return
+        input.text = row.data.id + " " + row.data.question
+      } else {
+        if (!root.selectAskAgent(row.data.id)) return
+        askSession.prepare(row.data.question, row.data.message, row.data.context)
+        input.text = "ask " + row.data.question
+      }
+      input.cursorPosition = input.text.length
+    } else if (row.nodi === "answerResume" && row.data) {
+      // A kept conversation, reopened in the pane: the field on its keyword,
+      // a follow-up continuing it.
+      var kept = Conversations.find(root.conversations, row.data.id)
+      if (!kept) return
+      answerSession.resume(kept, Answers.freshFor(root.config.answers, kept.keyword))
+      input.text = kept.keyword + " "
+      input.cursorPosition = input.text.length
+    } else if (row.nodi === "answerChat" && row.data && row.data.run) {
+      // Carried on in a terminal, for good: marked so it reopens there, and
+      // let go here, its later turns being the terminal's.
+      root.conversations = Conversations.moved(root.conversations, row.data.id)
+      root.saveConversations()
+      if (answerSession.conversation === row.data.id) answerSession.reset()
+      root.execute(row.data.run, "", row.key, null, row.title, false)
+      return
+    } else if (row.nodi === "answerNew") {
+      // The conversation forgotten, the field left on its keyword for the
+      // next question.
+      var kw = answerSession.keyword
+      answerSession.reset()
+      if (kw) { input.text = kw + " "; input.cursorPosition = input.text.length }
     } else if (row.nodi === "filterNext" && row.next) {
       root.stepInto(row.next)
       return
@@ -1473,6 +1583,8 @@ Item {
     root.typedSinceOpen = true
     if (!root.recalling) root.recallAt = -1
     root.trail = PickLog.typed(root.trail, Match.normalise(root.queryNow()))
+    if (root.directAskAgent && !askSession.busy() && !root.queryUsesDirectAgent(root.queryNow()))
+      root.directAskAgent = ""
     if (/^\s*ask\s/i.test(root.queryNow())) askSession.warm()
     root.armedKey = ""
     root.closePalette()
@@ -1940,14 +2052,99 @@ Item {
     onPhaseChanged: if (root.opened) root.recompute()
   }
 
-  // Whether the agent Ask holds is installed: its program on his login
-  // PATH, asked once at the start and when the agent changes. Not there,
-  // the Ask fallback is not offered and `ask ` says so before an Enter
-  // (2026-10-09: with no agent, every query nothing matched ended in an
-  // Ask that failed).
-  readonly property string agentProgram: Agents.program(Agents.chosen(root.config.ask && root.config.ask.agent, root.omarchyAgent))
-  property bool agentMissing: false
-  onAgentProgramChanged: agentProbe.look()
+  readonly property var askRegistry: Agents.registry(root.config.ask)
+  property var agentAvailability: ({})
+  readonly property var resolvedAgent: Agents.chosen(root.config.ask && root.config.ask.agent, root.omarchyAgent,
+                                                     root.prefs.askAgent, root.askRegistry, root.agentAvailability)
+  property string directAskAgent: ""
+  property var pendingAsk: null
+  readonly property var effectiveAskAgent: root.directAskAgent || root.resolvedAgent
+  readonly property string resolvedModel: Agents.modelFor(root.effectiveAskAgent, root.config.ask, root.omarchyAgent, root.askRegistry)
+  readonly property string resolvedAgentId: typeof root.resolvedAgent === "string" ? root.resolvedAgent : ""
+  readonly property string effectiveAgentId: typeof root.effectiveAskAgent === "string" ? root.effectiveAskAgent : ""
+  readonly property string agentProgram: Agents.program(root.effectiveAskAgent, root.askRegistry)
+  readonly property string resolvedAgentProgram: Agents.program(root.resolvedAgent, root.askRegistry)
+  readonly property string resolvedAvailabilityKey: root.effectiveAgentId || (root.agentProgram ? "__legacy__" : "")
+  readonly property bool agentMissing: !!root.resolvedAvailabilityKey && root.agentAvailability[root.resolvedAvailabilityKey] === false
+  readonly property var askAgents: root.askRegistry.map(function(a) {
+    var program = Agents.program(a.id, root.askRegistry)
+    var reason = Agents.disabledReason(a.id)
+    var available = root.agentAvailability[a.id] === true
+    return { id: a.id, name: a.name, model: Agents.modelFor(a.id, root.config.ask, root.omarchyAgent, root.askRegistry),
+             policy: Agents.policy(a.id, root.askRegistry),
+             missing: root.agentAvailability[a.id] === false ? program : "", reason: reason, available: available,
+             current: a.id === root.resolvedAgentId }
+  })
+
+  function startAsk(id, question, message, context, image) {
+    if (askSession.busy() || windowShot.active) return false
+    var direct = !!id
+    var target = direct ? Agents.canonicalId(id) : root.resolvedAgent
+    if (direct && (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)
+        || root.agentAvailability[target] !== true)) return false
+    root.pendingAsk = { direct: direct, target: target, question: String(question || ""),
+                        message: message, context: context, image: image }
+    root.directAskAgent = direct ? target : ""
+    root.askStatus = askSession.status
+    if (direct ? askSession.agent === target : askSession.agent === root.resolvedAgent)
+      root.flushAsk()
+    else Qt.callLater(root.flushAsk)
+    return true
+  }
+
+  function flushAsk() {
+    var pending = root.pendingAsk
+    if (!pending) return
+    if (pending.direct ? askSession.agent !== pending.target : askSession.agent !== root.resolvedAgent) {
+      Qt.callLater(root.flushAsk)
+      return
+    }
+    root.pendingAsk = null
+    if (pending.prepare) askSession.prepare(pending.question, pending.message, pending.context)
+    else askSession.send(pending.question, pending.message, pending.context, pending.image)
+  }
+
+  function prepareDirectAsk(id, question, message, context) {
+    var target = Agents.canonicalId(id)
+    if (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)
+        || root.agentAvailability[target] !== true) return false
+    root.pendingAsk = { direct: true, prepare: true, target: target, question: String(question || ""),
+                        message: message, context: context }
+    root.directAskAgent = target
+    if (askSession.agent === target) root.flushAsk()
+    else Qt.callLater(root.flushAsk)
+    return true
+  }
+
+  function selectAskAgent(id) {
+    id = Agents.canonicalId(id)
+    var available = root.agentAvailability[id]
+    if (!Agents.byId(root.askRegistry, id) || Agents.disabledReason(id)
+        || (id === root.resolvedAgentId ? available === false : available !== true)) return false
+    var next = Prefs.withAskAgent(root.prefs, id)
+    if (!next) return false
+    if (id === root.resolvedAgentId) {
+      root.savePrefs(next)
+      root.directAskAgent = ""
+      return true
+    }
+    root.askRows = ({ turn: "", rows: ({}) })
+    root.savePrefs(next)
+    root.directAskAgent = ""
+    return true
+  }
+
+  // Availability for every palette agent, from the same login PATH its
+  // session uses. The resolved agent's missing state is one entry in this
+  // map, never a second interpretation of raw configuration.
+  onAskRegistryChanged: agentProbe.look()
+  onResolvedAgentChanged: agentProbe.look()
+  onEffectiveAskAgentChanged: {
+    // A palette choice or an availability change must end every operation
+    // owned by the old agent before the new name is presented.
+    root.shotAsk = null
+    askSession.switchAway()
+  }
   onAgentMissingChanged: if (root.opened) root.recompute()
   Reader {
     id: agentProbe
@@ -1955,11 +2152,34 @@ Item {
     // The session's PATH, as Ask's agent has it (Ask.qml environment), then
     // the login shell's: found here is found there.
     extraEnvironment: ({ PATH: Quickshell.env("PATH") || "" })
-    function look() {
-      if (!root.agentProgram) { root.agentMissing = false; return }
-      agentProbe.run(["/usr/bin/bash", "-lc", 'command -v -- "$1" >/dev/null 2>&1 && echo yes || echo no', "nodi-agent-probe", root.agentProgram], root.agentProgram)
+    function probeTag() {
+      var all = root.askRegistry.map(function(a) {
+        return [a.id, Agents.disabledReason(a.id) ? "" : Agents.program(a.id, root.askRegistry)]
+      })
+      if (!root.resolvedAgentId && root.resolvedAgentProgram) all.push(["__legacy__", root.resolvedAgentProgram])
+      return JSON.stringify(all)
     }
-    onFinished: function(text, ok, tag) { if (tag === root.agentProgram) root.agentMissing = ok && String(text).trim() === "no" }
+    function look() {
+      var argv = ["/usr/bin/bash", "-lc",
+        'while [ "$#" -ge 2 ]; do id=$1 p=$2; shift 2; command -v -- "$p" >/dev/null 2>&1 && printf "%s\\tyes\\n" "$id" || printf "%s\\tno\\n" "$id"; done',
+        "nodi-agent-probe"]
+      for (var i = 0; i < root.askRegistry.length; i++)
+        argv.push(root.askRegistry[i].id, Agents.disabledReason(root.askRegistry[i].id) ? ""
+                                                   : Agents.program(root.askRegistry[i].id, root.askRegistry))
+      if (!root.resolvedAgentId && root.resolvedAgentProgram) argv.push("__legacy__", root.resolvedAgentProgram)
+      agentProbe.run(argv, probeTag())
+    }
+    onFinished: function(text, ok, tag) {
+      if (tag !== agentProbe.probeTag() || !ok) return
+      var found = {}
+      var lines = String(text || "").trim().split("\n")
+      for (var i = 0; i < lines.length; i++) {
+        var pair = lines[i].split("\t")
+        if (pair.length === 2) found[pair[0]] = pair[1] === "yes"
+      }
+      root.agentAvailability = found
+      if (root.opened) root.recompute()
+    }
   }
 
   // Omarchy's default coding agent (omarchy-default-agent), which Ask holds
@@ -1975,13 +2195,27 @@ Item {
   }
 
   // A quick answer from a coding agent, held open over ACP (components/Ask.qml).
+  function syncAskPhase() {
+    if (!askSession.busy() && root.directAskAgent && !root.queryUsesDirectAgent(root.queryNow()))
+      root.directAskAgent = ""
+    if (root.opened) root.recompute()
+  }
+
+  function syncAskStatus() {
+    root.askStatus = askSession.status
+    if (root.opened) root.recompute()
+  }
+
   Ask {
     id: askSession
-    agent: Agents.chosen(root.config.ask && root.config.ask.agent, root.omarchyAgent)
-    model: String((root.config.ask && root.config.ask.model) || "")
+    registry: root.askRegistry
+    agent: root.effectiveAskAgent
+    model: root.resolvedModel
     workDir: root.cacheDir + "/ask"
     dataDir: root.dataDir
     toolServer: root.pluginDir + "/bin/nodi"
+    // Codex starts an MCP server with only the variables named here.
+    toolEnv: ({ WAYLAND_DISPLAY: Quickshell.env("WAYLAND_DISPLAY") || "" })
     version: String((root.manifest && root.manifest.version) || "")
     // The bar's rows as the agent's tools, unless nodi.json says
     // "ask": { "actions": false } (ROADMAP 44).
@@ -1990,10 +2224,16 @@ Item {
     // Variables of his the agent needs beyond those Ask passes (Ask.qml).
     passed: Array.isArray(root.config.ask && root.config.ask.environment) ? root.config.ask.environment : []
     searcher: root.askSearch
-    checker: root.askCheck
-    runner: root.askRun
+    resolver: root.askResolve
+    committer: root.askCommit
     shown: root.opened
-    onPhaseChanged: if (root.opened) root.recompute()
+    onActionTurnChanged: root.askRows = ({ turn: actionTurn, rows: ({}) })
+    onPhaseChanged: Qt.callLater(root.syncAskPhase)
+    onActivityChanged: if (root.opened) root.recompute()
+    // A status can change inside Ask's exit/reset handlers. Recomputing
+    // there can select the Ask fallback and warm a new session before the
+    // old handler has finished clearing it.
+    onStatusChanged: Qt.callLater(root.syncAskStatus)
     onInstallChanged: if (root.opened) root.recompute()
   }
 
@@ -2014,17 +2254,20 @@ Item {
       var data = ok ? String(text).replace(/\s+/g, "") : ""
       // No picture (the window gone, grim failing): the question goes as
       // text, and says so.
-      if (data) askSession.send(a.question, a.message, a.context, { mediaType: "image/jpeg", data: data })
-      else askSession.send(a.question, a.question + "\n\n(The window could not be captured.)", "")
+      if (data) root.startAsk("", a.question, a.message, a.context, { mediaType: "image/jpeg", data: data })
+      else root.startAsk("", a.question, a.question + "\n\n(The window could not be captured.)", "")
     }
   }
 
-  // What Claude found for the question being answered, by key: it runs
-  // only rows its search returned, and a new question starts it afresh.
-  property var askRows: ({})
+  // What the agent found for one turn, by key. Request tombstones live in
+  // Ask for the ACP session; search rows do not cross turn boundaries.
+  property var askRows: ({ turn: "", rows: ({}) })
 
   // The bar's ranking for a query, for an agent (lib/Engine.js agentRows).
   function agentRows(q) { return Engine.agentRows(q, root.config, root.services()) }
+
+  // Its unfiltered top row, for a direct run that must never substitute.
+  function agentTop(q) { return Engine.agentTop(q, root.config, root.services()) }
 
   // A row as an agent reads it; a row that asks says how.
   function agentData(r) {
@@ -2032,40 +2275,73 @@ Item {
              asks: r.confirmWord ? "a typed word" : r.confirm ? "a second Enter" : "" }
   }
 
-  // Claude's search: as data, its rows kept for its run.
-  function askSearch(q) {
+  // The agent's exploratory search: as data, with its live rows scoped to
+  // the prompt turn that requested them.
+  function askSearch(q, turnId) {
     var rows = root.agentRows(q)
-    var all = {}
-    for (var k in root.askRows) all[k] = root.askRows[k]
+    var all = root.askRows.turn === turnId ? Object.assign({}, root.askRows.rows) : {}
     for (var i = 0; i < rows.length; i++) all[rows[i].key] = rows[i]
-    root.askRows = all
+    root.askRows = { turn: String(turnId), rows: all }
     return rows.map(root.agentData)
   }
 
-  // Why Claude may not run a key, "" when it may: asked before a run is
-  // shown to him, and again before it runs.
-  function askCheck(key) {
-    var row = root.askRows[key]
-    if (!row) return "No row has that key; search first and run a key it returned."
+  function askCheckRow(row) {
     if (row.confirmWord) return "That row asks for a typed word; he must run it from the bar himself."
+    if (row.help) return "That top-ranked row is help and cannot be run."
+    if (row.nodi) return "That top-ranked row belongs to Nodi and cannot be run by an agent."
     if (!Run.command(row.run, root.appAction, row.title)) return "That row cannot run here."
     return ""
   }
 
-  // Claude's run, after his Enter allowed it: as Enter on the row runs it
-  // (execute), so the bar closes first. A paste, a picker or a terminal
-  // gets the focus the bar held, and an undoable run is the Undoer's
-  // (Fable 2026-10-06: a paste typed into the bar's own field). The
-  // conversation goes on, but a next run waits until he opens the bar and
-  // asks again (Ask.qml shown). The field is emptied first: Claude's run is
-  // a use of the row, not a pick for what was typed.
-  function askRun(key) {
-    var why = root.askCheck(key)
-    if (why) return why
-    var row = root.askRows[key]
+  function askClone(value) {
+    if (!value || typeof value !== "object") return value
+    var out = Array.isArray(value) ? [] : {}
+    for (var key in value)
+      if (Object.prototype.hasOwnProperty.call(value, key)) out[key] = root.askClone(value[key])
+    return out
+  }
+
+  function askSnapshot(row, turnId) {
+    return root.askClone({
+      key: String(row.key || ""),
+      title: String(row.title || ""),
+      subtitle: String(row.subtitle || ""),
+      risk: String(row.risk || ""),
+      confirmWord: String(row.confirmWord || ""),
+      run: row.run,
+      toggle: row.toggle,
+      rememberKey: row.remember ? String(row.key || "") : "",
+      history: History.snapshot(row),
+      undoable: !!row.undoable,
+      turn: String(turnId)
+    })
+  }
+
+  // A direct query resolves only the top-ranked row. If that row is not
+  // runnable, a lower row is never silently substituted.
+  function askResolve(kind, value, turnId) {
+    var row = null
+    if (kind === "query") {
+      row = root.agentTop(value)
+    } else {
+      row = root.askRows.turn === String(turnId) ? root.askRows.rows[value] : null
+    }
+    if (!row) return { ok: false, error: "No matching row" }
+    var why = root.askCheckRow(row)
+    if (why) return { ok: false, error: why }
+    return { ok: true, snapshot: root.askSnapshot(row, turnId) }
+  }
+
+  // Enter executes exactly the proposal snapshot captured before the card
+  // appeared; no live row is resolved at commit time.
+  function askCommit(snapshot) {
     input.text = ""
-    root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)
-    return "Ran: " + row.title + ". The bar closed; anything more waits until he asks again."
+    var executed = root.execute(snapshot.run, snapshot.toggle, snapshot.rememberKey,
+                                snapshot.history, snapshot.title, snapshot.undoable)
+    return executed
+      ? { status: "executed", key: snapshot.key, title: snapshot.title }
+      : { status: "failed", key: snapshot.key, title: snapshot.title,
+          message: "The captured action could not be dispatched." }
   }
 
   // What waits for his answer, as the bar shows it.
@@ -2080,9 +2356,8 @@ Item {
     if (p.kind === "permission" && !p.key)
       return { key: "tool:" + p.title, title: p.title, subtitle: Acp.inputLine(p.input), run: null, risk: "",
                confirmWord: "", tool: true, input: p.input }
-    var row = root.askRows[p.key]
-    return row ? { key: p.key, title: row.title, subtitle: row.subtitle, run: row.run, risk: row.risk, confirmWord: row.confirmWord }
-               : { key: p.key, title: p.key, subtitle: "A row the agent did not find by searching", run: null, risk: "", confirmWord: "" }
+    if (p.kind === "action" && p.snapshot) return p.snapshot
+    return null
   }
 
   // An answer said to a screen reader once it ends, its words without
@@ -2098,21 +2373,45 @@ Item {
   Connections {
     target: answerSession
     function onPhaseChanged() {
+      root.keepConversation()
       if (!root.answerShown) return
       if (answerSession.phase === "done") card.announce(answerSession.title + ". " + Markdown.spoken(answerSession.text, 600))
       else if (answerSession.phase === "error") card.announce(answerSession.title + " failed. " + (answerSession.error || ""))
     }
   }
 
+  function queryUsesDirectAgent(query) {
+    if (!root.directAskAgent) return null
+    var direct = String(query || "").match(/^\s*(\S+)(?:\s+(.*))?$/)
+    var agent = Agents.byId(root.askRegistry, root.directAskAgent)
+    if (!direct || !agent) return false
+    var token = direct[1].toLowerCase()
+    if (token !== String(agent.id).toLowerCase()
+        && token !== String(agent.name || "").toLowerCase()) return false
+    return true
+  }
+
+  function askQuestion(query) {
+    var text = String(query || "")
+    var ordinary = text.match(/^\s*ask\s+(.*)$/i)
+    if (ordinary) return ordinary[1].trim()
+    if (!root.queryUsesDirectAgent(text)) return null
+    var direct = text.match(/^\s*(\S+)(?:\s+(.*))?$/)
+    return String(direct[2] || "").trim()
+  }
+
   // The answer the card shows, while the query is the question it answers:
   // its pane from the Enter that asked it, waiting, then its words.
-  readonly property bool asking: /^\s*ask\s/i.test(root.composedQuery)
+  readonly property var shownAskQuestion: root.askQuestion(root.composedQuery)
+  readonly property bool asking: root.shownAskQuestion !== null
   readonly property bool askOn: root.asking && askSession.phase !== "idle" && askSession.question !== ""
-    && askSession.question === root.composedQuery.replace(/^\s*ask\s+/i, "").trim()
+    && askSession.question === root.shownAskQuestion
   readonly property string askShown: root.askOn ? askSession.answer : ""
   // A streamed answer (providers/answers.js), while the query is its question.
   readonly property bool answerShown: Answers.shown(root.composedQuery, root.config.answers,
-    { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question })
+    { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, running: answerSession.running,
+      follows: answerSession.follows(answerSession.keyword, Answers.freshFor(root.config.answers, answerSession.keyword)),
+      reopened: answerSession.reopened })
   // The pane beside the list (item 26), as lib/Pane.js chooses it.
   readonly property bool anyPreview: root.rows.some(Pane.hasPane)
   // The pane beside the list, its read asked for outside any binding
@@ -2124,11 +2423,12 @@ Item {
     chosen: Pane.choose({
       paletteOpen: root.paletteOpen,
       ask: root.askOn ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: askSession.answer,
-                          busy: askSession.phase === "waiting" || askSession.phase === "streaming", status: askSession.status,
-                          error: askSession.phase === "error" ? askSession.error : "" } : null,
+                          busy: askSession.phase === "waiting" || askSession.phase === "streaming", status: root.askStatus,
+                          error: askSession.phase === "error" ? askSession.error : "", turns: askSession.turns } : null,
       proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
       agent: askSession.agentName,
-      answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq } : null,
+      answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq,
+                                   busy: answerSession.running, turns: answerSession.turns } : null,
       word: root.wordAsk,
       // All the actions, not the ones typed for: the pane holds its width
       // while Ctrl+K is filtered (Sonnet 2026-10-06).
@@ -2280,6 +2580,34 @@ Item {
     root.apps = list
     if (root.opened) root.recompute()
     root.describeApps()
+  }
+
+  // Every app's icon, decoded once and held, at the sizes the rows draw them
+  // (components/ResultRow.qml: a row's tile, the top hit's larger one). A
+  // row's picture loads off the GUI thread, and Qt keeps a picture nobody
+  // holds only for a while, dropping a quarter of them every 30 s; the rows
+  // go when the bar closes, so a later open decoded them again, and they
+  // came in after the rows' words (his report 2026-10-11). Held here, every
+  // open finds them in the cache and draws them with the rows. A few MB.
+  readonly property var warmIcons: {
+    var seen = ({})
+    var out = []
+    for (var i = 0; i < root.apps.length; i++) {
+      var icon = root.apps[i].icon
+      if (icon && !seen[icon]) { seen[icon] = true; out.push(icon) }
+    }
+    return out
+  }
+  Item {
+    visible: false
+    Repeater {
+      model: root.warmIcons
+      Item {
+        required property string modelData
+        IconTile { imageSource: root.iconSource(modelData); size: root.tileSize }
+        IconTile { imageSource: root.iconSource(modelData); size: Math.round(root.tileSize * 1.4) }
+      }
+    }
   }
 
   function iconSource(icon) {

@@ -215,6 +215,20 @@ test("wikipedia and weather: Markdown from what the sites send, and nothing aske
   } finally { h.done(); }
 });
 
+test("wikipedia: an empty or whitespace-only description leaves no bare emphasis line", () => {
+  const h = home();
+  try {
+    for (const description of ["", "   "]) {
+      const article = JSON.stringify({ title: "No description", description, extract: "A clean summary.",
+                                       content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/No_description" } } });
+      h.stub("curl", CURL + 'case "$url" in *list=search*) echo \'{"query":{"search":[{"title":"No description"}]}}\';; '
+        + "*rest_v1/page/summary/No_description) echo '" + article + "';; *) exit 22;; esac\n");
+      assert.equal(h.run("wikipedia", [], { NODI_QUERY: "no description" }),
+        "# No description\n\nA clean summary.\n\n[Read the article](https://en.wikipedia.org/wiki/No_description)\n");
+    }
+  } finally { h.done(); }
+});
+
 test("wikipedia and weather: the words reach no program's arguments, only curl's variables and jq's environment (the marketplace's review, 2026-10-10)", () => {
   const h = home();
   try {

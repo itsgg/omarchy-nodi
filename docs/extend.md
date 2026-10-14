@@ -162,9 +162,40 @@ It runs for two minutes at most (`timeoutMs`, from 1000 to 600000) and may print
 with no spaces (Chinese, a long URL) shows once it ends. Write each piece as you have it: a program whose output is
 buffered when it goes into a pipe (Python's, for one) shows nothing until
 it flushes. Escape while it answers stops it, the program and what it
-started, and so does closing the bar. Once it has ended, Enter pastes the
+started; closing the bar does not, and reopened on the same question, the
+answer is there. Once it has ended, Enter pastes the
 answer where you were, Ctrl+Enter copies it, and Ask again asks it again;
 if it fails, the last line it wrote to stderr says why.
+
+Answers are a conversation, as Raycast's Quick AI keeps one. A question
+asked within ten minutes of the last answer, with the same keyword,
+follows it: the pane shows the whole thread, each question above its
+answer, while the follow-up is typed and as it is answered. After a longer
+pause, or on "New conversation", another begins, and "New conversation:
+..." asks a question in a fresh one. `"fresh"` sets the window: `"30m"`,
+`"2h"`, `"0"` for every question on its own, `"never"` for one
+conversation however long the pause. The program is told which
+conversation in `NODI_CONVERSATION`, an id it can keep its own history
+under, so a follow-up has the context of the questions before it:
+
+```jsonc
+"answers": [
+  { "keyword": "a", "title": "Assistant", "fresh": "10m",
+    "command": ["bash", "-lc", "printf '%s' \"$NODI_QUERY\" | exec my-ask --markdown --session \"$NODI_CONVERSATION\"", "nodi-a"],
+    "chat": ["my-ask", "--session", "{conversation}"] }
+]
+```
+
+With `"chat"`, a command whose `{conversation}` becomes the id, "Continue
+in terminal" opens it in a terminal, so a conversation outgrowing the bar
+carries on there, its history and all, as Raycast's Quick AI hands one on
+to its AI Chat.
+
+Nodi keeps the newest 50 conversations in
+`~/.local/state/nodi/conversations.json` so an empty keyword can reopen
+them. The file contains their questions and answers, not an effective
+request that included selected text or an Ask transcript. "New conversation"
+sets the current one aside in that recent list; deleting the file clears it.
 
 ## Extensions that come with Nodi
 

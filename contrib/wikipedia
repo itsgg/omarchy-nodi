@@ -28,6 +28,6 @@ summary=$(NODI_PAGE=$page curl -q -fsS --max-time 10 --max-filesize 2097152 --pr
             --variable %NODI_PAGE --expand-url "$base/api/rest_v1/page/summary/{{NODI_PAGE}}") \
   || { printf 'Wikipedia did not answer.\n' >&2; exit 1; }
 printf '%s' "$summary" \
-  | jq -r '"# " + .title + "\n\n" + (if .description then "*" + .description + "*\n\n" else "" end)
+  | jq -r '"# " + .title + "\n\n" + (if ((.description // "") | test("\\S")) then "*" + .description + "*\n\n" else "" end)
            + (.extract // "") + "\n\n[Read the article](" + (.content_urls.desktop.page // "") + ")"' \
   || { printf 'Wikipedia did not answer.\n' >&2; exit 1; }

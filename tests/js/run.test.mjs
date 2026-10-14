@@ -31,6 +31,13 @@ test("well-formed runs pass, malformed ones say why", () => {
   for (const [run, why] of bad) assert.equal(Run.problem(run), why);
 });
 
+test("preview links open only web and mail addresses", () => {
+  for (const target of ["https://example.com/x", "http://example.com", "mailto:user@example.com"])
+    assert.deepEqual(plain(Run.link(target)), { kind: "open", target });
+  for (const target of ["file:///home/user/private", "/home/user/private", "obsidian://open", "javascript:alert(1)", ""])
+    assert.equal(Run.link(target), null, target);
+});
+
 test("every kind becomes one argv, started the way Omarchy's menu starts things", () => {
   assert.deepEqual(plain(Run.command(Run.exec(["omarchy-reminder", "5", "tea; rm -rf ~"]))), LOGIN.concat(["omarchy-reminder", "5", "tea; rm -rf ~"]));
   assert.deepEqual(plain(Run.command(Run.shell("omarchy-launch-about"))), ["bash", "-lc", "omarchy-launch-about", "nodi"]);

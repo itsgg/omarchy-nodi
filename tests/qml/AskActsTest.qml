@@ -22,7 +22,7 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 21
+  property int remaining: 30
   property int carriedCalls: 0
   property int rawCalls: 0
   Carried { id: carried }
@@ -31,9 +31,10 @@ Item {
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
   // bin/nodi's omarchy-shell, a stand-in that reaches this instance.
   readonly property var toolEnv: ({ OMARCHY_PATH: String(Qt.resolvedUrl("fake-omarchy")).replace(/^file:\/\//, ""), NODI_TEST_SHELL: Quickshell.shellDir, NODI_TEST_TARGET: "nodiAskTest" })
-  readonly property var sessions: [ask, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed, consent, own75, readyThenFails, flood, closed, named2]
+  readonly property var sessions: [ask, identityActivity, searchPath, closeBeforeEnter, closeBeforeDelivery, mailboxLost, outcomes, oldTurn, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed, consent, own75, readyThenFails, flood, switcher, switchPending, closed, named2]
 
   function finished() {
+    if (test.remaining <= 0) return
     if (--test.remaining > 0) return
     deadline.stop()
     if (test.rawCalls !== 0 || test.carriedCalls === 0) test.failures.push("messages in IPC arguments: " + test.rawCalls + " raw, " + test.carriedCalls + " carried")
@@ -64,9 +65,23 @@ Item {
     workDir: test.dir
     toolServer: test.nodi
     toolEnv: test.toolEnv
-    searcher: function(q) { return [{ key: "menu:system.lock", title: "Lock", subtitle: "System", kind: "action", asks: "" }] }
-    checker: function(k) { return k === "menu:system.lock" ? "" : "No row has that key" }
-    runner: function(k) { test.ran.push(k); return "Ran: Lock" }
+    property int searchCalls: 0
+    property int runCalls: 0
+    property int commitCalls: 0
+    property var liveRow: ({ key: "menu:system.lock", title: "Lock", subtitle: "System", kind: "action",
+                             run: { kind: "exec", argv: ["/usr/bin/test-action", "first"] } })
+    property string duplicateTicket: ""
+    searcher: function(q, turnId) { searchCalls++; return [] }
+    resolver: function(kind, value, turnId) {
+      runCalls++
+      return kind === "query" && value === "lock"
+        ? { ok: true, snapshot: liveRow } : { ok: false, error: "No matching row" }
+    }
+    committer: function(snapshot) {
+      commitCalls++
+      test.ran.push(snapshot.run.argv.join(" "))
+      return { status: "executed", key: snapshot.key, title: snapshot.title }
+    }
     // What the bar says it waits on, in order (the pane, the row).
     property var statuses: []
     Component.onCompleted: statuses = [status]
@@ -76,36 +91,351 @@ Item {
       if (phase === "proposing") {
         test.proposals++
         var p = ask.proposal
-        var want = test.proposals === 1 ? p && p.kind === "permission" && p.key === "" && p.title === "Bash"
-                 : test.proposals === 2 ? p && p.kind === "permission" && p.key === "menu:system.lock"
-                 : p && p.kind === "row" && p.key === "menu:system.lock"
-        if (!want) test.failures.push("proposal " + test.proposals + ": " + JSON.stringify(p))
-        if (test.proposals <= 2 && test.ran.length !== 0) test.failures.push("ran before he allowed it")
-        // Later, so the stand-in's second request comes while this waits.
+        if (!p || !p.snapshot || p.snapshot.key !== "menu:system.lock") test.failures.push("wrong top match: " + JSON.stringify(p))
+        else if (p.snapshot.run.argv.join(" ") !== "/usr/bin/test-action first")
+          test.failures.push("mutable or wrong command: " + JSON.stringify(p.snapshot.run))
+        if (test.ran.length !== 0) test.failures.push("ran before he allowed it")
+        // A duplicate ID joins this lifecycle. A distinct call with no
+        // permission-bound origin is rejected before registration, and a
+        // stale session cannot make another card.
+        var same = ask.serve(ask.token, ask.channel, JSON.stringify({
+          jsonrpc: "2.0", id: "direct", method: "tools/call",
+          params: { name: "run", arguments: { query: "lock" } }
+        }))
+        try { ask.duplicateTicket = JSON.parse(same).nodiPending || "" } catch (e) {}
+        var other = ask.serve(ask.token, ask.channel, JSON.stringify({
+          jsonrpc: "2.0", id: "concurrent", method: "tools/call",
+          params: { name: "run", arguments: { query: "lock" } }
+        }))
+        try {
+          var otherTicket = JSON.parse(other).nodiPending || ""
+          var busy = otherTicket ? ask.pollToolResponse(otherTicket) : JSON.parse(other)
+          var busyText = busy.result && busy.result.content ? busy.result.content[0].text : ""
+          if (!busy.result || !busy.result.isError || !/origin|permission/i.test(busyText)
+              || ask.actionBook.requests["string:concurrent"] !== undefined)
+            test.failures.push("a missing origin was registered: " + JSON.stringify(busy))
+        } catch (e2) { test.failures.push("bad concurrent response: " + other) }
+        var stale = JSON.parse(ask.serve("old-session", ask.channel, JSON.stringify({
+          jsonrpc: "2.0", id: "stale", method: "tools/call",
+          params: { name: "run", arguments: { query: "lock" } }
+        })))
+        if (!stale.error || test.ran.length !== 0) test.failures.push("stale session reached the action")
+        ask.liveRow.run.argv[1] = "second"
         answerLater.start()
       }
       if (phase !== "done" && phase !== "error") return
       if (phase === "error") test.failures.push("error: " + ask.error)
-      // The tool he refused is said at the answer's end (2026-10-10).
-      if (ask.answer !== "ok\n\n(Refused: Bash)") test.failures.push("the stand-in said: " + JSON.stringify(ask.answer))
-      if (JSON.stringify(test.ran) !== JSON.stringify(["menu:system.lock"])) test.failures.push("ran " + JSON.stringify(test.ran))
-      if (test.proposals !== 3) test.failures.push("proposals " + test.proposals + ": " + test.phases.join(","))
+      if (ask.answer !== "ok") test.failures.push("the stand-in said: " + JSON.stringify(ask.answer))
+      if (JSON.stringify(test.ran) !== JSON.stringify(["/usr/bin/test-action first"])) test.failures.push("ran " + JSON.stringify(test.ran))
+      if (test.proposals !== 1 || ask.commitCalls !== 1) test.failures.push("proposals/commits " + test.proposals + "/" + ask.commitCalls)
+      if (ask.runCalls !== 1 || ask.searchCalls !== 0) test.failures.push("not one-step: " + ask.runCalls + "/" + ask.searchCalls)
+      if (ask.duplicateTicket) {
+        var duplicate = ask.pollToolResponse(ask.duplicateTicket)
+        var duplicateText = duplicate.result && duplicate.result.content ? duplicate.result.content[0].text : ""
+        if (!/"status":"executed"/.test(duplicateText)) test.failures.push("pending duplicate did not replay: " + JSON.stringify(duplicate))
+      } else test.failures.push("duplicate request did not get a ticket")
       var said = ask.statuses.join(" | ")
-      if (!/^Starting Claude \| Asking Claude \| Searching the bar \|/.test(said + " |")) test.failures.push("what it said it waits on: " + said)
+      if (!/^Starting Claude \| Asking Claude \|/.test(said + " |")) test.failures.push("what it said it waits on: " + said)
       test.finished()
     }
   }
 
-  // The second (the run) he allows; the tool he refuses, and the row shown
-  // unasked once the agent's turn is over, so its next calls find it shown
-  // however slow the machine.
   Timer {
     id: answerLater
     interval: 300
-    onTriggered: {
-      if (test.proposals === 2) ask.allow()
-      else if (test.proposals === 1 || ask.turn === null) ask.deny()
-      else restart()
+    onTriggered: ask.allow()
+  }
+
+  // Only trusted metadata for this session's dynamic server is privileged.
+  // Action phases own status over read calls, and a stale read completion
+  // cannot erase the newer operation.
+  Ask {
+    id: identityActivity
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property var proposalKinds: []
+    property var activities: []
+    property string staleSnapshot: ""
+    property bool staleReadPreserved: false
+    property bool staleCheckScheduled: false
+    property bool sawResolving: false
+    property bool sawExecuting: false
+    property var visibleStatuses: []
+    onStatusChanged: if (visibleStatuses[visibleStatuses.length - 1] !== status)
+      visibleStatuses.push(status)
+    onActivityChanged: {
+      activities.push(activity)
+      if (activity === "Using Read current" && !staleCheckScheduled) {
+        staleCheckScheduled = true
+        var operations = Object.keys(readActivities)
+        for (var i = 0; i < operations.length; i++) {
+          var op = operations[i]
+          if (readActivities[op].text !== "Using Read old") continue
+          ;(function(oldOperation) {
+            Qt.callLater(function() {
+              agentSays({ sessionId: sessionId, update: {
+                sessionUpdate: "tool_call_update", toolCallId: oldOperation, status: "completed"
+              } })
+              staleSnapshot = JSON.stringify(readActivities)
+              staleReadPreserved = activity === "Using Read current"
+            })
+          })(op)
+          break
+        }
+      }
+    }
+    resolver: function(kind, value, turnId) {
+      sawResolving = activity === "Resolving a bar action"
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "identity"] } } }
+    }
+    committer: function(snapshot) {
+      sawExecuting = activity === "Running a bar action"
+      return { status: "executed", key: snapshot.key, title: snapshot.title }
+    }
+    onPhaseChanged: {
+      if (phase === "proposing") {
+        proposalKinds.push(proposal ? proposal.kind : "")
+        if (proposal && proposal.kind === "action") {
+          if (activity !== "Waiting for confirmation")
+            test.failures.push("confirmation lost action status: " + activity)
+          Qt.callLater(identityActivity.allow)
+        } else {
+          Qt.callLater(identityActivity.deny)
+        }
+        return
+      }
+      if (phase !== "done" && phase !== "error") return
+      var actionStatuses = ["Resolving a bar action", "Waiting for confirmation", "Running a bar action"]
+      var at = -1
+      for (var i = 0; i < actionStatuses.length; i++) {
+        at = visibleStatuses.indexOf(actionStatuses[i], at + 1)
+        if (at < 0) break
+      }
+      var invalidBinding = false
+      for (var bi = 0; bi < runBindings.length; bi++)
+        if (!runBindings[bi].callId || !runBindings[bi].operation)
+          invalidBinding = true
+      if (phase !== "done" || answer.indexOf("activity-check") !== 0
+          || JSON.stringify(proposalKinds) !== JSON.stringify(["permission", "permission", "permission", "action"])
+          || invalidBinding
+          || !sawResolving || !sawExecuting || !staleReadPreserved || at < 0
+          || visibleStatuses.indexOf("Using Read old") < 0
+          || visibleStatuses.indexOf("Using Read current") < 0)
+        test.failures.push("identity/activity: " + phase + "/" + JSON.stringify(answer) + "/"
+          + JSON.stringify(proposalKinds) + "/" + sawResolving + "/" + sawExecuting
+          + "/" + staleReadPreserved + "/" + staleSnapshot + "/" + JSON.stringify(activities)
+          + "/" + JSON.stringify(visibleStatuses))
+      test.finished()
+    }
+  }
+
+  // Validation and pre-proposal failures make no card and leave the turn
+  // free for the exploratory search -> run({key}) path. Escape executes
+  // nothing.
+  Ask {
+    id: searchPath
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int searches: 0
+    property int resolves: 0
+    property int commits: 0
+    property int proposals: 0
+    searcher: function(q, turnId) {
+      searches++
+      return [{ key: "menu:system.lock", title: "Lock", subtitle: "System", kind: "action", asks: "" }]
+    }
+    resolver: function(kind, value, turnId) {
+      resolves++
+      if (kind === "query" && value === "missing") return { ok: false, error: "No matching row" }
+      if (kind === "query" && value === "volume")
+        return { ok: false, error: "That top-ranked Volume row cannot run here" }
+      if (kind === "key" && value === "menu:system.lock")
+        return { ok: true, snapshot: { key: value, title: "Lock", subtitle: "System",
+          run: { kind: "exec", argv: ["/usr/bin/test-action", "searched"] } } }
+      return { ok: false, error: "No matching row" }
+    }
+    committer: function(snapshot) { commits++; return { status: "executed" } }
+    onPhaseChanged: {
+      if (phase === "proposing") {
+        proposals++
+        if (!proposal || proposal.snapshot.key !== "menu:system.lock")
+          test.failures.push("searched key proposed wrongly: " + JSON.stringify(proposal))
+        Qt.callLater(function() { searchPath.deny(); searchPath.allow() })
+        return
+      }
+      if (phase !== "done" && phase !== "error") return
+      if (phase !== "done" || answer !== "ok" || proposals !== 1 || commits !== 0 || searches !== 1 || resolves !== 3)
+        test.failures.push("search path: " + phase + "/" + answer + "/" + proposals + "/" + commits + "/" + searches + "/" + resolves)
+      test.finished()
+    }
+  }
+
+  // Closing wins before Enter and refuses only the uncommitted proposal.
+  Ask {
+    id: closeBeforeEnter
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int commits: 0
+    resolver: function(kind, value, turnId) {
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock", subtitle: "System",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "closed"] } } }
+    }
+    committer: function(snapshot) { commits++; return { status: "executed" } }
+    onPhaseChanged: {
+      if (phase === "proposing") {
+        Qt.callLater(function() { closeBeforeEnter.hidden(); closeBeforeEnter.allow() })
+        return
+      }
+      if (phase !== "done" && phase !== "error") return
+      if (phase !== "done" || answer !== "ok" || commits !== 0)
+        test.failures.push("close/Enter race: " + phase + "/" + answer + "/" + commits)
+      test.finished()
+    }
+  }
+
+  // The permission belongs to the old open state. Closing before its
+  // asynchronous MCP delivery must reject it without making a card.
+  Ask {
+    id: closeBeforeDelivery
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int proposals: 0
+    property int commits: 0
+    property bool barClosed: false
+    property bool deliveryRejected: false
+    property var deliveryResponse: null
+    resolver: function(kind, value, turnId) {
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "late-close"] } } }
+    }
+    committer: function(snapshot) { commits++; return { status: "executed" } }
+    function deliverAfterClose() {
+      barClosed = true
+      shown = false
+      hidden()
+      var control = JSON.parse(serve(token, channel, JSON.stringify({
+        jsonrpc: "2.0", id: "closed-delivery", method: "tools/call",
+        params: { name: "run", arguments: { query: "lock" } }
+      })))
+      var response = pollToolResponse(control.nodiPending || "")
+      deliveryResponse = response
+      var text = response.result && response.result.content ? response.result.content[0].text : ""
+      deliveryRejected = !!response.result && response.result.isError === true && /closed/i.test(text)
+      if (proposal) deny()
+    }
+    onPhaseChanged: {
+      if (phase === "proposing") { proposals++; Qt.callLater(closeBeforeDelivery.deny); return }
+      if (phase !== "done" && phase !== "error") return
+      if (phase !== "done" || proposals !== 0 || commits !== 0 || !deliveryRejected)
+        test.failures.push("closed delivery proposed/executed: " + phase + "/" + proposals + "/" + commits + "/" + barClosed + "/" + deliveryRejected + "/" + JSON.stringify(answer) + "/" + JSON.stringify(deliveryResponse))
+      test.finished()
+    }
+  }
+
+  // The action CAS is insufficient when Task 3's mailbox has already
+  // terminalized the request. Enter must not execute after that loss.
+  Ask {
+    id: mailboxLost
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int commits: 0
+    resolver: function(kind, value, turnId) {
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "mailbox"] } } }
+    }
+    committer: function(snapshot) { commits++; return { status: "executed" } }
+    onPhaseChanged: {
+      if (phase === "proposing") {
+        var p = proposal
+        completeToolResponse(p.requestId, JSON.stringify(actionResponse(p.requestId, {
+          status: "refused", proposalId: p.id, key: p.snapshot.key, title: p.snapshot.title
+        }, false)))
+        Qt.callLater(mailboxLost.allow)
+        return
+      }
+      if (phase !== "done" && phase !== "error") return
+      if (phase !== "done" || answer !== "ok" || commits !== 0)
+        test.failures.push("terminal mailbox executed: " + phase + "/" + answer + "/" + commits)
+      test.finished()
+    }
+  }
+
+  // Known dispatch rejection is failed; a thrown committer is unknown.
+  Ask {
+    id: outcomes
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int round: 0
+    resolver: function(kind, value, turnId) {
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", round ? "throws" : "fails"] } } }
+    }
+    committer: function(snapshot) {
+      if (round === 0) return { status: "failed", key: snapshot.key, title: snapshot.title, message: "dispatch rejected" }
+      throw new Error("dispatch threw")
+    }
+    onPhaseChanged: {
+      if (phase === "proposing") { Qt.callLater(outcomes.allow); return }
+      if (phase !== "done" && phase !== "error") return
+      if (phase !== "done" || answer !== "ok")
+        test.failures.push("structured outcome round " + round + ": " + phase + "/" + answer + "/" + error)
+      if (++round === 1) { Qt.callLater(function() { outcomes.send("commit throws") }); return }
+      test.finished()
+    }
+  }
+
+  // A terminal request ID replays across turns. Separately, a unique call
+  // delivered after the turn that permitted it is stale and never resolves.
+  Ask {
+    id: oldTurn
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int resolves: 0
+    property int commits: 0
+    property int round: 0
+    resolver: function(kind, value, turnId) {
+      resolves++
+      if (value === "missing") return { ok: false, error: "No matching row" }
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "stale"] } } }
+    }
+    committer: function(snapshot) { commits++; return { status: "executed" } }
+    onPhaseChanged: {
+      if (phase === "proposing") {
+        test.failures.push("old-turn replay made a card")
+        Qt.callLater(oldTurn.deny)
+        return
+      }
+      if (phase !== "done" && phase !== "error") return
+      if (phase !== "done" || answer !== "ok") test.failures.push("old-turn round " + round + ": " + phase + "/" + answer + "/" + error)
+      round++
+      if (round === 1) { Qt.callLater(function() { oldTurn.send("old turn replay again") }); return }
+      if (round === 2) { Qt.callLater(function() { oldTurn.send("bind old turn") }); return }
+      if (round === 3) { Qt.callLater(function() { oldTurn.send("deliver old turn") }); return }
+      if (resolves !== 1 || commits !== 0) test.failures.push("old-turn replay resolved/executed: " + resolves + "/" + commits)
+      test.finished()
     }
   }
 
@@ -116,11 +446,44 @@ Item {
     workDir: test.dir
     toolServer: test.nodi
     toolEnv: test.toolEnv
-    checker: function(k) { return "" }
+    property string failedToken: ""
+    property string failedChannel: ""
+    property string failedTicket: ""
+    resolver: function(kind, value, turnId) {
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "dying"] } } }
+    }
+    committer: function(snapshot) {
+      test.failures.push("the dead session executed")
+      return { status: "executed" }
+    }
+    function deliverBeforeExit() {
+      failedToken = token
+      failedChannel = channel
+      var control = JSON.parse(serve(token, channel, JSON.stringify({
+        jsonrpc: "2.0", id: "exit-run", method: "tools/call",
+        params: { name: "run", arguments: { query: "lock" } }
+      })))
+      failedTicket = control.nodiPending || ""
+    }
     onPhaseChanged: {
+      if (phase === "proposing") {
+        return
+      }
       if (phase !== "error" && phase !== "done") return
       if (phase !== "error" || !/exit 3/.test(dying.error)) test.failures.push("a session that exits while a run waits: " + phase + " " + dying.error)
       if (dying.proposal !== null) test.failures.push("its run still waits after it exited")
+      var raw = failedTicket ? serveCall(JSON.stringify({
+        token: failedToken, channel: failedChannel, op: "poll", ticket: failedTicket
+      })) : ""
+      try {
+        var response = JSON.parse(raw)
+        var outcome = JSON.parse(response.result.content[0].text)
+        if (outcome.status !== "refused" && outcome.status !== "unknown")
+          test.failures.push("failed-session poll outcome: " + JSON.stringify(response))
+      } catch (e) {
+        test.failures.push("failed-session ticket was lost: " + JSON.stringify(raw))
+      }
       test.finished()
     }
   }
@@ -132,11 +495,25 @@ Item {
     workDir: test.dir
     toolServer: test.nodi
     toolEnv: test.toolEnv
-    checker: function(k) { return "" }
+    resolver: function(kind, value, turnId) {
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "recycled"] } } }
+    }
+    committer: function(snapshot) {
+      test.failures.push("the recycled session executed")
+      return { status: "executed" }
+    }
     property bool again: false
+    property string recycledToken: ""
+    property string recycledChannel: ""
+    property string recycledTicket: ""
     onPhaseChanged: {
       if (phase === "proposing" && !recycled.again) {
         recycled.again = true
+        recycled.recycledToken = recycled.token
+        recycled.recycledChannel = recycled.channel
+        var tickets = Object.keys(recycled.toolResponses)
+        recycled.recycledTicket = tickets.length ? tickets[0] : ""
         recycled.recycle()
         if (recycled.proposal !== null || recycled.phase !== "idle") test.failures.push("recycled with a run waiting: " + recycled.phase)
         recycled.send("say ok")
@@ -144,6 +521,21 @@ Item {
       }
       if (phase !== "error" && phase !== "done") return
       if (phase !== "done" || recycled.answer !== "ok") test.failures.push("asked again after a recycle: " + phase + " " + recycled.error + recycled.answer)
+      var poll = JSON.stringify({
+        token: recycled.recycledToken, channel: recycled.recycledChannel,
+        op: "poll", ticket: recycled.recycledTicket
+      })
+      var raw = recycled.recycledTicket ? recycled.serveCall(poll) : ""
+      try {
+        var response = JSON.parse(raw)
+        var outcome = JSON.parse(response.result.content[0].text)
+        if (outcome.status !== "refused")
+          test.failures.push("recycled-session poll outcome: " + JSON.stringify(response))
+      } catch (e) {
+        test.failures.push("recycled-session ticket was lost: " + JSON.stringify(raw))
+      }
+      if (recycled.serveCall(poll) !== "")
+        test.failures.push("recycled-session credentials survived terminal retrieval")
       test.finished()
     }
   }
@@ -155,13 +547,20 @@ Item {
     workDir: test.dir
     toolServer: test.nodi
     toolEnv: test.toolEnv
-    checker: function(k) { return "" }
     property bool ran: false
     property int proposals: 0
-    // As Nodi.qml askRun: the run closes the bar (shown goes false) inside
-    // the tool call; the conversation goes on, and a next run is refused
-    // until he opens the bar and asks again (ROADMAP 43).
-    runner: function(k) { closing.ran = true; closing.shown = false; return "Ran: Lock. The bar closed." }
+    resolver: function(kind, value, turnId) {
+      return { ok: true, snapshot: { key: "menu:system.lock", title: "Lock",
+        run: { kind: "exec", argv: ["/usr/bin/test-action", "closing"] } } }
+    }
+    // As Nodi.execute: close happens inside commit, after the CAS has won.
+    // That close must not claim the committed action was stopped.
+    committer: function(snapshot) {
+      closing.ran = true
+      closing.shown = false
+      closing.hidden()
+      return { status: "executed", key: snapshot.key, title: snapshot.title }
+    }
     onPhaseChanged: {
       if (phase === "proposing") { closing.proposals++; Qt.callLater(closing.allow); return }
       if (phase !== "error" && phase !== "done") return
@@ -213,7 +612,6 @@ Item {
     workDir: test.dir
     toolServer: test.nodi
     toolEnv: test.toolEnv
-    checker: function(k) { return "" }
     onPhaseChanged: {
       if (phase === "proposing") test.failures.push("proposed while the bar is closed")
       if (phase !== "error" && phase !== "done") return
@@ -302,6 +700,19 @@ Item {
       if (phase !== "done" || plain.answer !== "ok") test.failures.push("a plain agent, round " + plain.round + ": " + phase + " " + plain.error + plain.answer)
       if (plain.agentName !== "Fake Agent") test.failures.push("named " + plain.agentName)
       if (++plain.round === 1) { Qt.callLater(function() { plain.send("plain question again") }); return }
+      // The conversation's turns (2026-10-11): the first answer is one by
+      // the second; a restarted session (a setting changed) has none, its
+      // agent knowing nothing of them (2026-10-11).
+      if (plain.round === 2) {
+        if (plain.turns.length !== 1 || plain.turns[0].question !== "plain question"
+            || plain.turns[0].message !== "plain question" || plain.turns[0].answer !== "ok")
+          test.failures.push("the first answer is a turn by the second: " + JSON.stringify(plain.turns))
+        // A new session's first question, as the first round's was: with a
+        // picture this agent takes none of, so it says so.
+        Qt.callLater(function() { plain.restart(); plain.send("plain question after a restart", undefined, undefined, { mediaType: "image/jpeg", data: "AAAA" }) })
+        return
+      }
+      if (plain.turns.length !== 0) test.failures.push("a restarted session shows no turns from before it: " + JSON.stringify(plain.turns))
       test.finished()
     }
   }
@@ -486,6 +897,75 @@ Item {
     }
   }
 
+  // Choosing another registry agent: the active turn is cancelled, the old
+  // session and conversation are cleared, and no question is sent.
+  Ask {
+    id: switcher
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    property bool switched: false
+    property int starts: 0
+    onStartedChanged: if (started) starts++
+    onPhaseChanged: {
+      if (phase !== "streaming" || switched) return
+      switched = true
+      turns = [{ question: "before", answer: "old" }]
+      waits = ({ 99: "auth" })
+      stage = "session"
+      ending = true
+      switchAway()
+      if (phase !== "idle" || question !== "" || message !== "" || answer !== "" || turns.length !== 0 || pending !== null || turn !== null
+          || Object.keys(waits).length !== 0 || stage !== "off")
+        test.failures.push("switch left conversation state: " + phase + "/" + question + "/" + answer + "/" + turns.length)
+      switchCheck.start()
+    }
+  }
+  Timer {
+    id: switchCheck
+    interval: 300
+    onTriggered: {
+      if (switcher.phase !== "idle" || switcher.question !== "" || switcher.pending !== null)
+        test.failures.push("switch sent implicitly: " + switcher.phase + "/" + switcher.question)
+      if (switcher.starts !== 1 || switcher.stage !== "off")
+        test.failures.push("switch warmed a replacement implicitly: " + switcher.starts + "/" + switcher.stage)
+      if (switcher.ending)
+        test.failures.push("switch left the failed session ending")
+      test.finished()
+    }
+  }
+
+  // Enter during the old process's shutdown queues the new question and
+  // starts the replacement as soon as that old process exits.
+  Ask {
+    id: switchPending
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    property bool switched: false
+    property int starts: 0
+    onStartedChanged: if (started) starts++
+    onPhaseChanged: {
+      if (phase === "streaming" && !switched) {
+        switched = true
+        switchAway()
+        send("say ok")
+        switchPendingDeadline.start()
+      } else if (phase === "done" && switched) {
+        switchPendingDeadline.stop()
+        if (answer !== "ok" || starts !== 2)
+          test.failures.push("question during switch did not start the replacement: " + answer + "/" + starts)
+        test.finished()
+      }
+    }
+  }
+  Timer {
+    id: switchPendingDeadline
+    interval: 5000
+    onTriggered: {
+      test.failures.push("question during switch stayed pending: " + switchPending.phase + "/" + switchPending.stage)
+      test.finished()
+    }
+  }
+
   // The agent's environment: none of the shell's but what Ask names
   // (qs-test.sh exports NODI_TEST_INHERITED), the agent's own, and what
   // nodi.json adds by name.
@@ -512,7 +992,10 @@ Item {
   }
 
   function start() {
+    actionMarkers.start()
     flood.send("say a lot")
+    switcher.send("say a lot")
+    switchPending.send("say a lot")
     closed.send("q")
     named2.send("q")
     if (!consent.install) test.failures.push("before any start, the rows do not say an Enter installs")
@@ -531,12 +1014,32 @@ Item {
     closing.send("the bar closes in the run")
     selected.send("Fix the spelling and grammar of the selection",
                   "Fix the spelling and grammar of the text below. Reply with the result only.\n\n<text>\nteh\n</text>", "selection")
+    identityActivity.send("identity and activity")
     ask.send("lock my screen")
+    searchPath.send("search then run")
+    closeBeforeEnter.send("bar closes before enter")
+    closeBeforeDelivery.send("close before delivery")
+    mailboxLost.send("mailbox already terminal")
+    outcomes.send("commit fails")
+    oldTurn.send("old turn replay")
     dying.send("exit while proposing")
     recycled.send("recycle while proposing")
     plain.send("plain question", "plain question", "window", { mediaType: "image/jpeg", data: "AAAA" })
     signIn.send("sign in first")
     deadline.start()
+  }
+
+  Timer {
+    id: actionMarkers
+    interval: 5
+    repeat: true
+    onTriggered: {
+      if (!closeBeforeDelivery.barClosed && closeBeforeDelivery.answer.indexOf("bound") === 0)
+        closeBeforeDelivery.deliverAfterClose()
+      if (!dying.failedTicket && dying.answer.indexOf("bound-exit") === 0)
+        dying.deliverBeforeExit()
+      if (closeBeforeDelivery.barClosed && dying.failedTicket) stop()
+    }
   }
 
   Timer {

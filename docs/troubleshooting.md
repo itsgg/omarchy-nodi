@@ -27,15 +27,35 @@ held by something else, Nodi's toast said so when the bar loaded, and
 ## Ask says why it failed
 
 An answer that cannot come ends with the reason the agent gave, in the
-bar. Most often the agent is not installed or not signed in: run it once
-in a terminal. For Claude and Codex, Node.js and `npm` must be on your
-login PATH for the first question, which installs the agent's adapter
+bar. Most often the agent is not installed or not signed in: run its
+command in a terminal (Codex needs the private-profile command below).
+For Claude, Pi and Agy, Node.js 22 and `npm` must be on your login PATH;
+Codex needs Node.js 20 and `npm`. The first question installs the adapter
 (`npm ci` from the lockfile in `lib/adapters`); if that failed,
 `~/.local/share/nodi/agents/*.log` says why. With the agent's own
-program (`claude`, `codex`, `gemini`, or your own command) not on your
+program (`claude`, `codex`, `opencode`, `pi`, `agy`, or your own command) not on your
 login PATH, `ask ` says so before you press Enter, and a query nothing
 matches offers no Ask.
 [Ask](ask.md) says what each agent needs.
+
+Claude is managed strict. Its pinned runner stops when the adapter or
+runtime cannot prove the required tool boundary.
+Codex is unmanaged. It uses a private profile and strict settings, but Nodi
+cannot disable Codex's built-in tools. Codex may use them. Its runner checks
+the executable/app-server version and Nodi action origins. Updating either
+agent may require a Nodi update when its adapter changes.
+
+For Claude, sign in with `claude` in a terminal. Codex needs a separate
+sign-in for Nodi's private profile; Nodi does not copy the normal profile's
+one-use ChatGPT refresh token:
+
+```sh
+CODEX_HOME="$HOME/.local/share/nodi/profiles/codex" codex login
+```
+
+This updates only Nodi's private Codex authentication and does not enable
+your global Codex config, MCP servers or apps. Do not copy a global
+`auth.json` or `config.toml` into that profile.
 
 ## A preview shows no colours, or no picture
 

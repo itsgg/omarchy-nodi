@@ -7,6 +7,8 @@ import { load, plain } from "./load.mjs";
 import { run, top, now } from "./fixtures.mjs";
 
 const N = load("providers/notifications.js");
+const Pane = load("lib/Pane.js");
+const Rows = load("lib/Rows.js");
 const at = now().getTime();
 const text = [
   JSON.stringify({ app: "omarchy-action", summary: "Process crashed: chromium", body: "Click to diagnose with AI", glyph: "x", execArgv: JSON.stringify(["omarchy-agent-crash", "123"]), timestamp: at - 3600e3 }),
@@ -37,6 +39,28 @@ test("found by what they said, Enter does what the click did", () => {
   const all = run("notifications", { notifications }).filter(r => r.provider === "notifications");
   assert.deepEqual(plain(all.map(r => r.title)), ["nodi.json has an error", "Bad action", "Dash", "Process crashed: chromium"]);
   assert.ok(!run("lock", { notifications }).some(r => r.provider === "notifications"));
+});
+
+test("multiline notification labels stay inside one result row while copy keeps the full text", () => {
+  const multiline = [{
+    app: "Agent",
+    summary: "Review complete\nwith findings",
+    body: "First line\n\nSecond\tline",
+    glyph: "",
+    argv: null,
+    at
+  }];
+  const row = top("review complete", { notifications: multiline });
+  assert.equal(row.title, "Review complete with findings");
+  assert.equal(row.subtitle, "Agent, First line Second line, just now");
+  assert.equal(row.copy, "Review complete\nwith findings: First line\n\nSecond\tline");
+  assert.deepEqual(plain(row.run), { kind: "copy", text: row.copy });
+  assert.equal(row.fullTitle, "Review complete\nwith findings");
+  assert.equal(row.fullSubtitle, "Agent, First line\n\nSecond\tline, just now");
+  assert.deepEqual(plain(Pane.choose({ row, anyPreview: true })),
+    { title: row.fullTitle, subtitle: row.fullSubtitle });
+  assert.ok(plain(Rows.actionsFor(row, {})).some(a =>
+    a.label === "Copy title" && a.run.text === row.fullTitle));
 });
 
 test("the history read from Omarchy's own folder, and a day old said in days", async () => {

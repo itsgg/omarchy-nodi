@@ -29,7 +29,7 @@ function terminal(dir, cmd) {
   var argv = ["uwsm-app", "--", "xdg-terminal-exec"]
   if (dir) argv.push("--dir=" + dir)
   if (cmd && cmd.length) argv = argv.concat(["--"], cmd)
-  return Run.exec(argv)
+  return Run.terminal(argv)
 }
 
 function tilde(path, home) {

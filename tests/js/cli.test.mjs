@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, chmodSync, statSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -42,12 +43,40 @@ case "$2" in
         [ -n "$FAKE_ANSWER_ON_ALIVE" ] && printf '%s\\n' "$FAKE_ANSWER_ON_ALIVE" > "$(cat "$FAKE_LOG.dir")/answer"
         echo "$FAKE_ALIVE" ;;
       askMcp)
-        # As the facade, one argument: { token, line }. Ask answers: an echo
-        # of the message's id, "" for a notification.
+        # As the facade, one argument. A pending action makes each short
+        # shell call answer with control until its final JSON-RPC response.
         [ $# -eq 5 ] || { echo "Too many arguments provided" >&2; exit 1; }
+        printf '%s %s\n' "$$" "$arg" >> "$FAKE_LOG.ask-calls"
+        if [ "$FAKE_PENDING" = 1 ]; then
+          op=$(printf '%s' "$arg" | /usr/bin/jq -r '.op // ""')
+          if [ "$op" = call ]; then
+            printf '%s\n' '{"nodiPending":"ticket-7"}'
+            if [ "$FAKE_CALL_RESPONSE_PAUSE" = 1 ]; then
+              printf ready > "$FAKE_LOG.call-response"
+              sleep 0.3
+            fi
+            exit 0
+          elif [ "$op" = poll ]; then
+            polls=0; [ -f "$FAKE_LOG.polls" ] && polls=$(cat "$FAKE_LOG.polls")
+            polls=$((polls + 1)); printf '%s' "$polls" > "$FAKE_LOG.polls"
+            [ "$FAKE_POLL_FAILURE" = 1 ] && exit 1
+            [ -n "$FAKE_POLL_SENTINEL" ] && { printf '%s\n' "$FAKE_POLL_SENTINEL"; exit 0; }
+            pending_polls=\${FAKE_PENDING_POLLS:-1}
+            if [ "$FAKE_PENDING_FOREVER" = 1 ] || [ "$polls" -le "$pending_polls" ]; then printf '%s\n' '{"nodiPending":"ticket-7"}'
+            elif [ -n "$FAKE_FINAL_RESPONSE" ]; then printf '%s\n' "$FAKE_FINAL_RESPONSE"
+            else printf '%s\n' '{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"{\\"status\\":\\"refused\\"}"}]}}'
+            fi
+            exit 0
+          elif [ "$op" = cancel ]; then
+            echo ok
+            exit 0
+          fi
+        fi
         line=$(printf '%s' "$arg" | /usr/bin/jq -r .line)
         printf '%s\n' "$line" >> "$FAKE_LOG.ask"
-        [ "$(printf '%s' "$arg" | /usr/bin/jq -r .token)" = "$FAKE_TOKEN" ] || { echo unknown; exit 0; }
+        [ "$(printf '%s' "$arg" | /usr/bin/jq -r .token)" = "$FAKE_TOKEN" ] \
+          && [ "$(printf '%s' "$arg" | /usr/bin/jq -r .channel)" = "$FAKE_CHANNEL" ] \
+          || { echo unknown; exit 0; }
         [ "$FAKE_EMPTY" = 1 ] && exit 0
         [ "$FAKE_EMPTY" = ok ] && { echo ok; exit 0; }
         [ "$FAKE_EMPTY" = error ] && { echo error; exit 0; }
@@ -80,7 +109,7 @@ function nodi(t, args, opts = {}) {
     OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"), LANG: "C.UTF-8",
     FAKE_PICK: opts.pick || "cancel", FAKE_ALIVE: opts.alive || "yes", FAKE_RUNROW: opts.runRow || "ok", FAKE_DOWN: opts.down ? "1" : "0",
     FAKE_SEARCH: opts.search || "[]", FAKE_DESCRIBE: opts.describe || "unknown row", FAKE_RUNPROPOSED: opts.runProposed || "ok",
-    FAKE_TOKEN: "t0k", NODI_CARRY_KEEP: "1", ...(opts.env || {})
+    FAKE_TOKEN: "t0k", FAKE_CHANNEL: "channel-0", NODI_ASK_CHANNEL: "channel-0", NODI_CARRY_KEEP: "1", ...(opts.env || {})
   };
   const r = spawnSync(opts.program || NODI, args, { env, input: opts.input || "", timeout: opts.timeout || 15000 });
   const read = f => { try { return readFileSync(join(t, f), "utf8") } catch (e) { return "" } };
@@ -91,7 +120,7 @@ test("words open the bar with them typed, encoded whole; no words open it empty"
   const t = setup();
   try {
     // What the bar was handed, read from the file it was carried in; the
-    // words in no argument (the marketplace's review, 2026-10-10).
+    // words in no argument.
     const summoned = r => r.calls.trim().split("\n").pop().replace(/^summon /, "");
     let r = nodi(t, ["hello", "world"]);
     assert.equal(r.status, 0, r.err);
@@ -139,7 +168,7 @@ test("pick prints the chosen line as it was read, and leaves nothing behind", ()
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
-test("pick keeps at most what the bar reads: past 8 MB it is refused, nothing asked, nothing left (codex's review, 2026-10-09)", () => {
+test("pick keeps at most what the bar reads: past 8 MB it is refused, nothing asked, nothing left", () => {
   const t = setup();
   try {
     const r = nodi(t, ["pick"], { input: "x".repeat(8388609), pick: "pick 0" });
@@ -198,6 +227,47 @@ function mcp(t, messages, opts = {}) {
 const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
 const text = reply => reply.result.content[0].text;
 
+function askRelay(t, extra = {}) {
+  const env = {
+    OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"),
+    FAKE_TOKEN: "t0k", FAKE_CHANNEL: "channel-7", FAKE_PENDING: "1", FAKE_PENDING_FOREVER: "1",
+    NODI_ASK_SESSION: "t0k", NODI_ASK_CHANNEL: "channel-7", ...extra
+  };
+  const process = spawn(NODI, ["mcp", "--ask"], { env });
+  let stdout = "", stderr = "";
+  process.stdout.on("data", chunk => { stdout += chunk; });
+  process.stderr.on("data", chunk => { stderr += chunk; });
+  return { process, stdout: () => stdout, stderr: () => stderr };
+}
+
+function askEnvelopes(t) {
+  try {
+    return readFileSync(join(t, "log.ask-calls"), "utf8").trim().split("\n").filter(Boolean)
+      .map(line => JSON.parse(line.slice(line.indexOf(" ") + 1)));
+  } catch (e) {
+    return [];
+  }
+}
+
+async function waitFor(predicate, message, timeout = 2500) {
+  const end = Date.now() + timeout;
+  while (Date.now() < end) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  assert.fail(message);
+}
+
+async function endRelay(relay) {
+  if (relay.process.exitCode === null && relay.process.signalCode === null) relay.process.stdin.end();
+  if (relay.process.exitCode === null && relay.process.signalCode === null)
+    await Promise.race([once(relay.process, "exit"), new Promise(resolve => setTimeout(resolve, 2500))]);
+  if (relay.process.exitCode === null && relay.process.signalCode === null) {
+    relay.process.kill("SIGKILL");
+    await once(relay.process, "exit");
+  }
+}
+
 test("nodi mcp: the handshake, the tools, and what it does not know", () => {
   const t = setup();
   try {
@@ -228,13 +298,13 @@ test("nodi mcp: the handshake, the tools, and what it does not know", () => {
     assert.doesNotMatch(e.log, /runRow/, "a tools/call without an id is a notification: not run");
     assert.deepEqual(e.byId[4].result, {});
     const ids = mcp(t, [{ jsonrpc: "2.0", id: false, method: "ping" }, { jsonrpc: "2.0", id: null, method: "nope" }]);
-    assert.deepEqual(ids.replies.map(x => [x.id, x.error ? x.error.code : "ok"]), [[false, "ok"], [null, -32601]], "ids as given (Fable 2026-10-06)");
+    assert.deepEqual(ids.replies.map(x => [x.id, x.error ? x.error.code : "ok"]), [[false, "ok"], [null, -32601]], "ids as given");
     const last = nodi(t, ["mcp"], { input: JSON.stringify({ jsonrpc: "2.0", id: 9, method: "ping" }) });
     assert.equal(JSON.parse(last.out).id, 9, "a last line without its newline is read");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
-test("nodi mcp reads a line at most 16 MB at a time: a longer one is refused, never held whole, and the next answered (codex's review, 2026-10-09)", () => {
+test("nodi mcp reads a line at most 16 MB at a time: a longer one is refused, never held whole, and the next answered", () => {
   const t = setup();
   try {
     const ping = id => ({ jsonrpc: "2.0", id, method: "ping" });
@@ -261,17 +331,17 @@ test("nodi mcp: search and run go to the bar; a refusal and an unreachable bar a
     assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Not run: it asks before it runs; open it in the bar", true]);
     r = mcp(t, [call(1, "search", { query: "x" })], { search: "error" });
     assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Nodi failed to answer; the shell's log says why", true],
-                     "the shell's answer when the function threw: a failure, not an unreachable bar (Fable 2026-10-06)");
+                     "the shell's answer when the function threw: a failure, not an unreachable bar");
     assert.equal(nodi(t, ["run", "x"], { runRow: "error" }).status, 2, "nodi run too");
     r = mcp(t, [call(1, "search", { query: "q".repeat(70000) })]);
     assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Too long: a query or a key is 64 KB at most", true]);
     r = mcp(t, [call(1, "search", { query: "த".repeat(30000) })]);
-    assert.equal(text(r.byId[1]), "Too long: a query or a key is 64 KB at most", "90000 bytes in 30000 letters (Fable 2026-10-06)");
+    assert.equal(text(r.byId[1]), "Too long: a query or a key is 64 KB at most", "90000 bytes in 30000 letters");
     r = mcp(t, [call(1, "search", { query: "த".repeat(20000) })]);
     assert.equal(r.byId[1].result.isError, false, "60000 bytes go");
     const longKey = "history:https://example.com/" + "a".repeat(5000);
     r = mcp(t, [call(1, "run", { key: longKey })]);
-    assert.equal(text(r.byId[1]), "Ran " + longKey, "a long key a search returned still runs (Fable 2026-10-06)");
+    assert.equal(text(r.byId[1]), "Ran " + longKey, "a long key a search returned still runs");
     r = mcp(t, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: "str" }]);
     assert.deepEqual([r.byId[1].error.code, r.err], [-32602, ""], "params of another shape: no tool, and nothing on stderr");
     r = mcp(t, [{ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "approve", arguments: "x" } }]);
@@ -303,7 +373,7 @@ test("nodi mcp: propose shows the row with its command; his Enter runs it, Escap
     r = mcp(t, [call(1, "propose", { key: "k" })], { pick: "pick 0",
               describe: JSON.stringify({ key: "k", title: "Erase", subtitle: "", command: "x", risk: "", asks: "a typed word" }) });
     assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Not run: it asks for a typed word; open it in the bar", true]);
-    assert.doesNotMatch(r.log, / pick | runProposed /, "not asked: his yes could not be honoured (Fable 2026-10-06)");
+    assert.doesNotMatch(r.log, / pick | runProposed /, "not asked: his yes could not be honoured");
     r = mcp(t, [call(1, "propose", { key: "made:up" })]);
     assert.deepEqual([text(r.byId[1]), r.byId[1].result.isError], ["Not run: unknown row", true]);
     assert.doesNotMatch(r.log, / pick /, "nothing shown for a row the bar does not know");
@@ -321,12 +391,12 @@ test("nodi mcp: approve answers Claude Code's permission prompt tool as it reads
     r = mcp(t, [call(1, "approve", args)], { pick: "cancel" });
     assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "deny", message: "He refused it in the bar." });
     r = mcp(t, [call(1, "approve", { tool_name: "Bash", input: { command: "cd x &&\n  make\tall" } })], { pick: "cancel" });
-    assert.equal(JSON.parse(readFileSync(join(t, "log.rows"), "utf8")).subtitle, "cd x && make all", "one line (Fable 2026-10-06)");
+    assert.equal(JSON.parse(readFileSync(join(t, "log.rows"), "utf8")).subtitle, "cd x && make all", "one line");
     r = mcp(t, [call(1, "approve", { tool_name: "Write", input: { file_path: "/tmp/y", content: "z" } })], { pick: "cancel" });
     assert.equal(JSON.parse(readFileSync(join(t, "log.rows"), "utf8")).subtitle, "/tmp/y", "what the tool acts on");
     const big = { tool_name: "Write", input: { file_path: "/tmp/big", content: "x".repeat(300000) } };
     r = mcp(t, [call(1, "approve", big)], { pick: "pick 0" });
-    assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "allow", updatedInput: big.input }, "past the 128 KB of one argument (Fable 2026-10-06)");
+    assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "allow", updatedInput: big.input }, "past the 128 KB of one argument");
     r = mcp(t, [call(1, "approve", args), call(2, "propose", { key: "k" })], { pick: "replaced",
               describe: JSON.stringify({ key: "k", title: "K", subtitle: "", command: "k", risk: "", asks: "" }) });
     assert.deepEqual(JSON.parse(text(r.byId[1])), { behavior: "deny", message: "Another question took the bar first; he was not asked." },
@@ -348,7 +418,7 @@ test("nodi mcp: ended while a question waits in the bar, it takes the question a
     await new Promise(r => setTimeout(r, 500));
     const log = readFileSync(join(t, "log"), "utf8");
     const id = JSON.parse(readFileSync(join(t, "log.req"), "utf8")).id;
-    assert.match(log, new RegExp("call io\\.github\\.itsgg\\.nodi cancelPick " + id + "\\n"), "the bar is told (Fable 2026-10-06)");
+    assert.match(log, new RegExp("call io\\.github\\.itsgg\\.nodi cancelPick " + id + "\\n"), "the bar is told");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
@@ -385,6 +455,510 @@ test("nodi mcp --ask hands each message to Ask whole and prints its answer; one 
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
+test("nodi mcp --ask polls a pending action through short-lived shell calls and prints only its final response", async () => {
+  const t = setup();
+  let relay;
+  try {
+    const request = call(7, "run", { query: "lock" });
+    relay = askRelay(t, { FAKE_PENDING_FOREVER: "0" });
+    relay.process.stdin.write(JSON.stringify(request) + "\n");
+    await waitFor(() => relay.stdout().includes("\n"), "pending action did not return its final response");
+    assert.deepEqual(relay.stdout().trim().split("\n").map(JSON.parse), [
+      { jsonrpc: "2.0", id: 7, result: { content: [{ type: "text", text: '{"status":"refused"}' }] } }
+    ], "pending controls are not emitted on stdout");
+    const calls = readFileSync(join(t, "log.ask-calls"), "utf8").trim().split("\n")
+      .map(line => {
+        const space = line.indexOf(" ");
+        return { pid: line.slice(0, space), envelope: JSON.parse(line.slice(space + 1)) };
+      });
+    assert.deepEqual(calls.map(x => x.envelope.op), ["call", "poll", "poll"]);
+    assert.equal(calls.filter(x => x.envelope.op === "call").length, 1);
+    assert.ok(calls.every(x => x.envelope.token === "t0k" && x.envelope.channel === "channel-7"));
+    assert.equal(new Set(calls.map(x => x.pid)).size, calls.length, "each poll uses a short-lived shell process");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask does not spin short-lived shell processes while a card waits", async () => {
+  const t = setup();
+  let relay;
+  try {
+    relay = askRelay(t, { FAKE_PENDING_FOREVER: "1" });
+    relay.process.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    await new Promise(resolve => setTimeout(resolve, 1100));
+    const polls = askEnvelopes(t).filter(x => x.op === "poll").length;
+    assert.ok(polls <= 6, "an idle card spawned " + polls + " polls in about one second");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask relays a matching cancellation notification once and cancels the original request", async () => {
+  const t = setup();
+  let relay;
+  try {
+    relay = askRelay(t);
+    relay.process.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    relay.process.stdin.write(JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7, reason: "Timed out" }
+    }) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "cancel"), "relay did not cancel the pending ticket");
+    await waitFor(() => relay.stdout().includes("\n"), "original request did not receive its cancellation outcome");
+    assert.deepEqual(relay.stdout().trim().split("\n").map(JSON.parse), [{
+      jsonrpc: "2.0", id: 7, error: { code: -32800, message: "Request cancelled" }
+    }], "the notification itself receives no response");
+    const afterCancel = askEnvelopes(t);
+    assert.equal(afterCancel.filter(x => x.op === "cancel").length, 1);
+    const pollCount = afterCancel.filter(x => x.op === "poll").length;
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(askEnvelopes(t).filter(x => x.op === "poll").length, pollCount, "polling stopped after cancellation");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask matches cancellation request IDs without coercing strings and numbers", async () => {
+  const t = setup();
+  let relay;
+  try {
+    relay = askRelay(t);
+    relay.process.stdin.write(JSON.stringify(call("1", "run", { query: "lock" })) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    relay.process.stdin.write(JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 1 }
+    }) + "\n");
+    const polls = askEnvelopes(t).filter(x => x.op === "poll").length;
+    await waitFor(() => askEnvelopes(t).filter(x => x.op === "poll").length > polls,
+                  "numeric cancellation incorrectly stopped or blocked polling");
+    assert.equal(askEnvelopes(t).filter(x => x.op === "cancel").length, 0, "numeric 1 must not cancel string \"1\"");
+    assert.equal(relay.stdout(), "", "an unrelated notification remains unanswered");
+    relay.process.stdin.write(JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: "1" }
+    }) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "cancel"), "matching string ID did not cancel");
+    await waitFor(() => relay.stdout().includes("\n"), "cancelled string request received no outcome");
+    assert.equal(JSON.parse(relay.stdout()).id, "1");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask cancels once and exits promptly when stdin closes during polling", async () => {
+  const t = setup();
+  let relay;
+  try {
+    relay = askRelay(t);
+    relay.process.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    const exited = once(relay.process, "exit");
+    relay.process.stdin.end();
+    await Promise.race([
+      exited,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("relay did not exit after stdin EOF")), 1000))
+    ]);
+    const envelopes = askEnvelopes(t);
+    assert.equal(envelopes.filter(x => x.op === "cancel").length, 1);
+    assert.equal(envelopes.at(-1).op, "cancel");
+    assert.equal(relay.stdout(), "", "a closed transport receives no response");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask preserves a partial cancellation line while it continues polling", async () => {
+  const t = setup();
+  let relay;
+  try {
+    relay = askRelay(t);
+    relay.process.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    const cancellation = JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7 }
+    });
+    const split = Math.floor(cancellation.length / 2);
+    const before = askEnvelopes(t).filter(x => x.op === "poll").length;
+    relay.process.stdin.write(cancellation.slice(0, split));
+    await waitFor(() => askEnvelopes(t).filter(x => x.op === "poll").length > before,
+                  "partial input blocked pending polls");
+    assert.equal(askEnvelopes(t).filter(x => x.op === "cancel").length, 0, "partial input was treated as a message");
+    relay.process.stdin.write(cancellation.slice(split) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "cancel"), "completed cancellation was not processed");
+    assert.equal(askEnvelopes(t).filter(x => x.op === "cancel").length, 1);
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask rejects an unrelated request as busy while the pending action keeps polling", async () => {
+  const t = setup();
+  let relay;
+  try {
+    relay = askRelay(t);
+    relay.process.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    relay.process.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 8, method: "ping" }) + "\n");
+    await waitFor(() => relay.stdout().includes("\n"), "unrelated request did not receive a busy response");
+    assert.deepEqual(JSON.parse(relay.stdout()), {
+      jsonrpc: "2.0", id: 8, error: { code: -32000, message: "Another request is already in progress" }
+    });
+    assert.equal(askEnvelopes(t).filter(x => x.op === "call").length, 1, "busy request was not relayed or queued");
+    const polls = askEnvelopes(t).filter(x => x.op === "poll").length;
+    await waitFor(() => askEnvelopes(t).filter(x => x.op === "poll").length > polls,
+                  "pending request stopped polling after a busy response");
+    relay.process.stdin.write(JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: "x" }
+    }) + "\n");
+    await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(relay.stdout().trim().split("\n").length, 1, "notification received a response");
+    relay.process.stdin.write(JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7 }
+    }) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "cancel"), "cleanup cancellation was not processed");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask joins bounded semantic retransmissions to one successful pending call", async () => {
+  const t = setup();
+  let relay;
+  try {
+    const original = ' { "params": { "arguments": { "__proto__": { "safe": true }, "query": "lock" }, "name": "run" }, "method": "tools/call", "id": 7, "jsonrpc": "2.0" } ';
+    const reordered = '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"run","arguments":{"query":"lock","__proto__":{"safe":true}}}}';
+    relay = askRelay(t, { FAKE_PENDING_FOREVER: "0", FAKE_PENDING_POLLS: "4" });
+    relay.process.stdin.write(original + "\n" + reordered + "\n" + original + "\n" + reordered + "\n");
+    await waitFor(() => relay.stdout().trim().split("\n").filter(Boolean).length === 4,
+                  "joined retransmissions did not all receive the terminal response", 5000);
+    const replies = relay.stdout().trim().split("\n").map(JSON.parse);
+    assert.equal(replies.length, 4);
+    assert.ok(replies.every(reply => JSON.stringify(reply) === JSON.stringify(replies[0])),
+              "every semantic retransmission receives the same terminal response");
+    const envelopes = askEnvelopes(t);
+    assert.equal(envelopes.filter(x => x.op === "call").length, 1,
+                 "retransmissions must not create another shell call or card");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask bounds retained exact retransmissions", async () => {
+  const t = setup();
+  let relay;
+  try {
+    const request = JSON.stringify(call(7, "run", { query: "lock" }));
+    relay = askRelay(t);
+    relay.process.stdin.write(Array(18).fill(request).join("\n") + "\n");
+    await waitFor(() => relay.stdout().includes("Too many duplicate requests are already waiting"),
+                  "duplicate overflow did not receive an immediate bounded error", 6000);
+    const replies = relay.stdout().trim().split("\n").map(JSON.parse);
+    assert.deepEqual(replies, [{
+      jsonrpc: "2.0", id: 7,
+      error: { code: -32000, message: "Too many duplicate requests are already waiting" }
+    }]);
+    assert.equal(askEnvelopes(t).filter(x => x.op === "call").length, 1,
+                 "overflow must not reach Ask or create another card");
+    const exited = once(relay.process, "exit");
+    relay.process.stdin.end();
+    await exited;
+    assert.equal(askEnvelopes(t).filter(x => x.op === "cancel").length, 1);
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask rejects a changed same-ID body and a differently typed ID without mutating the pending call", async () => {
+  const t = setup();
+  let relay;
+  try {
+    const original = '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"run","arguments":{"query":"lock","__proto__":{"safe":true}}}}';
+    relay = askRelay(t);
+    relay.process.stdin.write(original + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    relay.process.stdin.write('{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"run","arguments":{"query":"logout","__proto__":{"safe":true}}}}\n');
+    relay.process.stdin.write('{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"run","arguments":{"query":"lock","__proto__":{"safe":"true"}}}}\n');
+    relay.process.stdin.write('{"jsonrpc":"2.0","id":"7","method":"tools/call","params":{"name":"run","arguments":{"query":"lock","__proto__":{"safe":true}}}}\n');
+    await waitFor(() => relay.stdout().trim().split("\n").filter(Boolean).length === 3,
+                  "mismatched pending requests did not receive immediate errors");
+    assert.deepEqual(relay.stdout().trim().split("\n").map(JSON.parse), [{
+      jsonrpc: "2.0", id: 7,
+      error: { code: -32600, message: "Request ID is already pending with different content" }
+    }, {
+      jsonrpc: "2.0", id: 7,
+      error: { code: -32600, message: "Request ID is already pending with different content" }
+    }, {
+      jsonrpc: "2.0", id: "7",
+      error: { code: -32000, message: "Another request is already in progress" }
+    }]);
+    assert.equal(askEnvelopes(t).filter(x => x.op === "call").length, 1);
+    const polls = askEnvelopes(t).filter(x => x.op === "poll").length;
+    await waitFor(() => askEnvelopes(t).filter(x => x.op === "poll").length > polls,
+                  "mismatches mutated or stopped the pending request");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask gives an exact retransmission the same failed-poll error", async () => {
+  const t = setup();
+  let relay;
+  try {
+    const request = JSON.stringify(call(7, "run", { query: "lock" }));
+    relay = askRelay(t, { FAKE_POLL_FAILURE: "1" });
+    relay.process.stdin.write(request + "\n" + request + "\n");
+    await waitFor(() => relay.stdout().trim().split("\n").filter(Boolean).length === 2,
+                  "joined retransmission did not receive the failed-poll outcome");
+    const replies = relay.stdout().trim().split("\n").map(JSON.parse);
+    assert.equal(replies.length, 2);
+    assert.deepEqual(replies[0], {
+      jsonrpc: "2.0", id: 7,
+      error: { code: -32603, message: "The bar cannot be reached" }
+    });
+    assert.deepEqual(replies[1], replies[0]);
+    assert.equal(askEnvelopes(t).filter(x => x.op === "call").length, 1);
+    assert.equal(askEnvelopes(t).filter(x => x.op === "cancel").length, 1);
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask gives an exact retransmission the same terminal JSON-RPC error", async () => {
+  const t = setup();
+  let relay;
+  try {
+    const request = JSON.stringify(call(7, "run", { query: "lock" }));
+    const terminal = {
+      jsonrpc: "2.0", id: 7,
+      error: { code: -32042, message: "Action ended" }
+    };
+    relay = askRelay(t, {
+      FAKE_PENDING_FOREVER: "0",
+      FAKE_FINAL_RESPONSE: JSON.stringify(terminal)
+    });
+    relay.process.stdin.write(request + "\n" + request + "\n");
+    await waitFor(() => relay.stdout().trim().split("\n").filter(Boolean).length === 2,
+                  "joined retransmission did not receive the terminal JSON-RPC error");
+    assert.deepEqual(relay.stdout().trim().split("\n").map(JSON.parse), [terminal, terminal]);
+    assert.equal(askEnvelopes(t).filter(x => x.op === "call").length, 1);
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask gives an exact retransmission the same cancellation error", async () => {
+  const t = setup();
+  let relay;
+  try {
+    const request = JSON.stringify(call(7, "run", { query: "lock" }));
+    relay = askRelay(t);
+    relay.process.stdin.write(request + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    relay.process.stdin.write(request + "\n");
+    const polls = askEnvelopes(t).filter(x => x.op === "poll").length;
+    await waitFor(() => askEnvelopes(t).filter(x => x.op === "poll").length > polls,
+                  "exact retransmission was not retained");
+    relay.process.stdin.write(JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7 }
+    }) + "\n");
+    await waitFor(() => relay.stdout().trim().split("\n").filter(Boolean).length === 2,
+                  "joined retransmission did not receive cancellation");
+    const replies = relay.stdout().trim().split("\n").map(JSON.parse);
+    assert.equal(replies.length, 2);
+    assert.deepEqual(replies[0], {
+      jsonrpc: "2.0", id: 7, error: { code: -32800, message: "Request cancelled" }
+    });
+    assert.deepEqual(replies[1], replies[0]);
+    assert.equal(askEnvelopes(t).filter(x => x.op === "call").length, 1);
+    assert.equal(askEnvelopes(t).filter(x => x.op === "cancel").length, 1);
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask bounds oversize input while an action is pending and continues polling", async () => {
+  const t = setup();
+  let relay;
+  try {
+    relay = askRelay(t);
+    relay.process.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"), "relay did not start polling");
+    relay.process.stdin.write("x".repeat(65537) + "\n");
+    await waitFor(() => relay.stdout().includes("\n"), "oversize line did not receive an error");
+    assert.deepEqual(JSON.parse(relay.stdout()), {
+      jsonrpc: "2.0", id: null, error: { code: -32602, message: "Too long: a message is 64 KB at most" }
+    });
+    assert.equal(askEnvelopes(t).filter(x => x.op === "cancel").length, 0);
+    const polls = askEnvelopes(t).filter(x => x.op === "poll").length;
+    await waitFor(() => askEnvelopes(t).filter(x => x.op === "poll").length > polls,
+                  "oversize line blocked later polling");
+    relay.process.stdin.write(JSON.stringify({
+      jsonrpc: "2.0", method: "notifications/cancelled", params: { requestId: 7 }
+    }) + "\n");
+    await waitFor(() => askEnvelopes(t).some(x => x.op === "cancel"), "cleanup cancellation was not processed");
+  } finally {
+    if (relay) await endRelay(relay);
+    rmSync(t, { recursive: true, force: true });
+  }
+});
+
+test("nodi mcp --ask cancels every failed poll once, preserves its error, and leaves notifications unanswered", async () => {
+  const cases = [
+    { env: { FAKE_POLL_SENTINEL: "error" }, message: "Nodi failed to answer; the shell's log says why" },
+    { env: { FAKE_POLL_SENTINEL: "unknown" }, message: "The bar cannot be reached" },
+    { env: { FAKE_POLL_SENTINEL: "ok" }, message: "The bar gave no answer" },
+    { env: { FAKE_POLL_FAILURE: "1" }, message: "The bar cannot be reached" }
+  ];
+  for (const item of cases) {
+    const t = setup();
+    let relay;
+    try {
+      const request = call(7, "run", { query: "lock" });
+      const notification = {
+        jsonrpc: "2.0", method: "tools/call",
+        params: { name: "run", arguments: { query: "logout" } }
+      };
+      relay = askRelay(t, item.env);
+      relay.process.stdin.write(JSON.stringify(request) + "\n");
+      await waitFor(() => relay.stdout().includes("\n"), "failed poll did not answer: " + JSON.stringify(item.env));
+      const lines = relay.stdout().trim() ? relay.stdout().trim().split("\n").map(JSON.parse) : [];
+      assert.deepEqual(lines, [{
+        jsonrpc: "2.0", id: 7,
+        error: { code: -32603, message: item.message }
+      }], JSON.stringify(item.env));
+      let envelopes = readFileSync(join(t, "log.ask-calls"), "utf8").trim().split("\n")
+        .map(line => JSON.parse(line.slice(line.indexOf(" ") + 1)));
+      assert.equal(envelopes.filter(x => x.op === "cancel").length, 1, JSON.stringify(item.env));
+      assert.deepEqual(envelopes.at(-1), {
+        token: "t0k", channel: "channel-7", op: "cancel", ticket: "ticket-7"
+      }, JSON.stringify(item.env));
+      await endRelay(relay);
+      relay = undefined;
+
+      rmSync(join(t, "log.ask-calls"));
+      rmSync(join(t, "log.polls"));
+      relay = askRelay(t, item.env);
+      relay.process.stdin.write(JSON.stringify(notification) + "\n");
+      await waitFor(() => askEnvelopes(t).some(x => x.op === "cancel"),
+                    "failed notification poll was not cancelled: " + JSON.stringify(item.env));
+      assert.equal(relay.stdout(), "", "notification: " + JSON.stringify(item.env));
+      envelopes = readFileSync(join(t, "log.ask-calls"), "utf8").trim().split("\n")
+        .map(line => JSON.parse(line.slice(line.indexOf(" ") + 1)));
+      assert.equal(envelopes.filter(x => x.op === "cancel").length, 1,
+                   "notification: " + JSON.stringify(item.env));
+    } finally {
+      if (relay) await endRelay(relay);
+      rmSync(t, { recursive: true, force: true });
+    }
+  }
+});
+
+test("nodi mcp --ask best-effort cancels its pending ticket once when terminated", async () => {
+  const t = setup();
+  try {
+    const env = {
+      OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"),
+      FAKE_TOKEN: "t0k", FAKE_CHANNEL: "channel-7", FAKE_PENDING: "1", FAKE_PENDING_FOREVER: "1",
+      NODI_ASK_SESSION: "t0k", NODI_ASK_CHANNEL: "channel-7"
+    };
+    const p = spawn(NODI, ["mcp", "--ask"], { env });
+    p.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    const callsPath = join(t, "log.ask-calls");
+    let sawPoll = false;
+    for (let i = 0; i < 100; i++) {
+      let calls = "";
+      try { calls = readFileSync(callsPath, "utf8"); } catch (e) {}
+      if (calls.includes('"op":"poll"')) { sawPoll = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 20));
+    }
+    const exited = new Promise(resolve => p.on("exit", resolve));
+    p.kill("SIGTERM");
+    await exited;
+    assert.equal(sawPoll, true, "relay reached its pending poll loop");
+    const envelopes = readFileSync(callsPath, "utf8").trim().split("\n")
+      .map(line => JSON.parse(line.slice(line.indexOf(" ") + 1)));
+    assert.equal(envelopes.filter(x => x.op === "cancel").length, 1);
+    assert.equal(envelopes.at(-1).op, "cancel");
+    assert.equal(envelopes.at(-1).ticket, "ticket-7");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp --ask publishes a returned pending ticket before honoring termination", async () => {
+  const t = setup();
+  try {
+    const env = {
+      OMARCHY_PATH: join(t, "omarchy"), XDG_RUNTIME_DIR: join(t, "run"), FAKE_LOG: join(t, "log"),
+      FAKE_TOKEN: "t0k", FAKE_CHANNEL: "channel-7", FAKE_PENDING: "1", FAKE_PENDING_FOREVER: "1",
+      FAKE_CALL_RESPONSE_PAUSE: "1", NODI_ASK_SESSION: "t0k", NODI_ASK_CHANNEL: "channel-7"
+    };
+    const p = spawn(NODI, ["mcp", "--ask"], { env });
+    p.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+    const marker = join(t, "log.call-response");
+    let returned = false;
+    for (let i = 0; i < 100; i++) {
+      if (existsSync(marker)) { returned = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const before = readFileSync(join(t, "log.ask-calls"), "utf8");
+    assert.equal(returned, true, "fake shell did not publish its call response");
+    assert.doesNotMatch(before, /"op":"poll"/, "test missed the pre-poll race window");
+    const exited = new Promise(resolve => p.on("exit", resolve));
+    p.kill("SIGTERM");
+    await exited;
+    const envelopes = readFileSync(join(t, "log.ask-calls"), "utf8").trim().split("\n")
+      .map(line => JSON.parse(line.slice(line.indexOf(" ") + 1)));
+    assert.equal(envelopes.filter(x => x.op === "cancel").length, 1);
+    assert.equal(envelopes.at(-1).op, "cancel");
+    assert.equal(envelopes.at(-1).ticket, "ticket-7");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("nodi mcp --ask defers signals at every cancellation ticket-capture window", async () => {
+  for (const stage of ["before-busy", "after-busy", "after-capture", "after-clear", "after-attempt"]) {
+    const t = setup();
+    let relay;
+    try {
+      const marker = join(t, "cancel-hook");
+      relay = askRelay(t, {
+        NODI_ASK_TEST_SIGNAL_CANCEL_STAGE: stage,
+        NODI_ASK_TEST_CANCEL_MARKER: marker
+      });
+      relay.process.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
+      await waitFor(() => askEnvelopes(t).some(x => x.op === "poll"),
+                    stage + ": relay did not start polling");
+      const exited = once(relay.process, "exit");
+      relay.process.stdin.end();
+      await Promise.race([
+        exited,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(stage + ": relay did not exit")), 1500))
+      ]);
+      assert.equal(readFileSync(marker, "utf8"), stage, stage + ": deterministic hook was not reached");
+      const envelopes = askEnvelopes(t);
+      assert.equal(envelopes.filter(x => x.op === "cancel").length, 1,
+                   stage + ": cancellation must be attempted exactly once");
+      assert.equal(envelopes.at(-1).op, "cancel", stage);
+      assert.equal(relay.process.exitCode, 0, stage + ": deferred signal exit was not deterministic");
+    } finally {
+      if (relay) await endRelay(relay);
+      rmSync(t, { recursive: true, force: true });
+    }
+  }
+});
+
 test("nodi --help and -h print what the command does, from its own header", () => {
   const t = setup();
   try {
@@ -404,7 +978,7 @@ test("pick: an answer that comes as the bar closes is still taken", () => {
   try {
     // The first wait (2 s) ends, and the answer lands as the bar says the
     // pick is gone: taken by the second read. Not timed against the waits,
-    // which a loaded machine stretches (Cursor's review, 2026-10-10).
+    // which a loaded machine stretches.
     const r = nodi(t, ["pick"], { input: "alpha\nbeta\n", pick: "none", alive: "no", env: { FAKE_ANSWER_ON_ALIVE: "pick 1" } });
     assert.deepEqual([r.status, r.out], [0, "beta\n"], r.err);
     assert.match(r.log, /pickAlive/);
@@ -438,7 +1012,7 @@ test("nodi mcp --ask: under 64 KB in letters but past it in bytes, a message is 
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
-test("a summon's payload outlives the call, for a bar that reads it once Nodi has loaded, then goes (Fable 2026-10-10)", async () => {
+test("a summon's payload outlives the call, for a bar that reads it once Nodi has loaded, then goes", async () => {
   const t = setup();
   try {
     const r = nodi(t, ["hello"], { env: { NODI_CARRY_KEEP: "2" } });
@@ -450,8 +1024,8 @@ test("a summon's payload outlives the call, for a bar that reads it once Nodi ha
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
-// Bash runs an EXIT trap when SIGPIPE ends it (5.3); Fable's review
-// (2026-10-10) asked whether a payload outlives a relay ended so.
+// Bash runs an EXIT trap when SIGPIPE ends it (5.3); verify that a payload
+// outlives a relay ended so.
 test("an Ask relay whose agent has gone dies by SIGPIPE at its next answer, and its payload folder goes with it", () => {
   const t = setup();
   try {
@@ -467,7 +1041,7 @@ test("an Ask relay whose agent has gone dies by SIGPIPE at its next answer, and 
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
-test("with no XDG_RUNTIME_DIR (Codex clears it), payloads go to logind's folder for this user, where the bar reads them (Fable 2026-10-10)", () => {
+test("with no XDG_RUNTIME_DIR (Codex clears it), payloads go to logind's folder for this user, where the bar reads them", () => {
   const t = setup();
   try {
     const uid = process.getuid(), own = `/run/user/${uid}`;
@@ -481,11 +1055,11 @@ test("with no XDG_RUNTIME_DIR (Codex clears it), payloads go to logind's folder 
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
-test("an agent's search, a row's key and Ask's messages reach the bar in a 0700 folder's file, never an argument (the marketplace's review, 2026-10-10)", () => {
+test("an agent's search, a row's key and Ask's messages reach the bar in a 0700 folder's file, never an argument", () => {
   const t = setup();
   try {
     const secret = "the merger with Acme நொடி";
-    let r = mcp(t, [call(1, "search", { query: secret }), call(2, "run", { key: "file:/home/u/" + secret + ".md" })]);
+    let r = mcp(t, [call(1, "search", { query: secret }), call(2, "run", { key: "file:/test-home/" + secret + ".md" })]);
     assert.equal(r.status, 0, r.err);
     assert.equal(readFileSync(join(t, "log.search"), "utf8"), secret, "the search reached the bar whole");
     assert.equal(readFileSync(join(t, "log.carried"), "utf8").trim(), "700 600", "its folder and file owner-only");

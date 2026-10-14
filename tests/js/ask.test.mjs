@@ -5,18 +5,46 @@ import assert from "node:assert/strict";
 import { load, plain, root } from "./load.mjs";
 import { run } from "./fixtures.mjs";
 import { spawnSync, execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 const run_launch = args => spawnSync("/usr/bin/bash", ["-c", load("lib/Agents.js").LAUNCH, "nodi-agent", ...args], { encoding: "utf8" });
 
 const A = load("lib/AskTools.js");
 const G = load("lib/Agents.js");
+const Rows = load("lib/Rows.js");
 
 test("the bar's server answers initialize, ping, tools/list and tools/call; a notification gets nothing", () => {
-  const h = { search: q => [{ key: "app:" + q }], run: k => "Ran: " + k };
+  const calls = [];
+  const h = { search: q => [{ key: "app:" + q }], run: input => {
+    calls.push(plain(input));
+    return "Ran: " + input.kind + "=" + input.value;
+  } };
   assert.equal(plain(A.mcp({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18" } }, h)).result.serverInfo.name, "nodi");
-  assert.deepEqual(plain(A.mcp({ jsonrpc: "2.0", id: 2, method: "tools/list" }, h)).result.tools.map(t => t.name), ["search", "run"]);
+  const tools = plain(A.mcp({ jsonrpc: "2.0", id: 2, method: "tools/list" }, h)).result.tools;
+  assert.deepEqual(tools.map(t => t.name), ["search", "run"]);
+  assert.deepEqual(tools[1], {
+    name: "run",
+    description: "Resolve and propose one bar action. Use query directly for an obvious action; use key only after search when alternatives had to be inspected.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "What a person would type in the bar" },
+        key: { type: "string", description: "A key returned by search in this turn" }
+      },
+      additionalProperties: false
+    },
+    annotations: { readOnlyHint: false }
+  });
   assert.equal(plain(A.mcp({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "search", arguments: { query: "firefox" } } }, h)).result.content[0].text, '[{"key":"app:firefox"}]');
-  assert.equal(plain(A.mcp({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "run", arguments: { key: "app:x" } } }, h)).result.content[0].text, "Ran: app:x");
+  assert.equal(plain(A.mcp({ jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "run", arguments: { query: "firefox" } } }, h)).result.content[0].text, "Ran: query=firefox");
+  assert.equal(plain(A.mcp({ jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "run", arguments: { key: "app:x" } } }, h)).result.content[0].text, "Ran: key=app:x");
+  assert.deepEqual(calls, [
+    { ok: true, kind: "query", value: "firefox" },
+    { ok: true, kind: "key", value: "app:x" }
+  ]);
+  const invalidRun = plain(A.mcp({ jsonrpc: "2.0", id: 10, method: "tools/call", params: { name: "run", arguments: {} } }, h));
+  assert.equal(invalidRun.result.isError, true);
+  assert.match(invalidRun.result.content[0].text, /exactly one/);
   assert.equal(plain(A.mcp({ jsonrpc: "2.0", id: 5, method: "tools/call", params: { name: "rm" } }, h)).error.code, -32602, "an unknown tool is a bad parameter (MCP)");
   assert.equal(plain(A.mcp({ jsonrpc: "2.0", id: 9, method: "resources/list" }, h)).error.code, -32601);
   assert.deepEqual(plain(A.mcp({ jsonrpc: "2.0", id: 8, method: "ping" }, h)), { jsonrpc: "2.0", id: 8, result: {} });
@@ -25,25 +53,54 @@ test("the bar's server answers initialize, ping, tools/list and tools/call; a no
   assert.equal(A.mcp({ jsonrpc: "2.0", method: "notifications/initialized" }, h), null);
 });
 
-test("the bar's own tools, as each agent names them; any other tool is not", () => {
-  const own = x => A.barTool(x);
-  assert.equal(own({ title: "mcp__nodi__run", _meta: { claudeCode: { toolName: "mcp__nodi__run", mcpServer: { name: "nodi", source: "dynamic" } } } }), "run");
-  assert.equal(own({ title: "mcp__nodi__run", _meta: { claudeCode: { toolName: "mcp__nodi__run", mcpServer: { name: "other" } } } }), "", "Claude's _meta decides");
-  for (const [t, want] of [["mcp__nodi__search", "search"], ["nodi__run", "run"], ["search (nodi MCP Server)", "search"], ["nodi: run", "run"],
-                           ["mcp.nodi.search", "search"], ["nodi_run", "run"], ["nodi/search", "search"],
-                           ["Bash", ""], ["run", ""], ["mcp__nodiplus__run", ""], ["mcp__nodi__rm", ""], ["mcp__other__run", ""], ["nodi: run it all", ""]])
-    assert.equal(own({ title: t }), want, t);
-  assert.equal(own({ name: "nodi__search", title: "Searching the bar" }), "search", "by name when the title is prose");
-  assert.equal(own(null), "");
+test("run input validation is shared with the guarded action state machine", () => {
+  assert.deepEqual(plain(A.runInput({ query: " lock " })), { ok: true, kind: "query", value: " lock " });
+  assert.deepEqual(plain(A.runInput({ key: "menu:system.lock" })), { ok: true, kind: "key", value: "menu:system.lock" });
+  for (const args of [{}, { query: " " }, { query: null }, { query: "lock", key: "menu:system.lock" }])
+    assert.equal(A.runInput(args).ok, false);
+});
+
+test("the bar's own tools require the exact session server in trusted adapter metadata", () => {
+  const callFrom = (server, tool) => ({
+    title: "mcp__" + server + "__" + tool,
+    _meta: { claudeCode: { toolName: "mcp__" + server + "__" + tool,
+                            mcpServer: { name: server, source: "dynamic" } } }
+  });
+  assert.equal(A.barTool(callFrom("nodi-a1", "run"), "nodi-a1"), "run");
+  assert.equal(A.barTool(callFrom("nodi-a1", "run"), "nodi-b2"), "");
+  assert.equal(A.barTool({ title: "mcp__nodi-a1__run" }, "nodi-a1"), "",
+    "a title without trusted adapter metadata is not identity");
+  assert.equal(A.barTool({
+    title: "mcp.nodi-a1.search",
+    _meta: { is_mcp_tool_call: true },
+    rawInput: { server: "nodi-a1", tool: "search", arguments: { query: "lock" } }
+  }, "nodi-a1"), "search", "Codex's structured wrapper identifies the server and tool");
+  assert.equal(A.barTool({
+    title: "mcp.nodi-a1.search",
+    _meta: { is_mcp_tool_call: true },
+    rawInput: { server: "nodi-other", tool: "search", arguments: { query: "lock" } }
+  }, "nodi-a1"), "");
+  assert.equal(A.barTool(null, "nodi-a1"), "");
 });
 
 test("what a tool call is doing, in words, while he waits", () => {
-  assert.equal(A.doing({ title: "mcp__nodi__search", rawInput: { query: "lock  screen" } }), "Searching the bar for lock screen");
-  assert.equal(A.doing({ title: "nodi: search", rawInput: {} }), "Searching the bar");
-  assert.equal(A.doing({ title: "search (nodi MCP Server)", rawInput: { query: "x".repeat(80) } }), "Searching the bar for " + "x".repeat(57) + "...");
-  assert.equal(A.doing({ title: "mcp.nodi.run", rawInput: { key: "menu:system.lock" } }), "Running a row of the bar");
-  assert.equal(A.doing({ title: "ReadFile" }), "Using ReadFile");
-  assert.equal(A.doing({}), "Using a tool");
+  const search = { title: "mcp__nodi-a1__search", rawInput: { query: "lock  screen" },
+                   _meta: { claudeCode: { toolName: "mcp__nodi-a1__search", mcpServer: { name: "nodi-a1" } } } };
+  const runCall = { title: "mcp.nodi-a1.run", _meta: { is_mcp_tool_call: true },
+                    rawInput: { server: "nodi-a1", tool: "run", arguments: { key: "menu:system.lock" } } };
+  assert.equal(A.doing(search, "nodi-a1"), "Searching the bar for lock screen");
+  assert.deepEqual(plain(A.input({ title: "mcp.nodi.run", _meta: { is_mcp_tool_call: true },
+                                   rawInput: { server: "nodi", tool: "run", arguments: { key: "menu:system.lock" } } })),
+    { key: "menu:system.lock" }, "Codex wraps an MCP tool's input");
+  assert.deepEqual(plain(A.input({ title: "mcp__nodi__run", rawInput: { key: "menu:system.lock" } })),
+    { key: "menu:system.lock" }, "other adapters carry its input directly");
+  assert.deepEqual(plain(A.input({ title: "another tool", rawInput: { server: "x", tool: "y", arguments: { own: true } } })),
+    { server: "x", tool: "y", arguments: { own: true } }, "a tool may itself take fields named like Codex's wrapper");
+  assert.equal(A.doing({ ...search, rawInput: {} }, "nodi-a1"), "Searching the bar");
+  assert.equal(A.doing({ ...search, rawInput: { query: "x".repeat(80) } }, "nodi-a1"), "Searching the bar for " + "x".repeat(57) + "...");
+  assert.equal(A.doing(runCall, "nodi-a1"), "Running a row of the bar");
+  assert.equal(A.doing({ title: "ReadFile" }, "nodi-a1"), "Using ReadFile");
+  assert.equal(A.doing({}, "nodi-a1"), "Using a tool");
 });
 
 test("what the agent is told: the bar's rules, its tools only with actions, the servers only when named", () => {
@@ -51,6 +108,42 @@ test("what the agent is told: the bar's rules, its tools only with actions, the 
   assert.equal(A.instructions(true, false), A.SYSTEM + A.ACTS);
   assert.equal(A.instructions(true, true), A.SYSTEM + A.ACTS + A.MCP_NOTE);
   assert.equal(A.instructions(false, true), A.SYSTEM, "no servers without actions");
+  assert.match(A.ACTS, /obvious action.+run.+query/i);
+  assert.match(A.ACTS, /search.+inspect alternatives/i);
+});
+
+test("each agent declares how Ask enforces its isolation policy", () => {
+  const registered = G.registry({
+    agents: [{ id: "free", name: "Free", command: ["free-acp"] }]
+  });
+  assert.equal(G.policy("claude"), "strict");
+  assert.equal(G.policy("codex"), "unmanaged");
+  assert.equal(G.policy("pi"), "answer-only");
+  assert.equal(G.policy("agy"), "answer-only");
+  assert.equal(G.policy("opencode"), "unmanaged");
+  assert.equal(G.policy("free", registered), "unmanaged");
+
+  for (const id of ["claude", "codex", "pi", "agy", "opencode", "free"]) {
+    const s = plain(G.spec(id, "/data", "", "Be brief.", ["nodi"], "/repo/lib/adapters", registered));
+    assert.equal(s.policy, G.policy(id, registered), id + " spec policy");
+    assert.equal(typeof s.enforcement, "string", id + " enforcement type");
+    assert.ok(s.enforcement.length > 0, id + " enforcement description");
+  }
+  const own = plain(G.spec({ name: "Own", command: ["own-acp"] }, "/data", "", "Be brief.", ["nodi"]));
+  assert.deepEqual([own.policy, typeof own.enforcement, own.enforcement.length > 0], ["unmanaged", "string", true]);
+});
+
+test("Codex's unmanaged built-in tools are explicit in user docs", () => {
+  for (const relative of [
+    "docs/ask.md",
+    "docs/privacy.md",
+    "docs/troubleshooting.md"
+  ]) {
+    const text = readFileSync(root + "/" + relative, "utf8");
+    assert.match(text, /Codex[\s\S]{0,800}unmanaged/i, relative);
+    assert.match(text, /cannot disable[\s\S]{0,200}built-in tools/i, relative);
+    assert.match(text, /Codex\s+may use (?:them|(?:its )?built-in tools)/i, relative);
+  }
 });
 
 test("Claude over ACP: its adapter pinned, his own claude, nothing of his settings, and only the bar's search unasked (ROADMAP 84)", () => {
@@ -62,43 +155,537 @@ test("Claude over ACP: its adapter pinned, his own claude, nothing of his settin
   const rest = s.argv.slice(7);
   assert.deepEqual(rest.slice(0, 3), ["--which", "CLAUDE_CODE_EXECUTABLE", "claude"]);
   assert.deepEqual(rest.slice(3), ["npm", "/d/agents/_agentclientprotocol_claude-agent-acp@0.86.0", "/p/lib/adapters/claude-agent-acp",
-                                   "@agentclientprotocol/claude-agent-acp", "0.86.0", "claude-agent-acp"]);
+                                   "@agentclientprotocol/claude-agent-acp", "0.86.0", "claude-agent-acp",
+                                   "--nodi-runner", "/p/lib/adapters/claude-agent-acp/claude-agent-acp-trusted.mjs"]);
   assert.equal(s.adapter, "@agentclientprotocol/claude-agent-acp 0.86.0");
   assert.deepEqual(s.env, { CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", ANTHROPIC_MODEL: "haiku" });
-  const m = plain(G.spec("claude", "/d", "sonnet", "Be brief.", ["nodi"]).meta(true));
+  const m = plain(G.spec("claude", "/d", "sonnet", "Be brief.", ["nodi-a1"]).meta(true, "nodi-a1"));
   assert.equal(m.systemPrompt, "Be brief.", "replaces Claude Code's own prompt");
+  assert.equal(m.nodiActionServer, "nodi-a1", "the trusted adapter knows which requested server is required");
   const o = m.claudeCode.options;
   assert.deepEqual([o.model, o.tools, o.settingSources, o.strictMcpConfig, o.persistSession, o.allowDangerouslySkipPermissions],
                    ["sonnet", [], [], true, false, false]);
-  assert.deepEqual(o.allowedTools, ["mcp__nodi__search"], "the run asks, as does every tool of a server he named");
-  assert.deepEqual(plain(G.spec("claude", "/d", "", "x", []).meta(false)).claudeCode.options.allowedTools, []);
+  assert.deepEqual(o.allowedTools, ["mcp__nodi-a1__search"], "only this session's search skips a permission prompt");
+  assert.deepEqual(plain(G.spec("claude", "/d", "", "x", []).meta(false, "nodi-a1")).claudeCode.options.allowedTools, []);
+  assert.equal(plain(G.spec("claude", "/d", "", "x", []).meta(false, "nodi-a1")).nodiActionServer, "");
   assert.equal(G.spec("nonesuch", "/d", ""), null);
   assert.equal(G.spec("toString", "/d", ""), null, "only the agents named");
 });
 
-test("Codex: its adapter on his own codex, read-only, no shell, apps or web, the instructions its own (ROADMAP 84)", () => {
+test("Codex: unmanaged and action-capable, with a private profile (ROADMAP 84)", () => {
   const s = plain(G.spec("codex", "/d", "", "Be brief.", ["nodi"], "/p/lib/adapters"));
-  assert.deepEqual(s.argv.slice(7, 10), ["--which", "CODEX_PATH", "codex"]);
+  assert.equal(s.policy, "unmanaged");
+  assert.match(s.enforcement, /private CODEX_HOME/);
+  assert.match(s.enforcement, /cannot disable/i);
+  assert.match(s.enforcement, /built-in/i);
+  assert.equal(s.capabilities.actions, true);
+  assert.deepEqual(s.argv.slice(7, 10), ["--which", "NODI_CODEX_COMMAND", "codex"]);
   assert.deepEqual(s.argv.slice(10), ["npm", "/d/agents/_agentclientprotocol_codex-acp@2.1.1", "/p/lib/adapters/codex-acp",
-                                     "@agentclientprotocol/codex-acp", "2.1.1", "codex-acp"]);
+                                     "@agentclientprotocol/codex-acp", "2.1.1", "codex-acp",
+                                     "--nodi-runner", "/p/lib/adapters/codex-acp/codex-acp-trusted.mjs"]);
   assert.equal(s.env.INITIAL_AGENT_MODE, "read-only");
+  assert.equal(s.env.CODEX_PATH, "/p/lib/adapters/codex-acp/codex-isolated");
+  assert.equal(s.env.NODI_CODEX_HOME, "/d/profiles/codex");
   const c = JSON.parse(s.env.CODEX_CONFIG);
-  assert.deepEqual(c, { developer_instructions: "Be brief.", web_search: "disabled", project_doc_max_bytes: 0,
-                        "features.shell_tool": false, "features.unified_exec": false, "features.apps": false });
+  assert.deepEqual(c, {
+    developer_instructions: "Do not use or mention Codex skills, project instructions, or built-in tools. Use only MCP tools supplied for this session.\n\nBe brief.",
+    web_search: "disabled", project_doc_max_bytes: 0,
+    features: { apps: false, web_search_request: false,
+                shell_tool: false, unified_exec: false, skill_search: false,
+                hooks: false, browser_use: false, computer_use: false, image_generation: false,
+                multi_agent: false, code_mode_host: false,
+                plugins: false, skip_host_skill_discovery: true }
+  });
+  assert.equal(Object.keys(c.features).some(k => k === "code_mode" || k.startsWith("code_mode_only")), false,
+               "Codex uses direct MCP, with internal code-mode dispatch absent");
+  assert.ok(!Object.keys(c).some(k => k.startsWith("features.")), "CODEX_CONFIG is an object, not codex -c dotted keys");
   assert.equal(JSON.parse(G.spec("codex", "/d", "gpt-5.5", "x", []).env.CODEX_CONFIG).model, "gpt-5.5");
-  assert.deepEqual([s.instructs, s.modelInMeta, s.meta], [true, true, null]);
+  const codexMeta = plain(G.spec("codex", "/d", "", "x", ["nodi"], "/p/lib/adapters").meta(true, "nodi-a1"));
+  assert.deepEqual([s.instructs, s.modelInMeta, codexMeta],
+                   [true, true, { mcpStartupAwaitTimeoutMs: 15000, nodiActionServer: "nodi-a1" }]);
 });
 
-test("Gemini: no built-in tool, only the servers given, no GEMINI.md, no hooks", () => {
-  const gem = plain(G.spec("gemini", "/d", "gemini-3.8-flash", "x", ["nodi", "github"]));
-  assert.deepEqual(gem.argv.slice(7, 10), ["--file", "GEMINI_CLI_SYSTEM_SETTINGS_PATH", "/d/gemini-settings.json"]);
-  assert.deepEqual(JSON.parse(gem.argv[10]), { tools: { core: [] }, mcp: { allowed: ["nodi", "github"] }, context: { fileName: "NODI_NONE.md" },
-                                              hooksConfig: { enabled: false }, model: { name: "gemini-3.8-flash" } });
-  assert.deepEqual(gem.argv.slice(11), ["exec", "gemini", "--acp"]);
-  assert.equal(gem.adapter, "", "Gemini is its own program, nothing installed");
-  assert.deepEqual([gem.instructs, gem.mode], [false, ""], "the instructions with the first prompt");
-  assert.deepEqual(plain(G.known()).sort(), ["claude", "codex", "gemini"], "Cursor reads files unasked (AgentsLiveTest, 2026-10-07)");
+test("Codex's trusted adapter runner publishes provider turns and diagnostic runtime catalogs", async () => {
+  const runner = await import("../../lib/adapters/codex-acp/codex-acp-trusted.mjs");
+  const source = [
+    "var CodexAppServerClient = class {",
+    "  async listMcpServerStatus(params) {",
+    '    return await this.sendRequest({ method: "mcpServerStatus/list", params });',
+    "  }",
+    "};",
+    "// src/CodexAcpClient.ts",
+    "var CUSTOM_GATEWAY_PROVIDER_ID = \"custom-gateway\";",
+    "  async initialize(request) {",
+    "    const response = await this.codexClient.initialize({",
+    "      capabilities: {",
+    "        experimentalApi: true,",
+    "        requestAttestation: false",
+    "      },",
+    "      clientInfo: {",
+    "        name: request.clientInfo?.name ?? this.defaultClientInfo.name,",
+    "        version: request.clientInfo?.version ?? this.defaultClientInfo.version,",
+    "        title: request.clientInfo?.title ?? this.defaultClientInfo.title",
+    "      }",
+    "    });",
+    "    this.configPath = response?.codexHome ?? null;",
+    "  }",
+    "  async newSession(params) {",
+    "    if (this.providerUpdate !== null) {",
+    "      await this.providerUpdate;",
+    "    }",
+    '    logger.log("Starting new session...");',
+    "    const [sessionId, modelState, modeState] = await this.getOrCreateSession(params);",
+    '    logger.log("New session created", {',
+    "      sessionId,",
+    "      modelId: modelState.currentModelId,",
+    "      availableModelCount: modelState.availableModels.length",
+    "    });",
+    "    return {",
+    "      sessionId,",
+    "      models: modelState,",
+    "      modes: modeState,",
+    "      ...this.createSessionConfigOptionsResponse(this.getSessionState(sessionId))",
+    "    };",
+    "  }",
+    '      case "turn/started":',
+    "        this.sessionState.currentTurnId = notification.params.turn.id;",
+    "        await this.flushPendingErrors();",
+    "        return null;",
+    '      case "mcpToolCall":',
+    "        return this.renderer.render(McpToolReporter.started(event.item));",
+    "  createMcpSeverConfig(mcpServer) {",
+    '    if ("type" in mcpServer && mcpServer.type === "http") {',
+    "      return {",
+    '        "url": mcpServer.url,',
+    '        "http_headers": Object.fromEntries(mcpServer.headers.map((h) => [h.name, h.value]))',
+    "      };",
+    "    }",
+    "    return {",
+    '      "command": mcpServer.command,',
+    '      "args": mcpServer.args,',
+    '      "env": Object.fromEntries(mcpServer.env.map((env) => [env.name, env.value]))',
+    "    };",
+    "  }"
+  ].join("\n");
+  const patched = runner.patchAdapter(source, "0.162.1");
+  assert.match(patched, /nodi_codex_turn_started/);
+  assert.match(patched, /nodi_codex_turn_id: notification\.params\.turn\.id/);
+  assert.match(patched, /nodi_codex_turn_id: event\.turnId/);
+  assert.match(patched, /method: "app\/list"/);
+  assert.match(patched, /nodiInitializeResponse = response/);
+  assert.match(patched, /nodi_runtime_catalogs/);
+  assert.doesNotMatch(patched, /nodi_tool_inventory|builtinEvidence|builtins:\s*\[\]|evidence:\s*"strict-config"/);
+  assert.match(patched, /diagnosticErrors/);
+  assert.doesNotMatch(patched, /throw new Error\("nodi: incomplete Codex MCP runtime catalog"\)/,
+                      "diagnostic catalogs cannot gate unmanaged Codex startup");
+  assert.match(patched, /mcpServerStatus\/list/);
+  assert.equal((patched.match(/"tool_timeout_sec": 3600/g) || []).length, 2,
+               "both action-server transport shapes can wait for the card");
+  assert.match(patched, /NODI_CODEX_ACTION_SERVER_NAMES\.has\(mcpServer\.name\)/,
+               "only Nodi's action server gets the long tool timeout");
+  assert.match(patched, /const nodiActionServer = String\(params\._meta\?\.nodiActionServer \?\? ""\)/,
+               "the exact action server comes from this ACP session");
+  const strict = {
+    web_search: "disabled", project_doc_max_bytes: 0,
+    features: { apps: false, web_search_request: false, shell_tool: false,
+      unified_exec: false, skill_search: false, hooks: false, browser_use: false,
+      computer_use: false, image_generation: false, multi_agent: false,
+      code_mode_host: false, plugins: false, skip_host_skill_discovery: true }
+  };
+  assert.doesNotThrow(() => runner.validateStrictConfig(strict));
+  assert.throws(() => runner.validateStrictConfig({ ...strict, features: { ...strict.features, code_mode: true } }),
+                /code mode/i);
+  assert.throws(() => runner.validateStrictConfig({ ...strict, features: { ...strict.features, apps: true } }),
+                /strict Codex config/i);
+  assert.throws(() => runner.patchAdapter(source), /missing selected Codex executable version/);
+  assert.throws(() => runner.codexExecutableVersion(""), /missing selected Codex executable/);
+  assert.throws(() => runner.patchAdapter("unknown adapter source", "0.162.1"), /unsupported Codex ACP source/);
+});
+
+test("Codex trusted parent derives the selected executable version and rejects an app-server mismatch", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-codex-version-"));
+  try {
+    const fake = join(t, "codex");
+    writeFileSync(fake, '#!/usr/bin/bash\n[[ ${1-} == --version ]] || exit 92\nprintf "codex-cli 0.162.1\\n"\n');
+    chmodSync(fake, 0o755);
+    const root = join(t, "adapter");
+    const dist = join(root, "node_modules", "@agentclientprotocol", "codex-acp", "dist");
+    mkdirSync(dist, { recursive: true });
+    const source = [
+      "var CodexAppServerClient = class {",
+      '  async initialize() { return { codexHome: "/tmp", userAgent: "codex/0.999.0" }; }',
+      "  async sendRequest(request) {",
+      '    return request.method === "mcpServerStatus/list"',
+      "      ? { data: [], nextCursor: null } : { data: [], nextCursor: null };",
+      "  }",
+      "  async listMcpServerStatus(params) {",
+      '    return await this.sendRequest({ method: "mcpServerStatus/list", params });',
+      "  }",
+      "};",
+      "// src/CodexAcpClient.ts",
+      'var CUSTOM_GATEWAY_PROVIDER_ID = "custom-gateway";',
+      "var CodexAcpClient = class {",
+      "  constructor() { this.codexClient = new CodexAppServerClient(); }",
+      "  async initialize(request) {",
+      "    const response = await this.codexClient.initialize({",
+      "      capabilities: {",
+      "        experimentalApi: true,",
+      "        requestAttestation: false",
+      "      },",
+      "      clientInfo: {",
+      "        name: request.clientInfo?.name ?? this.defaultClientInfo.name,",
+      "        version: request.clientInfo?.version ?? this.defaultClientInfo.version,",
+      "        title: request.clientInfo?.title ?? this.defaultClientInfo.title",
+      "      }",
+      "    });",
+      "    this.configPath = response?.codexHome ?? null;",
+      "  }",
+      "};",
+      "var Adapter = class {",
+      "  async newSession(params) {",
+      "    if (this.providerUpdate !== null) {",
+      "      await this.providerUpdate;",
+      "    }",
+      '    logger.log("Starting new session...");',
+      "    const [sessionId, modelState, modeState] = await this.getOrCreateSession(params);",
+      '    logger.log("New session created", {',
+      "      sessionId,",
+      "      modelId: modelState.currentModelId,",
+      "      availableModelCount: modelState.availableModels.length",
+      "    });",
+      "    return {",
+      "      sessionId,",
+      "      models: modelState,",
+      "      modes: modeState,",
+      "      ...this.createSessionConfigOptionsResponse(this.getSessionState(sessionId))",
+      "    };",
+      "  }",
+      "  async render(notification, event) {",
+      "    switch (notification.method) {",
+      '      case "turn/started":',
+      "        this.sessionState.currentTurnId = notification.params.turn.id;",
+      "        await this.flushPendingErrors();",
+      "        return null;",
+      '      case "mcpToolCall":',
+      "        return this.renderer.render(McpToolReporter.started(event.item));",
+      "    }",
+      "  }",
+      "  createMcpSeverConfig(mcpServer) {",
+      '    if ("type" in mcpServer && mcpServer.type === "http") {',
+      "      return {",
+      '        "url": mcpServer.url,',
+      '        "http_headers": Object.fromEntries(mcpServer.headers.map((h) => [h.name, h.value]))',
+      "      };",
+      "    }",
+      "    return {",
+      '      "command": mcpServer.command,',
+      '      "args": mcpServer.args,',
+      '      "env": Object.fromEntries(mcpServer.env.map((env) => [env.name, env.value]))',
+      "    };",
+      "  }",
+      "};",
+      "const client = new CodexAcpClient();",
+      'client.defaultClientInfo = { name: "test", version: "1", title: "test" };',
+      "await client.initialize({ clientInfo: {} });",
+      'await client.nodiCatalogs("thread", "/tmp", []);'
+    ].join("\n");
+    writeFileSync(join(dist, "index.js"), source);
+    const strict = {
+      web_search: "disabled", project_doc_max_bytes: 0,
+      features: { apps: false, web_search_request: false, shell_tool: false,
+        unified_exec: false, skill_search: false, hooks: false, browser_use: false,
+        computer_use: false, image_generation: false, multi_agent: false,
+        code_mode_host: false, plugins: false, skip_host_skill_discovery: true }
+    };
+    const trusted = new URL("../../lib/adapters/codex-acp/codex-acp-trusted.mjs", import.meta.url).pathname;
+    const runner = await import("../../lib/adapters/codex-acp/codex-acp-trusted.mjs");
+    const sourceHome = join(t, "source-home");
+    const targetHome = join(t, "target-home");
+    mkdirSync(sourceHome);
+    mkdirSync(targetHome);
+    const copied = JSON.stringify({ tokens: { refresh_token: "legacy-one-use-token" } }) + "\n";
+    writeFileSync(join(sourceHome, "auth.json"), copied);
+    writeFileSync(join(targetHome, "auth.json"), copied);
+    assert.equal(runner.copiedRefreshToken(sourceHome, targetHome), true);
+    const refused = spawnSync(process.execPath, [trusted, root], {
+      encoding: "utf8",
+      env: { ...process.env, CODEX_HOME: sourceHome, NODI_CODEX_HOME: targetHome,
+             NODI_CODEX_COMMAND: fake, CODEX_CONFIG: JSON.stringify(strict) }
+    });
+    assert.equal(refused.status, 1);
+    assert.match(refused.stderr, /copied one-use sign-in.*CODEX_HOME=.*codex login/i,
+                 "the ACP parent independently refuses copied authentication");
+    writeFileSync(join(targetHome, "auth.json"),
+                  JSON.stringify({ tokens: { refresh_token: "independent-token" } }) + "\n");
+    assert.equal(runner.copiedRefreshToken(sourceHome, targetHome), false);
+    const mismatch = spawnSync(process.execPath, [trusted, root], {
+      encoding: "utf8",
+      env: { ...process.env, CODEX_HOME: sourceHome, NODI_CODEX_HOME: targetHome,
+             NODI_CODEX_COMMAND: fake, CODEX_CONFIG: JSON.stringify(strict) }
+    });
+    assert.equal(mismatch.status, 1);
+    assert.match(mismatch.stderr, /app-server version does not match its executable/);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("Claude's trusted adapter runner publishes inventory and action origins", async () => {
+  const runner = await import("../../lib/adapters/claude-agent-acp/claude-agent-acp-trusted.mjs");
+  const source = [
+    '                    case "system":',
+    "                        switch (message.subtype) {",
+    '                            case "init":',
+    "                                // A fresh `system`/init marker.",
+    "                                break;",
+    "            creationParams: params,",
+    "    canUseTool(sessionId) {",
+    "        return async (toolName, toolInput, { signal, suggestions, toolUseID, agentID, matchedAskRule, blockedPath, decisionReason, title, displayName, description, defaultToNo, suppressAlwaysAllowRule, mcpServer, }) => {",
+    "            const session = this.sessions[sessionId];",
+    "            if (!session) {",
+    "                return {",
+    '                    behavior: "deny",',
+    '                    message: "Session not found",',
+    "                };",
+    "            }",
+    "            if (mcpServer || (parentToolUseId && !airClient)) {",
+    "                presentation.toolCall._meta = {",
+    "                    claudeCode: {",
+    "                        ...(airClient ? {} : { toolName }),",
+    "                        ...(parentToolUseId && !airClient ? { parentToolUseId } : {}),",
+    "                        ...(mcpServer ? { mcpServer: { name: mcpServer.name, source: mcpServer.source } } : {}),",
+    "                    },",
+    "                };",
+    "            }"
+  ].join("\n");
+  const entry = '#!/usr/bin/env node\nimport { claudeCliPath } from "./acp-agent.js";\nimport { serveAcp } from "./serve.js";\n';
+  const serve = 'import { v1AgentApp } from "./acp-agent.js";\n';
+  const patched = runner.patchAgent(source);
+  assert.match(patched, /message\.tools/);
+  assert.match(patched, /mcpServerStatus\(\)/);
+  assert.match(patched, /nodi_tool_inventory/);
+  assert.match(patched, /message\.mcp_servers/);
+  assert.match(patched, /nodi_claude_turn_started/);
+  assert.match(patched, /nodi_claude_action_origin/);
+  assert.match(patched, /toolUseID/);
+  assert.match(patched, /promptUuid/);
+  assert.match(patched, /mcpServer/);
+  assert.match(patched, /toolInput/);
+  assert.deepEqual(runner.builtInTools(
+    ["Read", "mcp__nodi-a__search", "mcp__nodi-a__run"],
+    [{ name: "nodi-a", tools: [{ name: "search" }, { name: "run" }] }]
+  ), ["Read"]);
+  assert.deepEqual(runner.runtimeServer({
+    name: "optional", status: "failed", source: "dynamic", error: "offline"
+  }), { name: "optional", source: "dynamic", status: "failed", tools: [] },
+  "an unavailable optional server stays diagnostic, not fatal");
+  assert.deepEqual(runner.runtimeServer({
+    name: "nodi-a", status: "connected", source: "dynamic", tools: [{ name: "run" }, { name: "search" }]
+  }), { name: "nodi-a", source: "dynamic", status: "connected", tools: ["run", "search"] });
+  assert.throws(() => runner.runtimeServer({
+    name: "bad", status: "connected", source: "dynamic"
+  }), /bad.*connected.*tools/i);
+  assert.throws(() => runner.runtimeServer({
+    name: "nodi-a", status: "failed", source: "dynamic", error: "could not start"
+  }, "nodi-a"), /required action server nodi-a.*failed/i);
+  assert.deepEqual(runner.runtimeServers([
+    { name: "optional", status: "failed", source: "dynamic", error: "offline" },
+    { name: "nodi-a", status: "connected", source: "dynamic", tools: [{ name: "run" }] }
+  ], "nodi-a"), [
+    { name: "optional", source: "dynamic", status: "failed", tools: [] },
+    { name: "nodi-a", source: "dynamic", status: "connected", tools: ["run"] }
+  ]);
+  assert.throws(() => runner.runtimeServers([
+    { name: "optional", status: "failed", source: "dynamic", error: "offline" }
+  ], "nodi-a"), /required action server nodi-a.*missing/i);
+  assert.equal(runner.requiredActionServer({
+    _meta: { nodiActionServer: "nodi-a" }
+  }), "nodi-a");
+  assert.throws(() => runner.requiredActionServer({ mcpServers: [] }),
+                /omitted Nodi session metadata/i);
+  assert.match(runner.patchEntry(entry), /nodi-trusted-acp-agent\.mjs/);
+  assert.match(runner.patchEntry(entry), /nodi-trusted-serve\.mjs/);
+  assert.match(runner.patchServe(serve), /nodi-trusted-acp-agent\.mjs/);
+  assert.throws(() => runner.patchAgent(source.split("    canUseTool")[0]),
+                /action origin source/);
+  assert.throws(() => runner.patchAgent(source.replace(
+    /            if \(mcpServer \|\| \(parentToolUseId && !airClient\)\) \{[\s\S]*?            \}\n?$/,
+    ""
+  )), /permission metadata source/);
+  assert.throws(() => runner.patchAgent(source.replace("            creationParams: params,\n", "")),
+                /creation params/i);
+  assert.throws(() => runner.patchAgent("unknown adapter source"), /unsupported Claude ACP .*source/);
+  assert.throws(() => runner.patchEntry("unknown adapter entry"), /unsupported Claude ACP entry/);
+  assert.throws(() => runner.patchServe("unknown adapter serve"), /unsupported Claude ACP serve/);
+});
+
+test("Codex keeps authentication private instead of duplicating a rotating global refresh token", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, readFileSync, chmodSync, rmSync, existsSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-codex-wrapper-"));
+  try {
+    const source = join(t, "source");
+    const target = join(t, "target");
+    const observed = join(t, "observed");
+    const observedArgs = join(t, "observed-args");
+    const observedVersion = join(t, "observed-version");
+    const fake = join(t, "codex");
+    mkdirSync(source);
+    const sourceAuth = '{"token":"source"}\n';
+    writeFileSync(join(source, "auth.json"), sourceAuth);
+    writeFileSync(join(source, "config.toml"), '[mcp_servers.global]\ncommand = "unsafe"\n');
+    writeFileSync(fake, '#!/usr/bin/bash\nif [[ ${1-} == --version ]]; then echo "codex-cli 0.162.1"; exit 0; fi\nprintf "%s" "$CODEX_HOME" > "$OBSERVED"\nprintf "%s" "$NODI_CODEX_VERSION" > "$OBSERVED_VERSION"\nprintf "%s\\n" "$@" > "$OBSERVED_ARGS"\n');
+    chmodSync(fake, 0o755);
+    const wrapper = new URL("../../lib/adapters/codex-acp/codex-isolated", import.meta.url).pathname;
+    const env = { ...process.env, CODEX_HOME: source, NODI_CODEX_HOME: target, NODI_CODEX_COMMAND: fake,
+                  OBSERVED: observed, OBSERVED_ARGS: observedArgs, OBSERVED_VERSION: observedVersion };
+
+    let r = spawnSync(wrapper, ["app-server"], { encoding: "utf8", env });
+    assert.deepEqual([r.status, r.stderr], [0, ""]);
+    assert.equal(readFileSync(observed, "utf8"), target);
+    assert.equal(existsSync(join(target, "auth.json")), false,
+                 "a global refresh token was not copied into a competing profile");
+    assert.equal(readFileSync(join(target, "config.toml"), "utf8"), "");
+    assert.ok(!readFileSync(join(target, "config.toml"), "utf8").includes("mcp_servers"));
+    assert.equal(readFileSync(observedVersion, "utf8"), "0.162.1");
+    assert.deepEqual(readFileSync(observedArgs, "utf8").trim().split("\n"), ["--strict-config", "app-server"]);
+
+    const retainedAuth = '{"token":"newer-target"}\n';
+    writeFileSync(join(source, "auth.json"), '{"token":"changed-source"}\n');
+    writeFileSync(join(target, "auth.json"), retainedAuth);
+    r = spawnSync(wrapper, ["app-server"], { encoding: "utf8", env });
+    assert.equal(r.status, 0);
+    assert.equal(readFileSync(join(target, "auth.json"), "utf8"), retainedAuth);
+    assert.equal(readFileSync(join(target, "config.toml"), "utf8"), "");
+
+    const shared = JSON.stringify({
+      tokens: { refresh_token: "one-use-token", access_token: "access" }
+    }) + "\n";
+    writeFileSync(join(source, "auth.json"), shared);
+    writeFileSync(join(target, "auth.json"), shared);
+    r = spawnSync(wrapper, ["app-server"], { encoding: "utf8", env });
+    assert.equal(r.status, 75);
+    assert.match(r.stderr, /private Codex profile.*codex login/i);
+
+    const apiKey = '{"auth_mode":"apikey","OPENAI_API_KEY":"same-static-key"}\n';
+    writeFileSync(join(source, "auth.json"), apiKey);
+    writeFileSync(join(target, "auth.json"), apiKey);
+    r = spawnSync(wrapper, ["app-server"], { encoding: "utf8", env });
+    assert.equal(r.status, 0, r.stderr);
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("Agy: pinned plan+sandbox answer-only adapter replaces Gemini", () => {
+  const s = plain(G.spec("agy", "/d", "", "answer briefly", ["nodi", "github"], "/p/lib/adapters"));
+  assert.deepEqual(s.argv.slice(7), [
+    "--which", "NODI_AGY_COMMAND", "agy",
+    "npm", "/d/agents/google-antigravity-acp@2.0.1", "/p/lib/adapters/agy-acp",
+    "google-antigravity-acp", "2.0.1", "google-antigravity-acp",
+    "--binary-path", "/p/lib/adapters/agy-acp/agy-answer-only",
+    "--no-skip-permissions"
+  ]);
+  assert.deepEqual([s.adapter, s.instructs, s.modelInMeta, s.capabilities.actions],
+    ["google-antigravity-acp 2.0.1", false, false, false]);
+  assert.equal(G.spec("gemini", "/d", "", "x", [], "/p/lib/adapters").id, "agy");
+  assert.deepEqual(plain(G.known()).sort(), ["agy", "claude", "codex", "opencode", "pi"]);
+  const opencode = plain(G.spec("opencode", "/d", "", "x", ["nodi"], "/p/lib/adapters"));
+  assert.deepEqual(opencode.argv.slice(7), ["exec", "opencode", "acp"], "OpenCode remains its native ACP command");
+  assert.equal(opencode.adapter, "");
   assert.equal(G.spec("cursor-agent", "/d", ""), null);
+});
+
+test("Agy first prompt appends the no-tools sentence; other agents keep base instructions", () => {
+  const base = A.instructions(false, false);
+  const agyExtra = "\n\nDo not use any tools or inspect the workspace; answer only from your own knowledge.";
+  assert.equal(G.firstPromptInstructions("agy", base), base + agyExtra);
+  assert.equal(G.firstPromptInstructions("gemini", base), base + agyExtra);
+  assert.equal(G.firstPromptInstructions("claude", base), base);
+  assert.equal(G.firstPromptInstructions("pi", base), base);
+});
+
+test("retired Gemini IDs canonicalize to Agy and remain reserved", () => {
+  assert.equal(G.canonicalId("gemini"), "agy");
+  assert.equal(G.canonicalId("agy"), "agy");
+  assert.equal(G.canonicalId("Bad Id"), "");
+  const registry = plain(G.registry({
+    agents: [{ id: "gemini", name: "Old custom", command: ["old-acp"] }]
+  }));
+  assert.ok(!registry.some(a => a.id === "gemini"));
+  assert.ok(registry.some(a => a.id === "agy" && a.builtin));
+  assert.equal(G.program("gemini", registry), "agy");
+});
+
+test("Pi: pinned answer-only adapter and quiet ACP startup", () => {
+  const pi = plain(G.spec("pi", "/d", "provider/model", "action instructions", ["nodi", "github"], "/p/lib/adapters", undefined, "/w"));
+  assert.deepEqual(pi.argv.slice(7), [
+    "--which", "NODI_PI_COMMAND", "pi",
+    "--file", "NODI_PI_SETTINGS", "/w/.pi/settings.json", '{"quietStartup":true}',
+    "npm", "/d/agents/pi-acp@0.0.34", "/p/lib/adapters/pi-acp", "pi-acp", "0.0.34", "pi-acp"
+  ]);
+  assert.deepEqual(pi.env, { PI_ACP_PI_COMMAND: "/p/lib/adapters/pi-acp/pi-answer-only" });
+  assert.deepEqual([pi.adapter, pi.model, pi.mode, pi.modelInMeta, pi.instructs, pi.meta, pi.capabilities.actions],
+    ["pi-acp 0.0.34", "provider/model", "", false, false, null, false]);
+
+  for (const id of ["claude", "codex", "opencode"])
+    assert.deepEqual(plain(G.capabilities(id)), { actions: true }, id + " keeps Nodi actions");
+  assert.deepEqual(plain(G.capabilities("pi")), { actions: false });
+  assert.deepEqual(plain(G.capabilities("agy")), { actions: false });
+  assert.deepEqual(plain(G.capabilities("free", G.registry({ agents: [{ id: "free", name: "Free", command: ["free-acp"] }] }))),
+    { actions: true }, "custom agents keep Nodi actions");
+});
+
+test("Pi's shipped command wrapper disables every answer-unsafe input while retaining extensions and argument boundaries", async () => {
+  const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-pi-wrapper-"));
+  try {
+    const pi = join(t, "pi");
+    writeFileSync(pi, "#!/usr/bin/bash\nprintf '<%s>\\n' \"$@\"\n");
+    chmodSync(pi, 0o755);
+    const wrapper = new URL("../../lib/adapters/pi-acp/pi-answer-only", import.meta.url).pathname;
+    const r = spawnSync(wrapper, ["--mode", "rpc value", "*", ""], {
+      encoding: "utf8", env: { NODI_PI_COMMAND: pi }
+    });
+    assert.deepEqual([r.status, r.stderr], [0, ""]);
+    assert.deepEqual(r.stdout.trim().split("\n"), [
+      "<--no-tools>", "<--no-mcp>", "<--no-context-files>", "<--no-skills>", "<--no-prompt-templates>",
+      "<--mode>", "<rpc value>", "<*>", "<>"
+    ], "pi-acp's argv follows the fixed flags, with no --no-extensions");
+  } finally { rmSync(t, { recursive: true, force: true }); }
+});
+
+test("Pi ACP routing notices are activity, not words in its answer", () => {
+  for (const notice of [
+    "router: provider/model cooling for 1m, rerouting",
+    "Retrying (attempt 1/20, waiting 1s)...",
+    "Retry finished, resuming."
+  ]) assert.equal(G.answerText("pi", notice), "");
+  assert.equal(G.answerText("pi", "4"), "4");
+  assert.equal(G.answerText("claude", "Retry finished, resuming."), "Retry finished, resuming.");
+});
+
+test("Agy's shipped command wrapper forces plan+sandbox before stream-json arguments and preserves boundaries", async () => {
+  const { mkdtempSync, writeFileSync, chmodSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-agy-wrapper-"));
+  try {
+    const agy = join(t, "agy");
+    writeFileSync(agy, "#!/usr/bin/bash\nprintf '<%s>\\n' \"$@\"\n");
+    chmodSync(agy, 0o755);
+    const wrapper = new URL("../../lib/adapters/agy-acp/agy-answer-only", import.meta.url).pathname;
+    const r = spawnSync(wrapper, ["--input-format=stream-json", "two words", "*", ""], {
+      encoding: "utf8", env: { NODI_AGY_COMMAND: agy }
+    });
+    assert.deepEqual([r.status, r.stderr], [0, ""]);
+    assert.deepEqual(r.stdout.trim().split("\n"), [
+      "<--mode>", "<plan>", "<--sandbox>",
+      "<--input-format=stream-json>", "<two words>", "<*>", "<>"
+    ]);
+  } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
 test("after session/new: the mode Ask needs and the model asked for, or a start that fails saying why", () => {
@@ -117,6 +704,28 @@ test("after session/new: the mode Ask needs and the model asked for, or a start 
   assert.match(Acp.configure("s", {}, "ask", "").error, /no ask mode/, "an agent with no such mode does not start");
 });
 
+test("strict inventory is Claude-only; Codex runtime catalogs stay diagnostic", () => {
+  const Acp = load("lib/Acp.js");
+  const inventory = {
+    version: 1, adapter: "claude", runtimeVersion: "2.1.0",
+    builtins: [], apps: [], requestedServers: ["nodi-a"],
+    servers: [{ name: "nodi-a", source: "dynamic", status: "connected", tools: ["search", "run"] }]
+  };
+  assert.deepEqual(plain(Acp.inventory({ nodi_tool_inventory: inventory }, "claude")), inventory);
+  assert.equal(Acp.inventory({ nodi_tool_inventory: { ...inventory, adapter: "codex" } }, "codex"), null);
+  assert.equal(Acp.inventory({ nodi_tool_inventory: { ...inventory, version: 2 } }, "claude"), null);
+
+  const catalogs = {
+    version: 1, adapter: "codex", runtimeVersion: "0.162.1",
+    requestedServers: ["nodi-a"], apps: [],
+    mcpServers: [{ name: "nodi-a", source: "session", status: "connected", tools: ["search", "run"] }]
+  };
+  assert.deepEqual(plain(Acp.catalogs({ nodi_runtime_catalogs: catalogs }, "codex")), catalogs);
+  assert.equal(Acp.catalogs({ nodi_runtime_catalogs: catalogs }, "claude"), null);
+  assert.equal(Acp.catalogs({ nodi_runtime_catalogs: { ...catalogs, builtins: [] } }, "codex"), null,
+               "Codex catalogs cannot claim a final built-in inventory");
+});
+
 test("an agent of his own: started as its command says, its instructions with the first prompt, nothing of it turned off", () => {
   const s = plain(G.spec({ name: "Helper", command: ["helper", "acp", "--quiet"], env: { HELPER_MODE: "bar", "bad name": "x", N: 3 } }, "/d", "", "x", ["nodi"]));
   assert.deepEqual(s.argv.slice(4), ["--bounds", "67108864", "4194304", "exec", "helper", "acp", "--quiet"], "bounded as the others are");
@@ -128,10 +737,71 @@ test("an agent of his own: started as its command says, its instructions with th
 });
 
 test("which agent Ask holds: nodi.json's, else Omarchy's default when Ask knows it, else Claude", () => {
-  assert.equal(G.chosen("gemini", "claude"), "gemini");
+  assert.equal(G.chosen("gemini", "claude"), "agy");
   assert.equal(G.chosen("", "claude"), "claude");
   assert.equal(G.chosen("", "nonesuch"), "claude");
   assert.equal(G.chosen(undefined, ""), "claude");
+});
+
+test("the Ask registry has every built-in and only valid unique custom agents", () => {
+  const registry = plain(G.registry({
+    agents: [
+      { id: "free", name: "Free", command: ["opencode", "acp"], env: { PROFILE: "free" } },
+      { id: "free", name: "Duplicate", command: ["other"] },
+      { id: "claude", name: "Reserved", command: ["other"] },
+      { id: "Bad Id", name: "Unsafe", command: ["other"] },
+      { id: "noname", name: " ", command: ["other"] },
+      { id: "shell", name: "Shell text", command: "other --acp" },
+      { id: "badenv", name: "Bad env", command: ["other"], env: { N: 3 } },
+      { id: "work", name: " Work ACP ", command: ["/opt/work", "acp"], env: { MODE: "safe" } }
+    ]
+  }));
+  assert.deepEqual(registry.map(a => a.id), ["claude", "codex", "opencode", "pi", "agy", "free", "work"]);
+  assert.deepEqual(registry.slice(-2).map(a => [a.name, a.command, a.env]),
+    [["Free", ["opencode", "acp"], { PROFILE: "free" }], ["Work ACP", ["/opt/work", "acp"], { MODE: "safe" }]]);
+  assert.equal(G.byId(registry, "constructor"), null);
+  assert.equal(G.disabledReason("agy"), "");
+  assert.equal(G.disabledReason("pi"), "");
+});
+
+test("legacy Gemini configuration resolves to Agy", () => {
+  const registry = G.registry({});
+  assert.equal(G.chosen("gemini", "claude", "", registry, {}), "agy");
+  assert.equal(G.chosen("", "gemini", "", registry, {}), "agy");
+  assert.equal(G.chosen("claude", "codex", "gemini", registry, { agy: true }), "agy");
+  assert.equal(G.modelFor("agy", { models: { gemini: "legacy" } }, "claude", registry), "legacy");
+  assert.equal(G.modelFor("agy", { models: { gemini: "legacy", agy: "current" } }, "claude", registry), "current");
+});
+
+test("agent resolution prefers an available remembered ID, then config, supported Omarchy default, then Claude", () => {
+  const registry = G.registry({ agents: [{ id: "free", name: "Free", command: ["free-acp"] }] });
+  assert.equal(G.chosen("gemini", "claude", "free", registry, { free: true }), "free");
+  assert.equal(G.chosen("gemini", "claude", "free", registry, { free: false }), "agy", "an unavailable memory is skipped");
+  assert.equal(G.chosen("missing", "codex", "", registry, {}), "codex", "an unsupported configured ID is skipped");
+  assert.equal(G.chosen("", "missing", "", registry, {}), "claude");
+  assert.equal(G.chosen("", "agy", "", registry, {}), "agy");
+  assert.equal(G.chosen("agy", "gemini", "", registry, {}), "agy");
+  assert.deepEqual(plain(G.chosen({ command: ["legacy"] }, "codex", "", registry, {})), { command: ["legacy"] },
+    "the legacy custom agent object remains configured");
+});
+
+test("models are per agent, with legacy ask.model only for the configured or Omarchy default agent", () => {
+  const registry = G.registry({});
+  const ask = { agent: "codex", model: "gpt-5.5", models: { codex: "gpt-5.6", gemini: "flash" } };
+  assert.equal(G.modelFor("codex", ask, "claude", registry), "gpt-5.6", "the per-agent model overrides legacy");
+  assert.equal(G.modelFor("gemini", ask, "claude", registry), "flash");
+  assert.equal(G.modelFor("claude", ask, "claude", registry), "haiku", "legacy does not follow a remembered selection; the built-in default remains");
+  assert.equal(G.modelFor("gemini", { model: "pro" }, "gemini", registry), "pro", "without ask.agent it belongs to Omarchy's supported default");
+  assert.equal(G.modelFor("claude", { model: "sonnet" }, "unsupported", registry), "sonnet", "Claude is the final configured default");
+  assert.equal(G.modelFor("free", { models: { free: 3 } }, "claude",
+    G.registry({ agents: [{ id: "free", name: "Free", command: ["free"] }] })), "", "models must be strings");
+});
+
+test("object-valued ask.agent keeps identity for legacy ask.model", () => {
+  const obj = { command: ["a"] };
+  assert.equal(G.modelFor(obj, { agent: obj, model: "m" }, "claude"), "m");
+  assert.equal(G.modelFor(obj, { agent: obj, models: { "": "empty-key" } }, "claude"), "",
+    "non-string agent ids must not read models[\"\"]");
 });
 
 // A stand-in npm: `npm install --prefix DIR ... pkg@ver` writes DIR's
@@ -278,10 +948,10 @@ test("checkArgv: the start's arguments with --check first, under a shell that re
   assert.equal(G.checkArgv(null), null);
 });
 
-test("the shipped lockfiles are the versions Ask names: exact, every package from the registry with its hash, none with an install script", async () => {
+test("the enabled adapters' lockfiles are the versions Ask names: exact, every package from the registry with its hash, none with an install script", async () => {
   const { readFileSync } = await import("node:fs");
   const root = new URL("../../", import.meta.url).pathname;
-  for (const id of ["claude", "codex"]) {
+  for (const id of ["claude", "codex", "pi", "agy"]) {
     const s = plain(G.spec(id, "/d", "", "x", [], root + "lib/adapters"));
     const [pkg, ver] = s.adapter.split(" ");
     const dir = s.argv[s.argv.indexOf("npm") + 2];
@@ -315,6 +985,42 @@ test("the shipped lockfiles are the versions Ask names: exact, every package fro
       }
     }
   }
+});
+
+test("adapter installation ignores package lifecycle scripts", async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, chmodSync, existsSync, rmSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const t = mkdtempSync(join(tmpdir(), "nodi-no-install-scripts-"));
+  try {
+    const dependency = join(t, "hooked");
+    const lock = join(t, "lock");
+    const marker = join(t, "POSTINSTALL_RAN");
+    mkdirSync(join(dependency, "bin"), { recursive: true });
+    mkdirSync(lock);
+    writeFileSync(join(dependency, "package.json"), JSON.stringify({
+      name: "hooked-adapter", version: "1.0.0",
+      bin: { x: "bin/x" },
+      scripts: { postinstall: "node -e \"require('fs').writeFileSync(process.env.HOOK_MARKER, 'ran')\"" }
+    }));
+    writeFileSync(join(dependency, "bin/x"), "#!/usr/bin/bash\necho safe\n");
+    chmodSync(join(dependency, "bin/x"), 0o755);
+    writeFileSync(join(lock, "package.json"), JSON.stringify({
+      name: "nodi-hook-test", private: true, dependencies: { "hooked-adapter": "file:" + dependency }
+    }));
+    const made = spawnSync("npm", ["install", "--package-lock-only", "--ignore-scripts", "--no-audit", "--no-fund"], {
+      cwd: lock, encoding: "utf8", env: { ...process.env, HOOK_MARKER: marker }
+    });
+    assert.equal(made.status, 0, made.stderr);
+    const dir = join(t, "installed");
+    const r = spawnSync("/usr/bin/bash",
+      ["-c", G.LAUNCH, "nodi-agent", "npm", dir, lock, "hooked-adapter", "1.0.0", "x"], {
+        encoding: "utf8",
+        env: { PATH: process.env.PATH, HOME: t, NODI_INSTALL: "1", HOOK_MARKER: marker }
+      });
+    assert.deepEqual([r.status, r.stdout], [0, "safe\n"]);
+    assert.equal(existsSync(marker), false, "postinstall did not run");
+  } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
 test("the launch script: an adapter installed once, then run; his own agent found on his PATH", () => {
@@ -354,11 +1060,22 @@ test("Ask continues: about the selection, about the window, a new question (ROAD
   assert.match(win.ask.message, /^what is this\n\nThe picture is the window the question is about, titled "notes"\.$/);
   const done = { ask: { phase: "done", question: "what is this", answer: "a formula", model: "haiku" } };
   const fresh = plain(run("ask what is this", done)).find(r => r.key === "ask:fresh");
-  // Continue: the agent opened with no prompt, the question copied to
-  // paste, in no argument (the marketplace's review, 2026-10-10).
+  // Continue: the agent opened with no prompt, the conversation copied to
+  // paste, in no argument, all of it as Raycast hands its history on.
   const cont = plain(run("ask what is this", done)).find(r => r.key === "ask:agent");
-  assert.equal(cont.subtitle, "Opens it, the question copied to paste");
-  assert.deepEqual([cont.run.kind, cont.run.text, cont.run.args], ["shell", "what is this", undefined]);
+  assert.equal(cont.subtitle, "Opens it, the conversation copied to paste");
+  assert.deepEqual([cont.run.kind, cont.run.text, cont.run.args], ["shell", "Our conversation so far:\n\nQ: what is this\n\nA: a formula", undefined]);
+  const longer = { ask: Object.assign({}, done.ask, { turns: [{ question: "first", answer: "one " }] }) };
+  assert.equal(plain(run("ask what is this", longer)).find(r => r.key === "ask:agent").run.text,
+               "Our conversation so far:\n\nQ: first\n\nA: one\n\nQ: what is this\n\nA: a formula", "the earlier turns first");
+  // Ctrl+Enter copies the conversation too, and one past what an environment
+  // string holds keeps its newest turns.
+  assert.equal(cont.copy, cont.run.text, "Ctrl+Enter copies what Enter carries");
+  const huge = { ask: Object.assign({}, done.ask, { turns: [{ question: "old", answer: "\u0ba4".repeat(40000) }, { question: "older", answer: "y".repeat(40000) }] }) };
+  const t = plain(run("ask what is this", huge)).find(r => r.key === "ask:agent").run.text;
+  assert.ok(Buffer.byteLength(t, "utf8") <= 120000, "under 120 KB in bytes: " + Buffer.byteLength(t, "utf8"));
+  assert.ok(t.endsWith("Q: what is this\n\nA: a formula"), "the newest turn kept");
+  assert.ok(t.includes("(Earlier turns left out.)") && !t.includes("Q: old\n"), "the oldest left out, and said so");
   assert.equal(cont.run.script, load("lib/Run.js").COPY + " || exit 1\nexec omarchy-agent --pick", "copied as Run's copy copies, then the agent");
   assert.ok(!JSON.stringify(load("lib/Run.js").command(cont.run).command).includes("what is this"), "the question in no argument");
   assert.deepEqual([fresh.title, fresh.nodi], ["New question", "askNew"]);
@@ -412,6 +1129,20 @@ test("an agent that needs him signed in asks in the bar (ROADMAP 84)", () => {
   assert.deepEqual(rows.map(r => [r.title, r.actionLabel]), [["Sign in to Codex: Sign in with ChatGPT", "Sign in"], ["Not now", "Refuse"]]);
   const Pane = load("lib/Pane.js");
   assert.equal(plain(Pane.choose({ proposal: prop.ask.proposal })).title, "Sign in to Codex: Sign in with ChatGPT");
+  assert.equal(G.signInCommand("codex", "/test-home/.local/share/nodi"),
+               "CODEX_HOME='/test-home/.local/share/nodi/profiles/codex' codex login");
+  assert.equal(G.signInCommand("claude", "/test-home/.local/share/nodi"), "claude");
+  for (const relative of ["docs/ask.md", "docs/troubleshooting.md"]) {
+    const text = readFileSync(root + "/" + relative, "utf8");
+    assert.match(text, /CODEX_HOME=.*profiles\/codex.*codex login/i,
+                 relative + " names the private login, not normal codex");
+  }
+});
+
+test("Ask status refresh waits until its state-change handler has finished", () => {
+  const nodi = readFileSync(root + "/Nodi.qml", "utf8");
+  assert.match(nodi, /function syncAskStatus\(\) \{[\s\S]*?root\.askStatus = askSession\.status[\s\S]*?root\.recompute\(\)[\s\S]*?onStatusChanged:\s*Qt\.callLater\(root\.syncAskStatus\)/,
+               "a synchronous refresh can warm a new session inside the old session's reset, and the pane must not outrun its row");
 });
 
 test("before the first question installs the adapter, the rows that ask say so (the marketplace's review, 2026-10-09)", () => {
@@ -535,6 +1266,30 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   assert.ok(his.some(k => /^filter:/.test(k)), "his own search asks it, as before");
 });
 
+test("Ask direct resolution sees the exact unfiltered top row without starting an agent-unsafe provider", async () => {
+  const { Engine, config, services } = await import("./fixtures.mjs");
+  const volume = plain(Engine.agentTop("volume", config, services()));
+  const ranked = plain(Engine.run("volume", config, services()));
+  const exploratory = plain(Engine.agentRows("volume", config, services()));
+  assert.deepEqual(volume, ranked[0], "direct resolution changed the bar's top-ranked row");
+  assert.equal(volume.key, "volume:prompt");
+  assert.deepEqual(exploratory.slice(0, 2).map(r => r.key), ["volume:5", "volume:-5"],
+                   "exploratory search no longer offers the filtered runnable rows");
+
+  assert.equal(Engine.agentTop("?", config, services()).help, true, "help remains the true top row");
+  assert.equal(Engine.agentTop("ask firefox", config, services()).nodi, "ask", "Nodi-owned rows remain visible to direct validation");
+  assert.ok(Engine.agentTop("volume up", config, services()).run, "a normal runnable top row remains runnable");
+
+  const cfg = Object.assign({}, config, {
+    filters: [{ keyword: "x", title: "X", command: ["bash", "-c"] },
+              { keyword: "l", title: "L", command: ["bash", "-c"], list: true, root: true }]
+  });
+  const asked = [];
+  Engine.agentTop("x touch /tmp/pwn", cfg, services({ asked, filter: () => { throw new Error("started") } }));
+  Engine.agentTop("l touch", cfg, services({ asked, filter: () => { throw new Error("started") } }));
+  assert.ok(!asked.some(k => /^filter/.test(k)), "direct resolution started an unsafe provider: " + asked.join(" "));
+});
+
 test("files Nodi writes are written beside, under names of their own, then moved in: a link at the old fixed name, or at the name itself, is never followed (codex's reviews, 2026-10-09)", async () => {
   const { mkdtempSync, writeFileSync, readFileSync, symlinkSync, readdirSync, statSync, lstatSync, rmSync, chmodSync, mkdirSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");
@@ -580,7 +1335,7 @@ test("files Nodi writes are written beside, under names of their own, then moved
 });
 
 test("with the agent's program not installed, no Ask fallback, and `ask ` says so before an Enter (2026-10-09)", () => {
-  assert.deepEqual(["claude", "codex", "gemini"].map(G.program), ["claude", "codex", "gemini"]);
+  assert.deepEqual(["claude", "codex", "gemini", "pi", "agy"].map(id => G.program(id)), ["claude", "codex", "agy", "pi", "agy"]);
   assert.equal(G.program({ command: ["my-agent", "acp"] }), "my-agent");
   assert.equal(G.program("nonesuch"), "");
   const ask = { phase: "idle", question: "", answer: "", agent: "Claude", model: "haiku", missing: "claude" };
@@ -616,4 +1371,185 @@ test("Continue in your agent: a copy that fails stops it before the agent opens,
     assert.equal(go('echo "no compositor" >&2; exit 1\n'), 1, "a failed copy fails the row");
     assert.ok(!existsSync(join(dir, "omarchy-agent.ran")), "and the agent is not opened");
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// A fallback (his ask, 2026-10-11): one of his answers, by its keyword, takes
+// a question Ask could not answer; first when the agent hit a limit.
+test("a failed question offers the fallback answer, first when the agent hit a limit", async () => {
+  const { config } = await import("./fixtures.mjs");
+  const Jsonc = load("lib/Jsonc.js");
+  const cfg = Jsonc.merge(config, { ask: { fallback: "fr" }, answers: [{ keyword: "fr", title: "Free (pi)", command: ["pi", "-p"] }] });
+  const failed = (error) => ({ ask: { phase: "error", question: "what is uv", error, agent: "Claude", model: "haiku" } });
+  const limited = plain(run("ask what is uv", failed("Claude stopped: Claude AI usage limit reached"), cfg));
+  assert.deepEqual(limited.map(r => r.key), ["ask:fallback", "ask:error"], "a limit: the fallback leads");
+  assert.deepEqual([limited[0].title, limited[0].subtitle, limited[0].nodi], ["Ask Free (pi) instead: what is uv", "Claude hit a limit; Free (pi) answers", "askFallback"]);
+  assert.deepEqual(limited[0].data, { keyword: "fr", question: "what is uv", message: "what is uv", fresh: true });
+  const other = plain(run("ask what is uv", failed("Claude stopped: exit 3"), cfg));
+  assert.deepEqual(other.map(r => r.key), ["ask:error", "ask:fallback"], "any other failure: asking again leads");
+  assert.equal(other[1].subtitle, "Free (pi) answers in its place");
+  const selectionMessage = "translate this\n\nThe text it is about:\n<text>\nவணக்கம்\n</text>";
+  const selection = plain(run("ask translate this", { ask: { ...failed("usage limit reached").ask, question: "translate this",
+    context: "selection", message: selectionMessage } }, cfg)).find(r => r.key === "ask:fallback");
+  assert.equal(selection.data.message, selectionMessage, "selected text reaches the fallback, not only its displayed question");
+  const continued = plain(run("ask and why", { ask: { ...failed("usage limit reached").ask, question: "and why", message: "and why",
+    turns: [{ question: "what is uv", answer: "A package manager." }] } }, cfg)).find(r => r.key === "ask:fallback");
+  assert.equal(continued.data.message, "Our conversation so far:\n\nQ: what is uv\n\nA: A package manager.\n\nQ: and why",
+               "a follow-up carries the earlier turns");
+  const selectedTurn = plain(run("ask and why", { ask: { ...failed("usage limit reached").ask, question: "and why", message: "and why",
+    turns: [{ question: "translate this", message: selectionMessage, answer: "Hello." }] } }, cfg)).find(r => r.key === "ask:fallback");
+  assert.equal(selectedTurn.data.message, "Our conversation so far:\n\nQ: " + selectionMessage + "\n\nA: Hello.\n\nQ: and why",
+               "a follow-up keeps the earlier turn's selected text");
+  const window = plain(run("ask what is this", { ask: { ...failed("usage limit reached").ask, question: "what is this",
+    context: "window", message: "what is this\n\nThe picture is the window the question is about." } }, cfg)).find(r => r.key === "ask:fallback");
+  assert.equal(window.data.message, "what is this\n\nThe window picture from the failed request is not available to this fallback.",
+               "a fallback never claims to have the missing picture");
+  assert.ok(!plain(run("ask what is uv", failed("usage limit reached"))).some(r => r.key === "ask:fallback"), "no fallback set: no row");
+  const missing = Jsonc.merge(config, { ask: { fallback: "nope" } });
+  assert.ok(!plain(run("ask what is uv", failed("usage limit reached"), missing)).some(r => r.key === "ask:fallback"), "a fallback no answer has: no row");
+});
+
+test("Ask agent actions include only agents that can currently be selected", async () => {
+  const { config } = await import("./fixtures.mjs");
+  const Jsonc = load("lib/Jsonc.js");
+  const cfg = Jsonc.merge(config, { ask: {
+    agent: "claude",
+    models: { codex: "gpt-5.6", free: "provider/model" },
+    agents: [{ id: "free", name: "Free", command: ["free-acp"] }]
+  } });
+  const agents = [
+    { id: "claude", name: "Claude", model: "haiku", policy: "strict", missing: "", available: true, current: true },
+    { id: "codex", name: "Codex", model: "gpt-5.6", policy: "unmanaged", missing: "", available: true, current: false },
+    { id: "agy", name: "Agy", model: "", policy: "answer-only", missing: "", reason: "", available: true, current: false },
+    { id: "pending", name: "Pending", model: "", policy: "unmanaged", missing: "", reason: "", available: false, current: false },
+    { id: "free", name: "Free", model: "provider/model", policy: "unmanaged", missing: "", available: true, current: false }
+  ];
+  const row = plain(run("ask why", { ask: { phase: "idle", agent: "Claude", model: "haiku", agents } }, cfg))[0];
+  const actions = plain(Rows.actionsFor(row, {})).filter(a => a.nodi === "askAgent");
+  assert.deepEqual(actions.map(a => [a.data.id, a.label, a.detail, a.disabled, a.reason]), [
+    ["claude", "Use Claude", "haiku | Managed | Current", false, ""],
+    ["codex", "Use Codex", "gpt-5.6 | Unmanaged tools", false, ""],
+    ["agy", "Use Agy", "No Nodi actions", false, ""],
+    ["free", "Use Free", "provider/model | Unmanaged tools", false, ""]
+  ]);
+});
+
+test("available ACP agents are direct one-shot Ask prefixes, including custom agents", async () => {
+  const { config } = await import("./fixtures.mjs");
+  const Jsonc = load("lib/Jsonc.js");
+  const cfg = Jsonc.merge(config, { ask: {
+    agents: [{ id: "work", name: "Work", command: ["work-acp"] }]
+  } });
+  const agents = [
+    { id: "claude", name: "Claude", model: "haiku", missing: "", reason: "", available: true, current: true },
+    { id: "codex", name: "Codex", model: "gpt-5.6", missing: "", reason: "", available: true, current: false },
+    { id: "opencode", name: "OpenCode", model: "", missing: "opencode", reason: "", available: false, current: false },
+    { id: "pi", name: "Pi", model: "provider/model", missing: "", reason: "", available: true, current: false },
+    { id: "agy", name: "Agy", model: "", missing: "", reason: "", available: true, current: false },
+    { id: "work", name: "Work", model: "", missing: "", reason: "", available: true, current: false }
+  ];
+  const idle = { phase: "idle", question: "", answer: "", agent: "Claude", agentId: "claude", model: "haiku", agents };
+
+  for (const [query, id, question, name] of [
+    ["claude why", "claude", "why", "Claude"],
+    ["codex review this", "codex", "review this", "Codex"],
+    ["pi explain this", "pi", "explain this", "Pi"],
+    ["agy compare these", "agy", "compare these", "Agy"],
+    ["work inspect this", "work", "inspect this", "Work"]
+  ]) {
+    const row = plain(run(query, { ask: idle }, cfg)).find(r => r.provider === "ask" && r.nodi === "askAs");
+    assert.ok(row, query);
+    assert.deepEqual(row.data, { id, question });
+    assert.equal(row.title, "Ask " + name + ": " + question);
+  }
+
+  const complete = plain(run("codex", { ask: idle }, cfg)).find(r => r.provider === "ask" && r.complete === "codex ");
+  assert.deepEqual([complete.title, complete.nodi], ["Ask Codex", ""]);
+  assert.ok(complete.score < 50, "a bare agent name is a completion, not the leading result");
+  assert.notEqual(run("pi * 2", { ask: idle }, cfg)[0].provider, "ask",
+    "an agent name does not steal a calculation");
+  assert.ok(!plain(run("opencode review", { ask: idle }, cfg)).some(r => r.provider === "ask" && r.nodi === "askAs"),
+    "an unavailable agent does not claim a direct prefix");
+  assert.ok(!plain(run("gemini review", { ask: idle }, cfg)).some(r => r.provider === "ask" && r.nodi === "askAs"),
+    "the retired Gemini name is not exposed");
+});
+
+test("a direct agent prefix follows that agent's live Ask state without changing the default", () => {
+  const agents = [
+    { id: "claude", name: "Claude", model: "haiku", missing: "", reason: "", available: true, current: true },
+    { id: "codex", name: "Codex", model: "gpt-5.6", missing: "", reason: "", available: true, current: false }
+  ];
+  const waiting = {
+    phase: "waiting", question: "review this", answer: "", agent: "Codex", agentId: "codex",
+    model: "gpt-5.6", agents
+  };
+  const row = plain(run("codex review this", { ask: waiting })).find(r => r.provider === "ask");
+  assert.deepEqual([row.key, row.title], ["ask:wait", "Asking Codex Gpt-5.6..."]);
+  assert.equal(row.data, null, "displaying state does not persist an agent selection");
+});
+
+test("direct agent prefixes preserve capture, approval, and busy state", () => {
+  const agents = [
+    { id: "claude", name: "Claude", missing: "", reason: "", available: true, current: true },
+    { id: "codex", name: "Codex", missing: "", reason: "", available: true, current: false }
+  ];
+  const base = { question: "first", agent: "Claude", agentId: "claude", agents };
+  const capturing = plain(run("codex second", { ask: { ...base, phase: "idle", capturing: true } }))
+    .find(r => r.provider === "ask");
+  assert.equal(capturing.key, "ask:shot");
+  const proposing = plain(run("codex second", { ask: {
+    ...base, phase: "proposing", proposal: { title: "Open it" }
+  } })).filter(r => r.provider === "ask");
+  assert.deepEqual(proposing.map(r => r.key), ["ask:deny", "ask:allow"]);
+  const busy = plain(run("codex second", { ask: { ...base, phase: "streaming" } }))
+    .find(r => r.provider === "ask");
+  assert.equal(busy.key, "ask:busy");
+});
+
+test("fallbackAgent takes precedence, preserves the effective message, and waits for Enter; answer fallback remains compatible", async () => {
+  const { config } = await import("./fixtures.mjs");
+  const Jsonc = load("lib/Jsonc.js");
+  const cfg = Jsonc.merge(config, {
+    ask: { fallbackAgent: "free", fallback: "fr" },
+    answers: [{ keyword: "fr", title: "Free answer", command: ["pi", "-p"] }]
+  });
+  const message = "translate this\n\nThe text it is about:\n<text>\nவணக்கம்\n</text>";
+  const ask = {
+    phase: "error", question: "translate this", message, context: "selection", error: "usage limit reached",
+    agent: "Claude", model: "haiku",
+    agents: [
+      { id: "claude", name: "Claude", model: "haiku", missing: "", current: true },
+      { id: "free", name: "Free", model: "provider/model", missing: "", current: false }
+    ]
+  };
+  const rows = plain(run("ask translate this", { ask }, cfg));
+  assert.deepEqual(rows.slice(0, 3).map(r => r.key), ["ask:agent-fallback", "ask:fallback", "ask:error"]);
+  assert.deepEqual([rows[0].title, rows[0].nodi, rows[0].actionLabel],
+    ["Ask Free instead: translate this", "askAgentFallback", "Prepare"]);
+  assert.deepEqual(rows[0].data, { id: "free", question: "translate this", message, context: "selection", direct: false });
+  const legacy = plain(run("ask translate this", {
+    ask: { ...ask, agents: ask.agents.concat([
+      { id: "agy", name: "Agy", model: "", missing: "", reason: "", current: false }
+    ]) }
+  }, Jsonc.merge(cfg, { ask: { fallbackAgent: "gemini" } })));
+  assert.equal(legacy.find(r => r.key === "ask:agent-fallback").data.id, "agy");
+  const unavailable = plain(run("ask translate this", { ask: { ...ask, agents: ask.agents.map(a => a.id === "free" ? { ...a, missing: "free-acp" } : a) } }, cfg));
+  assert.ok(!unavailable.some(r => r.key === "ask:agent-fallback"), "an unavailable fallback agent is invalid");
+  assert.ok(unavailable.some(r => r.key === "ask:fallback"), "the legacy answer fallback remains");
+  const disabled = plain(run("ask translate this", { ask: { ...ask, agents: ask.agents.map(a => a.id === "free" ? { ...a, reason: "cannot disable tools" } : a) } }, cfg));
+  assert.ok(!disabled.some(r => r.key === "ask:agent-fallback"), "a disabled fallback agent is invalid");
+  const duplicate = plain(run("ask translate this", { ask }, Jsonc.merge(cfg, {
+    ask: { fallbackAgent: "free", fallback: "free" },
+    answers: [{ keyword: "free", title: "Free", command: ["free-answer"] }]
+  })));
+  assert.deepEqual(duplicate.filter(r => /^ask:(?:agent-)?fallback$/.test(r.key)).map(r => r.key),
+    ["ask:agent-fallback"], "one fallback agent is not offered twice through two routes");
+});
+
+test("disabled Nodi-owned actions survive normalization and cannot be activated", () => {
+  const row = Rows.normalize({ title: "Ask", actions: [
+    { label: "Use Codex", nodi: "askAgent", data: { id: "codex" }, disabled: true, reason: "codex is missing" }
+  ] }, { id: "ask", name: "Ask" }, 0, 0);
+  const action = plain(Rows.actionsFor(row, {}))[0];
+  assert.deepEqual([action.nodi, action.disabled, action.reason], ["askAgent", true, "codex is missing"]);
+  assert.equal(Rows.activatable(action), false);
 });

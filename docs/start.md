@@ -75,7 +75,7 @@ is the same list on one page, and [Keys](keys.md) every key.
   what Ctrl+K offers.
 - [Settings](settings.md): `nodi.json`, keywords, snippets.
 - [Ask](ask.md): `ask`, and what it does with selected text, through
-  Claude, Codex, Gemini or an agent of your own.
+  Claude, Codex, OpenCode, Pi, Agy or an agent of your own.
 - [Extending it](extend.md): your own commands, script filters,
   answers, the extensions that come with it, and Nodi from a terminal.
 - [What it touches](privacy.md): what it reads, writes, starts and

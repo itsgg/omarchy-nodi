@@ -1,0 +1,35 @@
+#!/usr/bin/bash
+set -euo pipefail
+umask 077
+
+real=${NODI_CODEX_COMMAND:?}
+target=${NODI_CODEX_HOME:?}
+source=${CODEX_HOME:-$HOME/.codex}
+
+mkdir -p -- "$target"
+if [[ -f "$source/auth.json" && -f "$target/auth.json"
+      && ! "$source/auth.json" -ef "$target/auth.json" ]]; then
+  source_refresh=$(jq -r '.tokens.refresh_token // ""' "$source/auth.json" 2>/dev/null || :)
+  target_refresh=$(jq -r '.tokens.refresh_token // ""' "$target/auth.json" 2>/dev/null || :)
+  if [[ -n $source_refresh && $source_refresh == "$target_refresh" ]]; then
+    echo "nodi: the private Codex profile still has a copied one-use sign-in; replace it with: CODEX_HOME=\"$target\" codex login" >&2
+    exit 75
+  fi
+  unset source_refresh target_refresh
+fi
+tmp=$(mktemp -- "$target/config.toml.XXXXXX")
+printf '' > "$tmp"
+mv -fT -- "$tmp" "$target/config.toml"
+
+export CODEX_HOME=$target
+version=$("$real" --version) || {
+  echo "nodi: could not read the Codex version" >&2
+  exit 1
+}
+if [[ $version =~ ^codex-cli\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+  export NODI_CODEX_VERSION=${BASH_REMATCH[1]}
+else
+  echo "nodi: unsupported Codex version response: $version" >&2
+  exit 1
+fi
+exec "$real" --strict-config "$@"

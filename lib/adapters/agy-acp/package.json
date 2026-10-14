@@ -1,0 +1,7 @@
+{
+  "name": "nodi-agy-acp",
+  "private": true,
+  "dependencies": {
+    "google-antigravity-acp": "2.0.1"
+  }
+}

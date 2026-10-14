@@ -133,10 +133,10 @@ if (existsSync(settingsPage)) {
   const ids = load("providers/index.js").all.map(p => p.id);
   const known = new Set(Object.keys(defaults).concat(ids, EXTRA, Object.values(defaults).flatMap(v => v && typeof v === "object" && !Array.isArray(v) ? Object.keys(v) : [])));
   // A key: a table's first column, or a quoted name a colon follows.
-  // An MCP server's name is yours, not a setting: what an mcpServers
-  // object holds is left out of the scan, every server in it.
+  // MCP server names and agent IDs are yours, not settings: what their
+  // keyed objects hold is left out of the scan.
   let page = read(settingsPage);
-  const OBJECT = /"mcpServers"\s*:\s*\{/g;
+  const OBJECT = /"(?:mcpServers|models)"\s*:\s*\{/g;
   for (let m = OBJECT.exec(page); m; m = OBJECT.exec(page)) {
     const open = m.index + m[0].length - 1;
     let depth = 0, end = open;

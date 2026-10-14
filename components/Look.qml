@@ -37,6 +37,11 @@ QtObject {
   readonly property real secondaryTarget: highContrast ? 7 : 4.5
   readonly property color secondary: rgb(Contrast.secondary(foreground, Color.muted, opaqueCard, secondaryTarget))
   readonly property color secondaryOnSelected: rgb(highContrast ? Contrast.atLeast(foreground, selectedFill, 7) : Contrast.readable(foreground, selectedFill, 4.5))
+  // Markdown links keep a quiet hint of the theme accent without borrowing
+  // the full focus colour; fall back to readable text ink where needed.
+  readonly property color softLink: rgb(Contrast.over(Color.accent, 0.35, foreground))
+  readonly property color link: rgb(highContrast ? Contrast.atLeast(softLink, opaqueCard, 7)
+                                                  : Contrast.guard(softLink, opaqueCard, foreground))
   // The selected title, its glyph and the mode chip: the theme's selected
   // text where it reads on the fill, else the text colour.
   readonly property color selectedInk: rgb(Contrast.guard(selectedText, selectedFill, foreground))
