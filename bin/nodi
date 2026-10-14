@@ -341,49 +341,313 @@ mcp() {
 # defined once. NODI_ASK_SESSION names the session it serves: a server an
 # ended session left reaches nothing. A message the shell cannot take is
 # answered here, never left waiting.
+ASK_RELAY_OUT=""
+ASK_RELAY_WHY=""
+ASK_RELAY_CODE=-32603
+ASK_RELAY_TICKET=""
+ASK_RELAY_BUSY=0
+ASK_RELAY_STOP=0
+ASK_RELAY_ID=""
+ASK_RELAY_REQUEST=""
+ASK_RELAY_DUPLICATES=0
+ASK_RELAY_DUPLICATE_LIMIT=16
+ASK_RELAY_INPUT_STATUS=""
+ASK_RELAY_READER_FD=""
+ASK_RELAY_READER_PID=""
+ASK_RELAY_READER_WRITE=""
+ASK_RELAY_CANCEL_HOOKED=0
+
+# One short shell IPC call. Its payload has the same bound and shell facade
+# error mapping whether it starts a request or polls one.
+ask_relay_call() {
+  local req=$1
+  ASK_RELAY_OUT=""
+  ASK_RELAY_CODE=-32603
+  if [ -z "$req" ] || [ "$(LC_ALL=C; echo ${#req})" -gt 65536 ]; then
+    ASK_RELAY_WHY="Too long: a message is 64 KB at most"
+    ASK_RELAY_CODE=-32602
+    return 1
+  fi
+  if carry "$req" && ASK_RELAY_OUT=$("$ipc" shell call "$id" askMcp "$CARRIED" 2>/dev/null); then
+    case $ASK_RELAY_OUT in
+      ""|ok) ASK_RELAY_WHY="The bar gave no answer"; return 1 ;;
+      error) ASK_RELAY_WHY="Nodi failed to answer; the shell's log says why"; return 1 ;;
+      unknown) ASK_RELAY_WHY="The bar cannot be reached"; return 1 ;;
+      *) return 0 ;;
+    esac
+  fi
+  ASK_RELAY_WHY="The bar cannot be reached"
+  return 1
+}
+
+pending_control() {
+  jq -e 'type == "object" and (.nodiPending | type == "string" and length > 0)' >/dev/null 2>&1 <<<"$1"
+}
+
+# A transport ending while an action waits withdraws only its uncommitted
+# request. Ask decides whether it is still cancellable.
+ask_relay_cancel_hook() {
+  [ "${NODI_ASK_TEST_SIGNAL_CANCEL_STAGE:-}" = "$1" ] || return 0
+  [ "$ASK_RELAY_CANCEL_HOOKED" -eq 0 ] || return 0
+  ASK_RELAY_CANCEL_HOOKED=1
+  [ -z "${NODI_ASK_TEST_CANCEL_MARKER:-}" ] \
+    || printf '%s' "$1" > "$NODI_ASK_TEST_CANCEL_MARKER"
+  kill -TERM "$$"
+}
+
+ask_relay_cancel() {
+  local ticket req
+  local saved_out=$ASK_RELAY_OUT saved_why=$ASK_RELAY_WHY saved_code=$ASK_RELAY_CODE saved_busy=$ASK_RELAY_BUSY
+  ask_relay_cancel_hook before-busy
+  ASK_RELAY_BUSY=1
+  ask_relay_cancel_hook after-busy
+  ticket=$ASK_RELAY_TICKET
+  ask_relay_cancel_hook after-capture
+  ASK_RELAY_TICKET=""
+  ask_relay_cancel_hook after-clear
+  if [ -z "$ticket" ]; then
+    ASK_RELAY_BUSY=$saved_busy
+    return 0
+  fi
+  if req=$(NODI_T=$NODI_ASK_SESSION NODI_C=$NODI_ASK_CHANNEL NODI_P=$ticket jq -cn \
+    '{token: $ENV.NODI_T, channel: $ENV.NODI_C, op: "cancel", ticket: $ENV.NODI_P}' 2>/dev/null); then
+    ask_relay_call "$req" || :
+  fi
+  ask_relay_cancel_hook after-attempt
+  ASK_RELAY_OUT=$saved_out
+  ASK_RELAY_WHY=$saved_why
+  ASK_RELAY_CODE=$saved_code
+  ASK_RELAY_BUSY=$saved_busy
+}
+
+# A signal while a shell response is being collected or decoded is deferred
+# until its pending ticket has been published. Outside that small critical
+# section, cancellation can be sent immediately.
+ask_relay_signal() {
+  ASK_RELAY_STOP=1
+  [ "$ASK_RELAY_BUSY" -eq 1 ] && return 0
+  ask_relay_cancel
+  exit 0
+}
+
+ask_relay_reader() {
+  local s
+  while :; do
+    read_line 65537; s=$?
+    printf '%s\n' "$s"
+    [ "$s" -eq 0 ] && printf '%s\n' "$line"
+    [ "$s" -eq 1 ] && return 0
+  done
+}
+
+# One event from the bounded reader: 0 received, 2 timed out. The event is
+# in ASK_RELAY_INPUT_STATUS (0 line, 1 EOF, 3 oversize), and a line is in
+# `line`. A persistent reader owns partial input between poll intervals.
+ask_relay_next() {
+  local timeout=${1-} s status
+  if [ -n "$timeout" ]; then
+    IFS= read -r -t "$timeout" -u "$ASK_RELAY_READER_FD" status; s=$?
+    if [ "$s" -ne 0 ]; then
+      [ "$s" -gt 128 ] && return 2
+      ASK_RELAY_INPUT_STATUS=1
+      return 0
+    fi
+  else
+    if ! IFS= read -r -u "$ASK_RELAY_READER_FD" status; then
+      ASK_RELAY_INPUT_STATUS=1
+      return 0
+    fi
+  fi
+  ASK_RELAY_INPUT_STATUS=$status
+  if [ "$status" -eq 0 ]; then
+    if ! IFS= read -r -u "$ASK_RELAY_READER_FD" line; then
+      ASK_RELAY_INPUT_STATUS=1
+    fi
+  fi
+  return 0
+}
+
+ask_relay_cleanup() {
+  if [ -n "$ASK_RELAY_READER_PID" ]; then
+    kill "$ASK_RELAY_READER_PID" 2>/dev/null || :
+    if [ -n "$ASK_RELAY_READER_WRITE" ]; then
+      exec {ASK_RELAY_READER_WRITE}>&-
+      ASK_RELAY_READER_WRITE=""
+    fi
+    wait "$ASK_RELAY_READER_PID" 2>/dev/null || :
+    ASK_RELAY_READER_PID=""
+  fi
+  if [ -n "$ASK_RELAY_READER_FD" ]; then
+    exec {ASK_RELAY_READER_FD}<&-
+    ASK_RELAY_READER_FD=""
+  fi
+  [ -z "$carry_dir" ] || rm -rf -- "$carry_dir"
+}
+
+# Exact retransmissions share one pending lifecycle. Retaining only their
+# count keeps memory fixed; every admitted copy receives the same terminal
+# JSON-RPC line as the original request.
+ask_relay_reply_all() {
+  local response=$1 n=0
+  while [ "$n" -le "$ASK_RELAY_DUPLICATES" ]; do
+    printf '%s\n' "$response"
+    n=$((n + 1))
+  done
+}
+
+# Process one complete message that arrived while ASK_RELAY_ID is pending.
+# A matching cancellation is 1; every other message is handled here and 0.
+ask_relay_pending_message() {
+  local kind incoming_id incoming_request response
+  if [ -n "$ASK_RELAY_ID" ] && jq -e --argjson wanted "$ASK_RELAY_ID" \
+    'type == "object" and .method == "notifications/cancelled"
+     and (.params | type == "object") and (.params | has("requestId"))
+     and ((.params.requestId | type) == ($wanted | type))
+     and .params.requestId == $wanted' >/dev/null 2>&1 <<<"$line"; then
+    ask_relay_cancel
+    [ "$ASK_RELAY_STOP" -eq 0 ] || exit 0
+    response=$(mcp_error "$ASK_RELAY_ID" -32800 "Request cancelled")
+    ask_relay_reply_all "$response"
+    return 1
+  fi
+  if ! kind=$(jq -r 'if type != "object" then "bad" elif has("id") then "request" else "note" end' \
+      <<<"$line" 2>/dev/null); then
+    mcp_error null -32700 "parse error"
+    return 0
+  fi
+  if [ "$kind" = bad ]; then
+    mcp_error null -32600 "not a request object"
+  elif [ "$kind" = request ]; then
+    incoming_id=$(jq -cS '.id' <<<"$line")
+    incoming_request=$(jq -cS '.' <<<"$line")
+    if [ "$incoming_id" = "$ASK_RELAY_ID" ]; then
+      if [ "$incoming_request" != "$ASK_RELAY_REQUEST" ]; then
+        mcp_error "$incoming_id" -32600 "Request ID is already pending with different content"
+      elif [ "$ASK_RELAY_DUPLICATES" -ge "$ASK_RELAY_DUPLICATE_LIMIT" ]; then
+        mcp_error "$incoming_id" -32000 "Too many duplicate requests are already waiting"
+      else
+        ASK_RELAY_DUPLICATES=$((ASK_RELAY_DUPLICATES + 1))
+      fi
+    else
+      mcp_error "$incoming_id" -32000 "Another request is already in progress"
+    fi
+  fi
+  # Notifications, including cancellation of another typed ID, get no reply.
+  return 0
+}
+
 ask_relay() {
-  local line out mid why req s
+  local call_status line out mid canonical req poll_req response s input_read input_write reader_fd cancelled
   [ -n "${NODI_ASK_SESSION:-}" ] || fail "nodi mcp --ask is Ask's own: it needs NODI_ASK_SESSION"
-  # A search or a run can pass omarchy-shell's two seconds, and a call
-  # that ran would be said not to have reached the bar (Fable 2026-10-07).
+  [ -n "${NODI_ASK_CHANNEL:-}" ] || fail "nodi mcp --ask is Ask's own: it needs NODI_ASK_CHANNEL"
+  # This limits each short shell IPC exchange, not how long the provider
+  # may wait for the person to answer an action.
   OMARCHY_SHELL_IPC_TIMEOUT=${OMARCHY_SHELL_IPC_TIMEOUT:-10s}
   export OMARCHY_SHELL_IPC_TIMEOUT
-  trap 'exit 0' TERM INT HUP
+  # The reader alone owns stdin. It keeps an incomplete line between polls,
+  # caps it before publishing it, and applies pipe backpressure instead of
+  # accumulating an unbounded queue in this process.
+  exec 3<&0
+  # After publishing EOF the reader waits on its coprocess input until
+  # cleanup, keeping its PID owned and safe to signal.
+  coproc ASK_RELAY_INPUT { ask_relay_reader <&3; IFS= read -r || :; }
+  input_read=${ASK_RELAY_INPUT[0]}
+  # Bash closes the coprocess descriptors when it reaps the reader. Keep a
+  # duplicate so all already-published events remain readable through EOF.
+  exec {reader_fd}<&"$input_read"
+  ASK_RELAY_READER_FD=$reader_fd
+  ASK_RELAY_READER_PID=$!
+  input_write=${ASK_RELAY_INPUT[1]}
+  ASK_RELAY_READER_WRITE=$input_write
+  exec 3<&-
+  trap 'ask_relay_signal' TERM INT HUP
   carry_init
+  trap 'ask_relay_cleanup' EXIT
   # A line past 64 KB could never go to the shell (below): it is read to
   # its end and refused, never held whole.
   while :; do
-    read_line 65537; s=$?
-    [ $s -eq 1 ] && break
-    [ $s -eq 3 ] && { mcp_error null -32602 "Too long: a message is 64 KB at most"; continue; }
+    ask_relay_next; s=$?
+    [ "$s" -eq 0 ] || continue
+    [ "$ASK_RELAY_INPUT_STATUS" -eq 1 ] && break
+    [ "$ASK_RELAY_INPUT_STATUS" -eq 3 ] && { mcp_error null -32602 "Too long: a message is 64 KB at most"; continue; }
     [ -n "${line//[[:space:]]/}" ] || continue
+    mid=$(jq -cS 'if type == "object" and has("id") and has("method") then .id else empty end' <<<"$line" 2>/dev/null)
+    canonical=$(jq -cS '.' <<<"$line" 2>/dev/null) || canonical=""
     # The shell's facade takes one argument (shell.qml call(id, method,
     # arg); Fable 2026-10-07: two were refused, every message with them):
     # the token and the line as one JSON object, carried in a file (carry);
     # past 64 KB it is refused here.
     # In jq's environment, not its arguments: the message, and the token
     # that is the tool server's word to Ask (the marketplace's review, 2026-10-10).
-    req=$(NODI_T=$NODI_ASK_SESSION NODI_L=$line jq -cn '{token: $ENV.NODI_T, line: $ENV.NODI_L}' 2>/dev/null) || req=""
-    if [ -z "$req" ] || [ "$(LC_ALL=C; echo ${#req})" -gt 65536 ]; then
-      mid=$(jq -c 'if type == "object" and has("id") and has("method") then .id else empty end' <<<"$line" 2>/dev/null)
-      [ -n "$mid" ] && mcp_error "$mid" -32602 "Too long: a message is 64 KB at most"
+    req=$(NODI_T=$NODI_ASK_SESSION NODI_C=$NODI_ASK_CHANNEL NODI_L=$line jq -cn \
+      '{token: $ENV.NODI_T, channel: $ENV.NODI_C, op: "call", line: $ENV.NODI_L}' 2>/dev/null) || req=""
+    ASK_RELAY_BUSY=1
+    ask_relay_call "$req"; call_status=$?
+    out=$ASK_RELAY_OUT
+    if [ "$call_status" -eq 0 ] && pending_control "$out"; then
+      ASK_RELAY_TICKET=$(jq -r '.nodiPending' <<<"$out")
+      ASK_RELAY_ID=$mid
+      ASK_RELAY_REQUEST=$canonical
+      ASK_RELAY_DUPLICATES=0
+    fi
+    ASK_RELAY_BUSY=0
+    if [ "$ASK_RELAY_STOP" -eq 1 ]; then ask_relay_cancel; exit 0; fi
+    if [ "$call_status" -ne 0 ]; then
+      [ -n "$mid" ] && mcp_error "$mid" "$ASK_RELAY_CODE" "$ASK_RELAY_WHY"
       continue
     fi
-    # "" for a notification; "ok" is the facade's word for nothing returned,
-    # "error" for a function that threw, "unknown" for no Nodi loaded.
-    if carry "$req" && out=$("$ipc" shell call "$id" askMcp "$CARRIED" 2>/dev/null); then
-      case $out in
-        ""|ok) why="The bar gave no answer" ;;
-        error) why="Nodi failed to answer; the shell's log says why" ;;
-        unknown) why="The bar cannot be reached" ;;
-        *) printf '%s\n' "$out"; continue ;;
-      esac
-    else
-      why="The bar cannot be reached"
+    cancelled=0
+    while pending_control "$out"; do
+      # Four checks a second keep Enter responsive without spawning an IPC
+      # client and several parsers twenty times a second while a card waits.
+      ask_relay_next 0.25; s=$?
+      if [ "$s" -eq 0 ]; then
+        if [ "$ASK_RELAY_INPUT_STATUS" -eq 1 ]; then
+          ask_relay_cancel
+          exit 0
+        elif [ "$ASK_RELAY_INPUT_STATUS" -eq 3 ]; then
+          mcp_error null -32602 "Too long: a message is 64 KB at most"
+        elif [ -n "${line//[[:space:]]/}" ]; then
+          if ask_relay_pending_message; then :; else
+            cancelled=1
+            break
+          fi
+        fi
+      fi
+      poll_req=$(NODI_T=$NODI_ASK_SESSION NODI_C=$NODI_ASK_CHANNEL NODI_P=$ASK_RELAY_TICKET jq -cn \
+        '{token: $ENV.NODI_T, channel: $ENV.NODI_C, op: "poll", ticket: $ENV.NODI_P}' 2>/dev/null) || poll_req=""
+      ASK_RELAY_BUSY=1
+      ask_relay_call "$poll_req"; call_status=$?
+      out=$ASK_RELAY_OUT
+      if [ "$call_status" -eq 0 ] && pending_control "$out"; then
+        ASK_RELAY_TICKET=$(jq -r '.nodiPending' <<<"$out")
+      fi
+      ASK_RELAY_BUSY=0
+      if [ "$ASK_RELAY_STOP" -eq 1 ]; then ask_relay_cancel; exit 0; fi
+      if [ "$call_status" -ne 0 ]; then
+        ask_relay_cancel
+        [ "$ASK_RELAY_STOP" -eq 0 ] || exit 0
+        break
+      fi
+    done
+    ASK_RELAY_TICKET=""
+    ASK_RELAY_ID=""
+    ASK_RELAY_REQUEST=""
+    if [ "$cancelled" -ne 0 ]; then
+      ASK_RELAY_DUPLICATES=0
+      continue
+    fi
+    if [ "$call_status" -eq 0 ] && [ -n "$out" ] && ! pending_control "$out"; then
+      ask_relay_reply_all "$out"
+      ASK_RELAY_DUPLICATES=0
+      continue
     fi
     # Only a notification goes unanswered.
-    mid=$(jq -c 'if type == "object" and has("id") and has("method") then .id else empty end' <<<"$line" 2>/dev/null)
-    [ -n "$mid" ] && mcp_error "$mid" -32603 "$why"
+    if [ -n "$mid" ]; then
+      response=$(mcp_error "$mid" "$ASK_RELAY_CODE" "$ASK_RELAY_WHY")
+      ask_relay_reply_all "$response"
+    fi
+    ASK_RELAY_DUPLICATES=0
   done
 }
 

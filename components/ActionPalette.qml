@@ -58,7 +58,7 @@ Column {
       height: nodi.rowHeight + (modelData.section ? nodi.sectionHeight : 0)
       Accessible.role: Accessible.ListItem
       Accessible.name: String(modelData.label || "")
-      Accessible.description: modelData.confirm && nodi.paletteArmed === modelData.label ? "Enter again" : (modelData.chord ? String(modelData.chord) : "")
+      Accessible.description: modelData.reason || (modelData.confirm && nodi.paletteArmed === modelData.label ? "Enter again" : (modelData.chord ? String(modelData.chord) : ""))
       Accessible.selectable: true
       Accessible.selected: index === nodi.paletteIndex
 
@@ -80,6 +80,7 @@ Column {
 
     Rectangle {
       id: actionItem
+      objectName: "paletteAction" + index
       readonly property int index: actionCell.index
       readonly property var modelData: actionCell.modelData
       readonly property bool selected: index === nodi.paletteIndex
@@ -90,6 +91,7 @@ Column {
       height: nodi.rowHeight
       radius: nodi.cornerRadius
       color: selected ? nodi.selectedBackground : "transparent"
+      opacity: modelData.disabled ? 0.45 : 1
 
       BorderOverlay {
         borderSpec: actionItem.selected ? nodi.selectedBorderSpec : Border.none()
@@ -122,11 +124,13 @@ Column {
         fontFamily: nodi.fontFamily
       }
       Text {
+        id: actionLabel
         anchors.left: actionTile.right
         anchors.leftMargin: Style.spacing.xxl
         anchors.right: actionBadge.visible ? actionBadge.left : parent.right
         anchors.rightMargin: Style.spacing.lg + (actionBadge.visible ? 0 : nodi.rowInsetRight)
         anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: actionReason.visible ? -Style.spacing.sm : 0
         textFormat: Text.PlainText
         text: actionItem.modelData.label
         // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
@@ -137,14 +141,29 @@ Column {
         font.weight: Font.Medium
         elide: Text.ElideRight
       }
+      Text {
+        id: actionReason
+        objectName: "paletteReason"
+        visible: !!actionItem.modelData.reason
+        anchors.left: actionLabel.left
+        anchors.right: actionLabel.right
+        anchors.top: actionLabel.bottom
+        textFormat: Text.PlainText
+        text: actionItem.modelData.reason || ""
+        horizontalAlignment: Text.AlignLeft
+        color: actionItem.selected ? nodi.selectedInk : nodi.secondary
+        font.family: nodi.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+      }
       // The chord that runs it, or the second Enter it waits for.
       Keycap {
         id: actionBadge
-        visible: actionItem.armed || !!actionItem.modelData.chord
+        visible: actionItem.armed || !!actionItem.modelData.chord || !!actionItem.modelData.detail
         anchors.right: parent.right
         anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
         anchors.verticalCenter: parent.verticalCenter
-        label: actionItem.armed ? "Enter again" : (actionItem.modelData.chord || "")
+        label: actionItem.armed ? "Enter again" : (actionItem.modelData.chord || actionItem.modelData.detail || "")
         strong: actionItem.armed
         foreground: nodi.foreground
         tone: actionItem.armed ? Color.urgent : nodi.foreground
@@ -153,8 +172,9 @@ Column {
       }
       MouseArea {
         anchors.fill: parent
+        enabled: !actionItem.modelData.disabled
         hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
+        cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
         // Only real pointer movement selects, as in the list: typing into
         // Ctrl+K slides actions under a resting pointer, which reports
         // them as entered, and Enter then ran the one under it (Sonnet

@@ -5,7 +5,69 @@ What changed in each version of Nodi, newest first. A version is a tag
 follows the main branch, not the tags: it shows the diff from the commit
 you have and asks before pulling. ROADMAP.md has each item's detail.
 
-## Unreleased
+## 0.5.0 (2026-10-14)
+
+Ask can switch ACP agents (2026-10-12)
+- Ctrl+K on an Ask row switches among Claude, Codex, OpenCode, Pi, Agy,
+  and configured ACP agents when their command is installed. Disabled and
+  unavailable agents are omitted; switching cancels the old turn, starts a
+  fresh conversation, preserves the field and never sends by itself.
+- An available agent's ID is also a one-question prefix (`claude`, `codex`,
+  `opencode`, `pi`, `agy`, or a custom ID) without changing the remembered
+  default. Unavailable agents do not claim their prefixes.
+- `"ask.models"` selects a model by agent ID. `"fallbackAgent"` offers an
+  available ACP agent after a failure and takes precedence over the existing
+  streamed-answer `"fallback"`.
+- Pi runs through pinned `pi-acp` with tools, MCP, context files, skills and
+  prompt templates disabled while user-installed extensions remain enabled.
+  Its ACP startup inventory is quieted without replacing Pi's global
+  extension settings.
+- Gemini is retired. Remembered, configured and fallback `gemini` selections
+  resolve to Agy, with `ask.models.gemini` retained as Agy's legacy model
+  fallback. Agy runs through pinned `google-antigravity-acp@2.0.1` in plan
+  mode and its sandbox. It is answer-only from Nodi, with no bar actions or
+  configured MCP servers, though it can use its own read tools and globally
+  configured MCP servers without Nodi approval.
+- Codex uses an isolated Nodi profile and needs a separate `codex login`
+  there. Its empty config is best-effort isolation from global tools and
+  project instructions; Codex remains labelled unmanaged.
+- Markdown links in ordinary and streamed previews are clickable through
+  Nodi's checked URL opener and use a contrast-safe theme colour. Wikipedia
+  results with no description no longer show an empty italic marker.
+- Multiline notification titles and bodies are collapsed to one display line
+  in the result list, while copying keeps their original text.
+
+Conversations, as Raycast's Quick AI keeps them (2026-10-11)
+- A streamed answer is a conversation: a question within ten minutes of the
+  last answer follows it, the pane showing the whole thread, each question
+  above its answer, while the follow-up is typed and as it is answered.
+  `"fresh"` sets the window ("0", every question its own; "never", one
+  conversation). The program is told which in `NODI_CONVERSATION`.
+- "New conversation" sets one aside in the recent list; "New conversation:
+  ..." asks in a fresh one; with `"chat"`, "Continue in terminal" carries it
+  on in a terminal. Only questions and answers are saved, not selected text
+  or prior Ask transcripts from an effective request.
+- Closing the bar no longer stops a streamed answer or forgets its
+  conversation.
+- Ask's pane shows its conversation's earlier turns too, and "Continue in
+  your agent" copies the whole conversation, not only the question.
+- `"ask": { "fallback": "..." }` names one of your answers that a failed
+  question offers instead, first when the agent hit a limit.
+
+Long answers, and pictures on every open (2026-10-11)
+- An answer in the pane, Ask's or a streamed one's, is drawn in blocks as
+  it streams, a finished block laid out once, and read at most every 80 ms.
+  Laid out whole at every word, an 18 KB answer held the GUI thread for
+  280 s, the bar frozen; now 6.9 s over its 34 s of words, measured on the
+  real pane.
+- A streamed answer (`answers` in nodi.json) says it is asking, its spinner
+  turning, until its first words, as Ask does: the pane said nothing for
+  the seconds a program takes to start.
+- A streamed answer's words reach the pane together every 80 ms, not one
+  by one.
+- Every app's icon is decoded once and held, at the sizes the rows draw
+  it, so an open finds them ready and draws them with the rows' words: Qt
+  drops a picture nobody holds within minutes, and they came in late.
 
 Private text out of every argument (the marketplace's review, 2026-10-10)
 - Ask's list of running agent sessions reads each one's last prompt,

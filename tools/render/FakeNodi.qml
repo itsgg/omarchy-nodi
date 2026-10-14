@@ -15,6 +15,7 @@ QtObject {
   function note(name, args) { var c = fake.calls.slice(); c.push([name].concat(args || [])); fake.calls = c }
   readonly property color background: look.background
   readonly property color foreground: look.foreground
+  readonly property color link: look.link
   readonly property var selectedBorderSpec: look.selectedBorderSpec
   readonly property real rowInsetLeft: look.rowInsetLeft
   readonly property bool selectionBar: look.selectionBar
@@ -70,7 +71,7 @@ QtObject {
   property string answerShown: ""
   // An answer on its way, as Nodi.qml hands Pane.js one: { busy, status, error }.
   property var askPane: null
-  // A streamed answer's { question, title, text }, as Nodi.qml hands Pane.js one.
+  // A streamed answer's { question, title, text, seq, busy }, as Nodi.qml hands Pane.js one.
   property var streamed: null
   // A confirm word being asked: { title, word, run, risk }.
   property var wordAsk: null
@@ -110,6 +111,7 @@ QtObject {
   function handleKey(key, modifiers) { fake.note("handleKey", [key, modifiers || 0]); return false }
   function focusInput() { fake.note("focusInput") }
   function activate(index) { fake.note("activate", [index]) }
+  function openLink(url) { fake.note("openLink", [url]) }
   function openPalette() { fake.note("openPalette", [fake.selectedIndex]); return fake.opens }
   // What openPalette answers: whether the row had actions to open.
   property bool opens: true

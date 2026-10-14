@@ -83,15 +83,18 @@ Everything Nodi reads, writes, starts and sends, and when.
   while that fails), for `prs` (through `gh`), to describe apps, if
   turned on (through Claude Code's `claude` command), and under `ask`
   through the coding agent Ask holds ([Ask](ask.md)), which goes online
-  itself. The first question asked with Claude or Codex installs that
+  itself. The first question asked with Claude, Codex, Pi or Agy installs that
   agent's ACP adapter from npm, once, into `~/.local/share/nodi/agents`,
-  as the lockfile in `lib/adapters` names it, with no install scripts; for Gemini,
-  Nodi writes its settings for it to `~/.local/share/nodi/gemini-settings.json`.
-  The agent's session runs in `~/.cache/nodi/ask`, is offered no files
-  and no terminal of Nodi's, and has no MCP servers but the bar's and
-  the ones you name under `"ask": { "mcpServers": ... }`; what of the
-  agent's own tools and settings is turned off, [Ask](ask.md) says for
-  each. A question within ten minutes of an answer follows it, and the
+  as the lockfile in `lib/adapters` names it, with no install scripts.
+  The agent's session runs in `~/.cache/nodi/ask` and is offered no files
+  or terminal of Nodi's. Capable agents receive only the bar's MCP server
+  and those you name under `"ask": { "mcpServers": ... }`; unmanaged
+  OpenCode and custom agents may additionally load their own configuration
+  and tools. Agy uses its own account and configuration; Nodi gives it no
+  bar actions or configured MCP servers, but Agy can use its own read tools
+  and globally configured MCP servers without Nodi approval. What of each
+  agent's own tools and settings is turned off, [Ask](ask.md) says. A
+  question within ten minutes of an answer follows it, and the
   session, the conversation with it, ends after thirty minutes with no
   question. The bar's tools are a search of the rows, and a run of one,
   which shows in the bar with its command and runs only on your Enter;
@@ -99,10 +102,23 @@ Everything Nodi reads, writes, starts and sends, and when.
   window" sends the agent a picture of the window you came from (`grim
   -T`, by its own buffer, so the bar is not in it), which stays in the
   conversation, and its cost in every question, until it starts afresh.
+- Codex under Ask uses a private profile at
+  `~/.local/share/nodi/profiles/codex`, with its own sign-in. Nodi never
+  copies the normal profile's rotating ChatGPT refresh token.
+  [Troubleshooting](troubleshooting.md) gives the private sign-in command.
+  Nodi supplies an empty config and `--strict-config` launch settings.
+  Codex is unmanaged: Nodi cannot disable Codex's built-in tools, and Codex
+  may use them. Its pinned runner checks the executable/app-server version
+  and Nodi action origins.
+  Claude's runner also binds an MCP action's SDK tool-use ID, provider
+  turn, ACP session, dynamic server and input to the later direct relay;
+  missing, changed or stale origins are refused. The opt-in live safety
+  probe fails without that runtime evidence.
 - Each time it opens it reads the text selected in the window you came
   from (`wl-paste --primary`) and the clipboard's text (never a password
   manager's), keeps them until it next opens, and sends one to the agent
-  only when you pick one of the agent's rows on it.
+  only when you pick one of the agent's rows on it, or to a streamed-answer
+  fallback when you choose that row.
 - Its folders, `~/.cache/nodi/`, `~/.local/state/nodi/` and
   `~/.local/share/nodi/`, are yours alone (0700), made so at each start
   and each open; a file it replaces is written beside it under a name of
@@ -118,7 +134,12 @@ Everything Nodi reads, writes, starts and sends, and when.
   starters you have been through; and to `~/.local/state/nodi/reminders.json`,
   the reminders you set, each one's words and when it is due, until it
   is said or you clear them. Omarchy's own reminders (`omarchy-reminder`)
-  are neither read nor shown. A search under
+  are neither read nor shown. It also keeps the newest 50 streamed-answer
+  conversations in `~/.local/state/nodi/conversations.json` so they can be
+  reopened: each keyword, question and answer, but not the effective request
+  that may contain selected text or an Ask transcript. Starting a new
+  conversation sets the old one aside in that recent list; deleting the file
+  clears the list. A search under
   `cb` with words reads the text in each image of the history once, with
   Omarchy's `tesseract` (about 2 s an image, a few seconds at a time
   while that search is open), into `~/.cache/nodi/ocr/`; pasting in sequence

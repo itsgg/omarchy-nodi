@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+set -u
+
+exec "${NODI_PI_COMMAND:?}" \
+  --no-tools \
+  --no-mcp \
+  --no-context-files \
+  --no-skills \
+  --no-prompt-templates \
+  "$@"

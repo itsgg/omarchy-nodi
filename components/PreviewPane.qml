@@ -32,7 +32,34 @@ Rectangle {
   // it kept its place as it finished and as the rows were arrowed through.
   readonly property string ident: (p.follow ? "answer:" + (p.round || 0) : (nodi.selectedRow ? nodi.selectedRow.key : ""))
     + "\n" + (p.title || "") + "\n" + (p.subtitle || "") + "\n" + (p.image || "")
-  onIdentChanged: { body.scrolled = false; body.contentY = 0 }
+  onIdentChanged: { body.scrolled = false; body.contentY = 0; blocks.clear(); Qt.callLater(pane.syncBlocks) }
+
+  // The blocks the pane draws, changed in place: a block whose text is the
+  // same is left alone, so its Text is not laid out again. The answer is
+  // read at most every 80 ms while it streams, however often its words
+  // come: an agent's answer arrives a few characters at a time.
+  ListModel { id: blocks }
+  function syncBlocks() {
+    throttle.stop()
+    if (!pane.streams) { if (blocks.count) blocks.clear(); return }
+    var list = Markdown.blocks(pane.streamed)
+    var md = pane.hasMarkdown
+    for (var i = 0; i < list.length; i++) {
+      if (i < blocks.count) {
+        if (blocks.get(i).md !== md) blocks.set(i, { t: list[i], md: md })
+        else if (blocks.get(i).t !== list[i]) blocks.setProperty(i, "t", list[i])
+      } else blocks.append({ t: list[i], md: md })
+    }
+    if (blocks.count > list.length) blocks.remove(list.length, blocks.count - list.length)
+  }
+  onStreamedChanged: if (!throttle.running) throttle.start()
+  onStreamsChanged: Qt.callLater(pane.syncBlocks)
+  // Done: the whole answer at once, not 80 ms later. Called later, not
+  // here: the answer's end and its last words come in one preview, and
+  // this can be told before `streamed` has its new text.
+  readonly property bool busyNow: !!p.busy
+  onBusyNowChanged: if (!busyNow) Qt.callLater(pane.syncBlocks)
+  Timer { id: throttle; interval: 80; onTriggered: pane.syncBlocks() }
 
   // By lines or pages (a page is the text's height), kept in bounds; from
   // the keyboard (lib/Keys.js: Shift with the arrows or PageUp and
@@ -51,6 +78,14 @@ Rectangle {
   readonly property bool hasCode: !hasImage && !hasMarkdown && typeof p.code === "string" && p.code !== ""
   readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text)
   readonly property bool hasStatus: !hasImage && !hasText && !!p.status
+  // An answer on its way or done (Ask's, a streamed one's) is drawn as
+  // blocks (lib/Markdown.js blocks()): each finished block laid out once,
+  // the last one again as it grows. One Text holding the whole answer was
+  // laid out again at every word: 280 s of the GUI thread for an 18 KB
+  // answer, the bar frozen meanwhile (measured 2026-10-11). Other previews
+  // are short and keep one Text.
+  readonly property bool streams: !!p.follow && hasText && !hasCode
+  readonly property string streamed: !streams ? "" : hasMarkdown ? p.markdown : String(p.text || "")
   // More text than the pane shows: the footer says how to scroll it.
   readonly property bool overflows: visible && body.visible && body.contentHeight > body.height + 1
 
@@ -233,7 +268,7 @@ Rectangle {
     // No header (a preview of Markdown alone): the pane's own margin only.
     anchors.topMargin: head.height > 0 ? Style.spacing.popupPadding : 0
     contentWidth: width
-    contentHeight: bodyText.implicitHeight
+    contentHeight: pane.streams ? blockColumn.implicitHeight : bodyText.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     property bool scrolled: false
@@ -242,15 +277,47 @@ Rectangle {
     onContentHeightChanged: if (pane.p.follow && !scrolled && contentHeight > height) contentY = contentHeight - height
     onMovementStarted: scrolled = true
 
+    // A stream's blocks, laid out one by one (syncBlocks above).
+    Column {
+      id: blockColumn
+      objectName: "paneBlocks"
+      visible: pane.streams
+      width: body.width
+      // The gap Qt puts between paragraphs inside one Text, near enough.
+      spacing: Math.round(bodyText.font.pixelSize * 0.6)
+      Repeater {
+        model: blocks
+        Text {
+          required property string t
+          required property bool md
+          width: blockColumn.width
+          wrapMode: Text.Wrap
+          textFormat: md ? Text.MarkdownText : Text.PlainText
+          text: md ? Markdown.forPane(t) : t
+          horizontalAlignment: Text.AlignLeft
+          color: nodi.foreground
+          linkColor: nodi.link
+          onLinkActivated: function(link) { nodi.openLink(link) }
+          font.family: nodi.fontFamily
+          font.pixelSize: bodyText.font.pixelSize
+          lineHeight: bodyText.lineHeight
+        }
+      }
+    }
+
     Text {
       id: bodyText
+      visible: !pane.streams
       width: body.width
       wrapMode: Text.Wrap
       textFormat: pane.hasMarkdown ? Text.MarkdownText : pane.hasCode ? Text.RichText : Text.PlainText
-      text: pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
+      // Empty while a stream is drawn as blocks: bound to the answer, it
+      // would be laid out whole at every word though nothing showed it.
+      text: pane.streams ? "" : pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
       horizontalAlignment: Text.AlignLeft
       color: nodi.foreground
-      linkColor: nodi.foreground
+      linkColor: nodi.link
+      onLinkActivated: function(link) { nodi.openLink(link) }
       font.family: nodi.fontFamily
       font.pixelSize: pane.p.mono ? Style.font.caption : Style.font.subtitle
       lineHeight: 1.15

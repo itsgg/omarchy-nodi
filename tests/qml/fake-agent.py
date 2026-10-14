@@ -4,11 +4,11 @@
 # bar's tool server it is given (bin/nodi mcp --ask, which reaches the
 # test's own Quickshell instance through a stand-in omarchy-shell), and
 # answers "ok" only if every reply was what it should be. The question picks what it plays:
-#   lock my screen             tools/list and a search through the bar,
-#                              another tool asked about and refused, a
-#                              made-up key refused unshown, two runs at
-#                              once, one he allows and runs once, a run
-#                              called unasked shown in the bar, one refused
+#   lock my screen             tools/list, then one direct run({query}),
+#                              with request-ID-only replay after Enter
+#   search then run            invalid and unresolved direct calls, then
+#                              search followed by run({key})
+#   old turn replay            a failed request ID repeated on the next turn
 #   exit while proposing       asks for a run, then exits
 #   recycle while proposing    asks for a run, then waits
 #   the bar closes in the run  a run he allows closes the bar; the next is
@@ -29,7 +29,7 @@
 # without); argv[2], "auth", makes session/new ask for a sign-in,
 # "authhang" one that never finishes, and "installing" says on stderr that
 # an adapter is installing, as the launch script does.
-import json, os, subprocess, sys
+import json, os, subprocess, sys, time
 
 KIND = sys.argv[1] if len(sys.argv) > 1 else "claude"
 MODE = sys.argv[2] if len(sys.argv) > 2 else ""
@@ -73,17 +73,31 @@ OPTIONS = [{"optionId": "allow-once", "name": "Yes", "kind": "allow_once"},
            {"optionId": "reject", "name": "No", "kind": "reject_once"}]
 
 calls = [0]
-def tool(sid, name, inp, server="nodi"):
+def tool(sid, name, inp, server=None, meta=None, call_id=None, omit_call_id=False):
     calls[0] += 1
-    tid = "toolu_%d" % calls[0]
-    meta = {"claudeCode": {"toolName": name, "mcpServer": {"name": server, "source": "dynamic"}}}
-    send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid, "update": {"sessionUpdate": "tool_call", "toolCallId": tid, "title": name, "kind": "other", "status": "pending", "rawInput": {}, "_meta": meta}}})
-    return {"toolCallId": tid, "title": name, "rawInput": inp, "_meta": meta}
+    tid = call_id if call_id is not None else "toolu_%d" % calls[0]
+    server = server or ACTION_SERVER[0]
+    if name.startswith("mcp__nodi__"):
+        name = "mcp__%s__%s" % (server, name[len("mcp__nodi__"):])
+    if meta is None:
+        meta = {"claudeCode": {"toolName": name, "mcpServer": {"name": server, "source": "dynamic"}}}
+    update = {"sessionUpdate": "tool_call", "title": name, "kind": "other", "status": "pending", "rawInput": {}, "_meta": meta}
+    call = {"title": name, "rawInput": inp, "_meta": meta}
+    if not omit_call_id:
+        update["toolCallId"] = tid
+        call["toolCallId"] = tid
+    send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid, "update": update}})
+    return call
 
-def permission(sid, name, inp, server="nodi"):
-    r = ask_nodi("session/request_permission", {"sessionId": sid, "toolCall": tool(sid, name, inp, server), "options": OPTIONS})
+def permission(sid, name, inp, server=None, meta=None, call_id=None, omit_call_id=False):
+    r = ask_nodi("session/request_permission", {"sessionId": sid, "toolCall": tool(sid, name, inp, server, meta, call_id, omit_call_id), "options": OPTIONS})
     o = (r.get("result") or {}).get("outcome") or {}
     return o.get("optionId") if o.get("outcome") == "selected" else o.get("outcome")
+
+def tool_update(sid, tid, status):
+    send({"jsonrpc": "2.0", "method": "session/update", "params": {"sessionId": sid, "update": {
+        "sessionUpdate": "tool_call_update", "toolCallId": tid, "status": status
+    }}})
 
 def permission_both(sid, a, b):
     # Two at once: both sent before either answer is read.
@@ -100,6 +114,7 @@ def permission_both(sid, a, b):
     return [(got[i].get("optionId") or got[i].get("outcome")) for i in ids], ids
 
 TOKEN = [""]
+ACTION_SERVER = [""]
 SERVER = [None]
 # The bar's tool server, started as an agent starts one: its command, its
 # arguments, and its env over the agent's own; MCP over its stdin and stdout.
@@ -121,6 +136,7 @@ def said(r):
     return r["result"]["content"][0]["text"] if "result" in r else json.dumps(r)
 
 LOCK = {"key": "menu:system.lock"}
+DIRECT = {"query": "lock"}
 
 # The handshake: what Nodi offers, and what this agent does.
 m = read()
@@ -148,14 +164,19 @@ if MODE == "installing":
     time.sleep(2)
 p = m["params"]
 servers = {s["name"]: s for s in p.get("mcpServers", [])}
-nodi = servers.get("nodi")
+nodi_names = [name for name in servers if name.startswith("nodi-")]
+nodi = servers.get(nodi_names[0]) if len(nodi_names) == 1 else None
+ACTION_SERVER[0] = nodi_names[0] if len(nodi_names) == 1 else ""
 want(nodi and nodi["args"] == ["mcp", "--ask"] and nodi["command"].endswith("/bin/nodi"), "the bar's server: %r" % (nodi,))
 env = {e["name"]: e["value"] for e in (nodi or {}).get("env", [])}
 TOKEN[0] = env.get("NODI_ASK_SESSION", "")
 want(len(TOKEN[0]) >= 16, "a session token: %r" % (env,))
+want(ACTION_SERVER[0] == "nodi-" + env.get("NODI_ASK_CHANNEL", ""), "the action server is bound to its channel: %r / %r" % (ACTION_SERVER[0], env))
 meta = p.get("_meta")
 if KIND == "claude":
-    want(meta and "desktop command bar" in meta.get("systemPrompt", "") and meta["claudeCode"]["options"]["tools"] == [], "Claude's options: %r" % (meta,))
+    want(meta and "desktop command bar" in meta.get("systemPrompt", "") and meta["claudeCode"]["options"]["tools"] == []
+         and meta["claudeCode"]["options"]["allowedTools"] == ["mcp__%s__search" % ACTION_SERVER[0]],
+         "Claude's options: %r" % (meta,))
 else:
     want(meta is None, "no _meta for a plain agent: %r" % (meta,))
 send({"jsonrpc": "2.0", "id": m["id"], "result": {"sessionId": "s1"}})
@@ -177,22 +198,149 @@ while True:
         answer(text if text is not None else ("ok" if not bad else "fail: " + "; ".join(bad)), SID)
         send({"jsonrpc": "2.0", "id": pid, "result": {"stopReason": "end_turn"}})
 
+    if question == "wait before words":
+        time.sleep(1)
+        end()
+        continue
+
+    if question == "identity and activity":
+        want(permission(SID, "mcp__nodi__search", {"query": "lock"}) == "allow-once",
+             "the exact dynamic search permission was not forwarded")
+        exact_title = "mcp__%s__run" % ACTION_SERVER[0]
+        want(permission(SID, exact_title, DIRECT, ACTION_SERVER[0], {}) == "reject",
+             "a title without trusted metadata bypassed ordinary permission")
+        want(permission(SID, exact_title, DIRECT, "nodi") == "reject",
+             "a same-named tool from another server bypassed ordinary permission")
+        want(permission(SID, exact_title, DIRECT, omit_call_id=True) == "reject",
+             "trusted metadata without a tool call ID bypassed ordinary permission")
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="identity-wrong-id") == "allow-once",
+             "the call-ID mismatch fixture was not permission-bound")
+        forged = mcp("tools/call", {"name": "run", "arguments": DIRECT}, "identity-forged")
+        want(forged.get("result", {}).get("isError") is True
+             and "permission-bound" in said(forged),
+             "a different MCP call ID used another operation's permission: %r" % (forged,))
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="identity-wrong-input") == "allow-once",
+             "the input mismatch fixture was not permission-bound")
+        changed = mcp("tools/call", {"name": "run", "arguments": {"query": "logout"}}, "identity-wrong-input")
+        want(changed.get("result", {}).get("isError") is True
+             and "permission-bound" in said(changed),
+             "changed MCP input used the permission for another input: %r" % (changed,))
+        old = tool(SID, "Read old", {}, "other")
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="identity-run") == "allow-once",
+             "the exact dynamic run permission was not forwarded")
+        outcome = json.loads(said(mcp("tools/call", {"name": "run", "arguments": DIRECT}, "identity-run")))
+        want(outcome.get("status") == "executed", "the exact run did not use Nodi's action card: %r" % (outcome,))
+        newer = tool(SID, "Read current", {}, "other")
+        time.sleep(0.2)
+        tool_update(SID, old["toolCallId"], "completed")
+        answer("activity-check" if not bad else "fail: " + "; ".join(bad), SID)
+        tool_update(SID, newer["toolCallId"], "completed")
+        send({"jsonrpc": "2.0", "id": pid, "result": {"stopReason": "end_turn"}})
+        continue
+
     if question == "exit while proposing":
-        tool(SID, "mcp__nodi__run", LOCK)
-        send({"jsonrpc": "2.0", "id": "p-exit", "method": "session/request_permission",
-              "params": {"sessionId": SID, "toolCall": tool(SID, "mcp__nodi__run", LOCK), "options": OPTIONS}})
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="exit-run") == "allow-once", "the doomed run permission forwarded")
+        answer("bound-exit", SID)
+        time.sleep(1)
         sys.exit(3)
 
     if question == "recycle while proposing":
-        send({"jsonrpc": "2.0", "id": "p-wait", "method": "session/request_permission",
-              "params": {"sessionId": SID, "toolCall": tool(SID, "mcp__nodi__run", LOCK), "options": OPTIONS}})
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="recycle-run") == "allow-once", "the recycled run permission forwarded")
+        mcp("tools/list", {}, 91)
+        SERVER[0].stdin.write(json.dumps({"jsonrpc": "2.0", "id": "recycle-run", "method": "tools/call",
+                                          "params": {"name": "run", "arguments": DIRECT}}) + "\n")
+        SERVER[0].stdin.flush()
         for _ in sys.stdin: pass
         sys.exit(0)
 
     if question == "the bar closes in the run":
-        want(permission(SID, "mcp__nodi__run", LOCK) == "allow-once", "the first run allowed")
-        want(said(mcp("tools/call", {"name": "run", "arguments": LOCK}, 1)).startswith("Ran: Lock"), "and run")
-        want(permission(SID, "mcp__nodi__run", LOCK) == "reject", "the next refused, the bar closed")
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="closing-run") == "allow-once", "the first run permission forwarded")
+        outcome = json.loads(said(mcp("tools/call", {"name": "run", "arguments": DIRECT}, "closing-run")))
+        want(outcome.get("status") == "executed", "and run: %r" % (outcome,))
+        want(permission(SID, "mcp__nodi__run", DIRECT) == "reject", "the next refused, the bar closed")
+        end(); continue
+
+    if question == "search then run":
+        want(permission(SID, "mcp__nodi__run", {"query": ""}, call_id="empty") == "reject",
+             "an invalid run permission was refused")
+        empty = mcp("tools/call", {"name": "run", "arguments": {"query": ""}}, "empty")
+        want(empty.get("result", {}).get("isError") is True, "an empty query is a tool error: %r" % (empty,))
+        empty_replay = mcp("tools/call", {"name": "run", "arguments": {"query": ""}}, "empty")
+        want(empty_replay == empty, "an exact invalid request did not replay: %r / %r" % (empty, empty_replay))
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="empty") == "allow-once",
+             "the duplicate invalid ID's valid permission forwarded")
+        replay = mcp("tools/call", {"name": "run", "arguments": DIRECT}, "empty")
+        want(replay.get("result", {}).get("isError") is True
+             and "recorded origin" in said(replay)
+             and replay != empty,
+             "changed input inherited an invalid request's result: %r / %r" % (empty, replay))
+        want(permission(SID, "mcp__nodi__run", {"query": "lock", "key": LOCK["key"]}, call_id="both") == "reject",
+             "a both-fields permission was refused")
+        both = mcp("tools/call", {"name": "run", "arguments": {"query": "lock", "key": LOCK["key"]}}, "both")
+        want(both.get("result", {}).get("isError") is True, "both fields are a tool error: %r" % (both,))
+        for mid, query in (("missing", "missing"), ("volume", "volume")):
+            want(permission(SID, "mcp__nodi__run", {"query": query}, call_id=mid) == "allow-once",
+                 "%s permission forwarded" % query)
+            failed = mcp("tools/call", {"name": "run", "arguments": {"query": query}}, mid)
+            want(failed.get("result", {}).get("isError") is True,
+                 "%s is a tool error: %r" % (query, failed))
+        want(permission(SID, "mcp__nodi__search", {"query": "lock"}) == "allow-once", "a search allowed at once")
+        rows = json.loads(said(mcp("tools/call", {"name": "search", "arguments": {"query": "lock"}}, "search")))
+        want(rows and rows[0]["key"] == LOCK["key"], "search answered: %r" % (rows,))
+        want(permission(SID, "mcp__nodi__run", LOCK, call_id="searched-run") == "allow-once", "the searched key permission forwarded")
+        refused = json.loads(said(mcp("tools/call", {"name": "run", "arguments": LOCK}, "searched-run")))
+        want(refused.get("status") == "refused", "Escape refused the searched run: %r" % (refused,))
+        end(); continue
+
+    if question == "bar closes before enter":
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="close-run") == "allow-once", "the closing run permission forwarded")
+        refused = json.loads(said(mcp("tools/call", {"name": "run", "arguments": DIRECT}, "close-run")))
+        want(refused.get("status") == "refused", "close did not refuse the uncommitted run: %r" % (refused,))
+        end(); continue
+
+    if question == "close before delivery":
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="closed-delivery") == "allow-once", "the delayed run permission forwarded")
+        answer("bound", SID)
+        time.sleep(1)
+        end(); continue
+
+    if question == "mailbox already terminal":
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="mailbox-race") == "allow-once", "the mailbox-race permission forwarded")
+        refused = json.loads(said(mcp("tools/call", {"name": "run", "arguments": DIRECT}, "mailbox-race")))
+        want(refused.get("status") == "refused", "the terminal mailbox outcome changed: %r" % (refused,))
+        end(); continue
+
+    if question in ("commit fails", "commit throws"):
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id=question) == "allow-once", "the outcome permission forwarded")
+        outcome = json.loads(said(mcp("tools/call", {"name": "run", "arguments": DIRECT}, question)))
+        expected = "failed" if question == "commit fails" else "unknown"
+        want(outcome.get("status") == expected, "%s outcome: %r" % (expected, outcome))
+        end(); continue
+
+    if question == "old turn replay":
+        want(permission(SID, "mcp__nodi__run", {"query": "missing"}, call_id="old-turn") == "allow-once",
+             "old-turn permission forwarded")
+        failed = mcp("tools/call", {"name": "run", "arguments": {"query": "missing"}}, "old-turn")
+        want(failed.get("result", {}).get("isError") is True, "the old turn failed before proposal")
+        end(); continue
+
+    if question == "old turn replay again":
+        want(permission(SID, "mcp__nodi__run", {"query": "missing"}, call_id="old-turn") == "allow-once", "delayed permission forwarded")
+        stale = mcp("tools/call", {"name": "run", "arguments": {"query": "missing"}}, "old-turn")
+        want(stale.get("result", {}).get("isError") is True
+             and "No matching row" in said(stale),
+             "the delayed old-turn ID did not replay its terminal result: %r" % (stale,))
+        end(); continue
+
+    if question == "bind old turn":
+        want(permission(SID, "mcp__nodi__run", DIRECT, call_id="unique-old-turn") == "allow-once", "the old turn permission was bound")
+        end(); continue
+
+    if question == "deliver old turn":
+        stale = mcp("tools/call", {"name": "run", "arguments": DIRECT}, "unique-old-turn")
+        want(stale.get("result", {}).get("isError") is True
+             and ("turn" in said(stale).lower() or "permission-bound" in said(stale).lower()),
+             "a unique delayed old-turn call was accepted as current: %r" % (stale,))
         end(); continue
 
     if question.startswith("Fix the spelling and grammar of the text below"):
@@ -244,17 +392,13 @@ while True:
     # lock my screen
     tl = mcp("tools/list", {}, 1)
     want([t["name"] for t in tl.get("result", {}).get("tools", [])] == ["search", "run"], "the bar's two tools: %r" % (tl,))
-    want(permission(SID, "mcp__nodi__search", {"query": "lock"}) == "allow-once", "a search allowed at once")
-    rows = json.loads(said(mcp("tools/call", {"name": "search", "arguments": {"query": "lock"}}, 2)))
-    want(rows and rows[0]["key"] == "menu:system.lock", "search answered: %r" % (rows,))
-    want(permission(SID, "Bash", {"command": "rm -rf ~"}, "none") == "reject", "another tool shown, and refused by him")
-    want(permission(SID, "mcp__nodi__run", {"key": "made:up"}) == "reject", "a key the bar cannot run refused unshown")
-    (first, second), _ = permission_both(SID, ("mcp__nodi__run", LOCK), ("mcp__nodi__run", LOCK))
-    want(second == "reject", "the second run refused while the first waits: %r" % (second,))
-    want(first == "allow-once", "the first allowed by him: %r" % (first,))
-    want(said(mcp("tools/call", {"name": "run", "arguments": LOCK}, 3)) == "Ran: Lock", "the allowed run done")
-    shown = said(mcp("tools/call", {"name": "run", "arguments": LOCK}, 4))
-    want(shown.startswith("Shown to him in the bar"), "a run called unasked is shown, not run: %r" % (shown,))
-    want(said(mcp("tools/call", {"name": "run", "arguments": LOCK}, 5)).startswith("Not run: One run at a time"), "one shown at a time")
-    want(permission(SID, "mcp__nodi__run", LOCK) == "reject", "refused while one is shown")
+    want(permission(SID, "mcp__nodi__run", DIRECT, call_id="direct") == "allow-once", "the direct run permission forwarded")
+    first = json.loads(said(mcp("tools/call", {"name": "run", "arguments": DIRECT}, "direct")))
+    want(first.get("status") == "executed" and first.get("key") == LOCK["key"],
+         "the direct run executed: %r" % (first,))
+    replay = json.loads(said(mcp("tools/call", {"name": "run", "arguments": DIRECT}, "direct")))
+    want(replay == first, "the duplicate request ID did not replay exactly: %r / %r" % (first, replay))
+    distinct = mcp("tools/call", {"name": "run", "arguments": DIRECT}, "distinct")
+    want(distinct.get("result", {}).get("isError") is True
+         and "executed" not in said(distinct), "a distinct request inherited success: %r" % (distinct,))
     end()

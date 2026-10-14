@@ -47,8 +47,13 @@ test("what the agent can do: what it leaves out, it cannot", () => {
 });
 
 test("MCP servers as session/new takes them: stdio always, http only when the agent takes it", () => {
-  assert.deepEqual(plain(A.stdioServer("nodi", "/bin/nodi", ["mcp", "--ask"], { NODI_ASK: "t" })),
-    { name: "nodi", command: "/bin/nodi", args: ["mcp", "--ask"], env: [{ name: "NODI_ASK", value: "t" }] });
+  assert.equal(A.actionServer("a1b2"), "nodi-a1b2");
+  assert.deepEqual(plain(A.stdioServer(A.actionServer("a1b2"), "/bin/nodi", ["mcp", "--ask"],
+    { NODI_ASK_SESSION: "s1", NODI_ASK_CHANNEL: "a1b2" })),
+    { name: "nodi-a1b2", command: "/bin/nodi", args: ["mcp", "--ask"], env: [
+      { name: "NODI_ASK_SESSION", value: "s1" },
+      { name: "NODI_ASK_CHANNEL", value: "a1b2" }
+    ] });
   const named = { github: { command: "gh-mcp", args: ["stdio"], env: { TOKEN: "x" } }, web: { type: "http", url: "https://m/mcp", headers: { A: "b" } },
                   old: { type: "sse", url: "https://m/sse" }, broken: { args: [] }, odd: null };
   assert.deepEqual(plain(A.servers(named, false)), [{ name: "github", command: "gh-mcp", args: ["stdio"], env: [{ name: "TOKEN", value: "x" }] }]);

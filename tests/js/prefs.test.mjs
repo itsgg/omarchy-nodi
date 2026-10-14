@@ -47,6 +47,23 @@ test("kept as JSON, anything malformed left out", () => {
   assert.deepEqual(plain(P.load("not json").favourites), []);
 });
 
+test("the selected Ask agent is the only agent preference persisted, copied, and read compatibly", () => {
+  let p = P.withAskAgent(P.empty(), "free");
+  assert.equal(p.askAgent, "free");
+  const json = JSON.parse(P.serialize(p));
+  assert.equal(json.askAgent, "free");
+  assert.ok(!Object.hasOwn(json, "ask") && !Object.hasOwn(json, "agent"), "no agent definition or legacy object is persisted");
+  assert.equal(P.copy(p).askAgent, "free");
+  assert.equal(P.load(JSON.stringify({ version: 1 })).askAgent, "", "old preference files still load");
+  assert.equal(P.load(JSON.stringify({ askAgent: "gemini" })).askAgent, "agy");
+  assert.equal(JSON.parse(P.serialize({ ...P.empty(), askAgent: "gemini" })).askAgent, "agy");
+  assert.equal(P.withAskAgent(P.empty(), "gemini").askAgent, "agy");
+  for (const bad of ["Bad Id", "__proto__", "", 3, { id: "free" }])
+    assert.equal(P.load(JSON.stringify({ askAgent: bad })).askAgent, "", JSON.stringify(bad));
+  assert.equal(P.withAskAgent(p, "").askAgent, "", "the remembered selection can be cleared");
+  assert.equal(P.withAskAgent(p, "Bad Id"), null, "unsafe IDs are not saved");
+});
+
 import { run, services, config, Engine } from "./fixtures.mjs";
 const Rows = load("lib/Rows.js");
 

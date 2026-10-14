@@ -86,6 +86,22 @@ Item {
       compare(called("handleKey")[0].slice(1), [Qt.Key_Escape, 0])
     }
 
+    function test_disabled_palette_action_explains_itself_and_ignores_click() {
+      fake.paletteActions = [{ label: "Use Codex", icon: "󰚩", detail: "gpt-5.6", disabled: true,
+                               reason: "codex is not on your login PATH" }]
+      fake.paletteRow = top.sample[0]
+      fake.paletteOpen = true
+      wait(50)
+      var action = findChild(card, "paletteAction0")
+      verify(action, "the disabled action is still visible")
+      verify(action.opacity < 1, "it is visibly dimmed")
+      var reason = findChild(action, "paletteReason")
+      verify(reason && reason.visible)
+      compare(reason.text, "codex is not on your login PATH")
+      mouseClick(action)
+      compare(called("runPaletteAction").length, 0, "a disabled click does nothing")
+    }
+
     function test_a_badge_is_no_button() {
       fake.rows = [Rows.normalize({ key: "toggle:wifi", title: "Wi-Fi", subtitle: "Toggle", badge: "ON", badgeTone: "on", kind: "toggle", tier: "exact",
                                     run: { kind: "exec", argv: ["true"] } }, { id: "system", name: "Toggles" }, 0, 0)]

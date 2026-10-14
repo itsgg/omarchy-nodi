@@ -13,17 +13,19 @@ Nodi (நொடி) is Tamil for an instant.
 - Sums, units, currency, time zones and dates as you type
 - Clipboard history, files with a preview of each, emoji
 - Favourites, aliases, hotkeys and window rules from Ctrl+K
-- Answers from Claude, Codex, Gemini or your own agent, over ACP, and
+- Answers from Claude, Codex, OpenCode, Pi, Agy or your own agent, over ACP, and
   fixes or translations of the text you selected
 - Your own commands, script filters and answers
 
 ## Requirements
 
-Omarchy 4. For `ask` and the actions on selected text, a coding agent,
-signed in: [Claude Code](https://claude.com/claude-code) with Node.js 22
-and npm by default, or Codex or Gemini CLI ([Ask](docs/ask.md)). The
-first question installs Claude's or Codex's ACP adapter from npm, at the
-versions `lib/adapters` locks, with no install scripts.
+Omarchy 4. For `ask` and the actions on selected text, a signed-in coding
+agent: [Claude Code](https://claude.com/claude-code), or the `codex`,
+`opencode`, `pi` or `agy` command ([Ask](docs/ask.md)). Claude, Pi and Agy
+need Node.js 22 and npm; Codex needs Node.js 20 and npm. Codex also needs a
+separate sign-in for Nodi's profile.
+The first question installs Claude's, Codex's, Pi's or Agy's ACP adapter
+from npm, at the versions `lib/adapters` locks, with no install scripts.
 
 ## Install
 
@@ -46,8 +48,8 @@ release both. What it keeps of yours stays until you delete it: your
 settings
 (`~/.config/omarchy/extensions/nodi.json`), what you set on rows
 (`~/.local/state/nodi`), its caches (`~/.cache/nodi`) and Ask's agent
-adapters (`~/.local/share/nodi`, about 80 MB once Claude and Codex have
-been asked):
+adapters and private Codex profile (`~/.local/share/nodi`; its size depends
+on which agents have been asked):
 
 ```sh
 rm -rf ~/.config/omarchy/extensions/nodi.json ~/.local/state/nodi ~/.cache/nodi ~/.local/share/nodi

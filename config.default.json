@@ -4,7 +4,7 @@
   "fallbacks": ["keywords", "find", "ask"],
   "teach": true,
   "picks": false,
-  "ask": { "agent": "", "model": "", "actions": true },
+  "ask": { "agent": "", "model": "", "models": {}, "actions": true, "fallbackAgent": "", "fallback": "", "agents": [] },
   "apps": { "describe": false },
   "math": { "precision": 10 },
   "currency": { "home": "USD", "favorites": ["EUR", "GBP"] },

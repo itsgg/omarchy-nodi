@@ -1,0 +1,7 @@
+#!/usr/bin/bash
+set -u
+
+exec "${NODI_AGY_COMMAND:?}" \
+  --mode plan \
+  --sandbox \
+  "$@"

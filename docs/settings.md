@@ -32,9 +32,15 @@ started).
   "calendar": { "ics": "https://calendar.google.com/calendar/ical/.../basic.ics", "me": "you@example.com" },
   // What `tr` and Translate on selected text go to (English unless set).
   "translate": { "language": "Tamil" },
-  // Ask's model, and MCP servers its answers may use, each call on your Enter
-  // (with Ask's actions on, as they are unless "actions": false).
-  "ask": { "model": "sonnet", "mcpServers": { "github": { "command": "github-mcp-server", "args": ["stdio"] } } }
+  // Ask's default and per-agent models, and MCP servers its answers may use,
+  // each call on your Enter (unless the chosen agent is answer-only).
+  "ask": {
+    "agent": "claude",
+    "model": "sonnet",
+    "models": { "pi": "provider/model" },
+    "fallbackAgent": "pi",
+    "mcpServers": { "github": { "command": "github-mcp-server", "args": ["stdio"] } }
+  }
 }
 ```
 
@@ -52,7 +58,7 @@ started).
 | `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts`; `"arguments"`: `true` gives a script what you type as `$1`, `$2` ... too, as Raycast's scripts read it (always `NODI_ARGUMENT1`, ...) |
 | `"filters"` | [Script filters](extend.md#script-filters), and the ones that [come with Nodi](extend.md#extensions-that-come-with-nodi); on an entry, `"argument": true` makes what you type its last argument too (always `NODI_QUERY`) |
 | `"answers"` | [Answers](extend.md#answers): a program's answer, streamed beside the list; `"argument": true` as a filter's |
-| `"ask"` | [Ask](ask.md): `"agent"` (`"claude"`, `"codex"`, `"gemini"`, or one of your own by its `"command"`; Omarchy's default agent unless set), `"model"` (the agent's own name for it; `haiku` for Claude unless set, which also describes apps), `"actions"` (`false` keeps the agent to answers, without the bar's rows), `"mcpServers"` (servers its answers may use, each call on your Enter), `"environment"` (names of variables of yours the agent is given, past those Ask passes) |
+| `"ask"` | [Ask](ask.md): `"agent"` (`"claude"`, `"codex"`, `"opencode"`, `"pi"`, `"agy"` or a custom agent ID; Omarchy's default unless set; unavailable agents are hidden from the selector; legacy `"gemini"` resolves to `"agy"`), `"agents"` (additional ACP agents, each with `id`, `name`, `command` argv and optional string `env`), `"model"` (legacy model for the configured default), `"models"` (model by agent ID; `"agy"` takes precedence over the legacy `"gemini"` model fallback), `"actions"` (`false` keeps capable agents from the bar's rows; Pi and Agy are always answer-only), `"mcpServers"` (servers capable agents may use, each call on your Enter), `"environment"` (names of variables of yours the agent is given, past those Ask passes), `"fallbackAgent"` (an available agent offered after failure, before sending; legacy `"gemini"` resolves to `"agy"`), `"fallback"` (the keyword of one of your `"answers"` offered when there is no valid agent fallback, first on limits) |
 | `"apps"` | `"describe"`: a few words from Claude for an app with no description of its own |
 | `"math"` | `"precision"`: significant digits in an answer (10) |
 | `"currency"` | `"home"`: your currency, what a bare amount converts to; `"favorites"`: the ones shown with it |
@@ -104,7 +110,7 @@ What `config.default.json` holds, as it holds it:
 | `"fallbacks"` | `["keywords","find","ask"]` |
 | `"teach"` | `true` |
 | `"picks"` | `false` |
-| `"ask"` | `{"agent":"","model":"","actions":true}` |
+| `"ask"` | `{"agent":"","model":"","models":{},"actions":true,"fallbackAgent":"","fallback":"","agents":[]}` |
 | `"apps"` | `{"describe":false}` |
 | `"math"` | `{"precision":10}` |
 | `"currency"` | `{"home":"USD","favorites":["EUR","GBP"]}` |
