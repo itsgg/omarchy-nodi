@@ -544,7 +544,7 @@ var provider = {
     var got = ctx.request ? ctx.request(sourceOf(f), paramOf(f, hit.query, ctx)) : { state: "pending" }
     // A read that failed keeps the rows it had, which stay on show
     // (lib/Requests.js settled; Sonnet 2026-10-06).
-    if (got.state === "ready" || (got.state === "error" && Array.isArray(got.value))) {
+    if (got.state === "ready" || ((got.state === "error" || got.state === "pending") && Array.isArray(got.value))) {
       var rows = f.list === true ? named(f, got.value, hit.query).map(function(n, i) { return stepping(withScore(n.row, 97 - i * 0.01)) })
         : got.value.map(stepping)
       if (f.list !== true) shown[f.keyword] = got.value

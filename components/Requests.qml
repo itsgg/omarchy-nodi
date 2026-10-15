@@ -25,6 +25,7 @@ Item {
   property var waiting: ({})        // the same -> key of the read queued behind the running one
 
   Component { id: readerType; Reader {} }
+  Component { id: socketReaderType; SocketReader {} }
 
   // ctx.request(name, param, { fetch: false }?)
   function request(name, param, opts) {
@@ -36,6 +37,10 @@ Item {
   }
 
   function start(name, key, source, param) {
+    if (source.socket) {
+      requests.startSocket(name, key, source, param)
+      return
+    }
     var argv = source.argv(param, requests.env)
     if (!argv) return
     var slot = source.concurrent ? key : name
@@ -59,6 +64,21 @@ Item {
     reader.run(argv, { key: key, param: param, slot: slot, env: env })
   }
 
+  function socketSlot(param) {
+    try { return "socket:" + String(JSON.parse(param).socket || "") } catch (e) { return "socket:" }
+  }
+
+  function startSocket(name, key, source, param) {
+    var slot = requests.socketSlot(param)
+    var reader = requests.readers[slot] || requests.makeSocket(slot, name, source)
+    if (reader.busy && reader.tag && reader.tag.key !== key && !reader.tag.cancelled) {
+      requests.put(reader.tag.key, Requests.dropped(requests.cache[reader.tag.key]))
+      reader.cancel()
+    }
+    requests.put(key, Requests.begun(requests.cache[key], Date.now()))
+    reader.run(param, { key: key, param: param, slot: slot })
+  }
+
   function make(slot, name, source) {
     // A source that runs the user's own programs (`sessionPath`) gets the
     // session's PATH, ~/.local/bin and the like, where the rest get only
@@ -68,6 +88,54 @@ Item {
     reader.finished.connect(function(text, ok, tag) { requests.finish(name, tag, text, ok) })
     requests.readers[slot] = reader
     return reader
+  }
+
+  function makeSocket(slot, name, source) {
+    var reader = socketReaderType.createObject(requests, {
+      timeoutMs: source.timeoutMs || 3000,
+      maxBytes: source.maxBytes || 1048576,
+      maxLineBytes: source.maxLineBytes || 131072,
+      maxRows: source.maxRows || 1000,
+      batchMs: source.batchMs || 16
+    })
+    reader.partial.connect(function(rows, tag) { requests.socketPartial(name, reader, tag, rows) })
+    reader.finished.connect(function(rows, ok, error, tag) { requests.finishSocket(name, tag, rows, ok, error) })
+    requests.readers[slot] = reader
+    return reader
+  }
+
+  function socketPartial(name, reader, tag, rows) {
+    if (!tag || tag.cancelled || !reader.tag || reader.tag.key !== tag.key) return
+    var source = Requests.sourceOf(requests.providers, name)
+    if (!source || requests.forgotten[tag.key]) return
+    var began = Date.now()
+    var value
+    try { value = source.parse(rows, true, tag.param) } catch (e) { return }
+    reader.lastParseMs += Date.now() - began
+    var before = requests.cache[tag.key]
+    var after = Requests.progress(before, value)
+    var changed = !before || JSON.stringify(before.value) !== JSON.stringify(after.value)
+    requests.put(tag.key, after)
+    if (changed) requests.arrived(tag.key)
+  }
+
+  function finishSocket(name, tag, rows, ok, error) {
+    if (!tag || tag.cancelled) return
+    var source = Requests.sourceOf(requests.providers, name)
+    if (!source) return
+    if (requests.forgotten[tag.key]) {
+      delete requests.forgotten[tag.key]
+      delete requests.cache[tag.key]
+      return
+    }
+    var before = requests.cache[tag.key]
+    var after = ok ? Requests.settled(before, source, rows, true, tag.param, Date.now())
+                   : Requests.failed(before, error, Date.now())
+    var unchanged = Requests.same(before, after)
+    if (unchanged) after.value = before.value
+    requests.put(tag.key, after)
+    if (!unchanged) requests.arrived(tag.key)
+    requests.landed(tag.key)
   }
 
   function finish(name, tag, text, ok) {

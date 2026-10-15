@@ -34,6 +34,9 @@ files=()
 shopt -s nullglob
 for f in "$root"/tests/qml/*Test.qml; do files+=("\"file://$f\""); done
 shopt -u nullglob
+if [[ -n ${NODI_QML_TEST:-} ]]; then
+  files=("\"file://$root/tests/qml/$NODI_QML_TEST\"")
+fi
 (( ${#files[@]} )) || { echo "qs-test: no tests"; exit 0; }
 list=$(IFS=,; echo "${files[*]}")
 

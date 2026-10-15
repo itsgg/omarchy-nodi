@@ -386,3 +386,10 @@ test("socket rows use the shared bounded external row normalizer", () => {
   assert.deepEqual(plain(got[0].run), { kind: "open", target: "https://example.test" });
   assert.equal(got[0].showsCommand, true);
 });
+
+test("a pending socket query shows its first bounded batch", () => {
+  const socket = { keyword: "s", title: "Socket", socket: "/run/user/1000/example.sock" };
+  const rows = F.socketRows([{ title: "Early" }], socket);
+  const got = F.provider.match("s query", { settings: [socket], window: null, request: () => ({ state: "pending", value: rows }) });
+  assert.deepEqual(plain(got.map(r => r.title)), ["Early"]);
+});
