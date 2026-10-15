@@ -138,7 +138,47 @@ test("duplicate source-row IDs are deterministic and cannot alias one another", 
   assert.deepEqual(plain(got.rows.map(r => [r.key, r.remember])), [
     ["home:feed:id:same", true],
     ["home:feed:line:1", false],
-    ["home:feed:id:%231", true]
+    ["home:feed:id:~00231", true]
   ]);
   assert.equal(new Set(got.rows.map(r => r.key)).size, got.rows.length);
+});
+
+test("hostile surrogate IDs and pair-splitting truncation produce total distinct stable keys", () => {
+  const hostile = Home.parse([
+    '{"id":"\\ud800","title":"High"}',
+    '{"id":"\\udc00","title":"Low"}'
+  ].join("\n"), source(), safe());
+  assert.equal(hostile.valid, true);
+  assert.equal(hostile.error, "");
+  assert.equal(new Set(hostile.rows.map(r => r.key)).size, 2);
+  assert.deepEqual(plain(hostile.rows.map(r => r.key)), [
+    "home:feed:id:~d800", "home:feed:id:~dc00"
+  ]);
+
+  const boundary = "a".repeat(Home.MAX.id - 1);
+  const split = Home.parse([
+    JSON.stringify({ id: boundary + "🔥", title: "Pair split" }),
+    JSON.stringify({ id: boundary + "\udc25", title: "Direct low" })
+  ].join("\n"), source(), safe());
+  assert.equal(split.valid, true);
+  assert.equal(split.error, "");
+  assert.equal(new Set(split.rows.map(r => r.key)).size, 2);
+  assert.ok(split.rows.every(r => typeof r.key === "string" && r.key.length < Home.MAX.id * 6));
+});
+
+test("execution tokens authorize only the exact current trusted unexpired action", () => {
+  const src = source({ trustedActions: true });
+  const parsed = Home.parse(JSON.stringify({
+    id: "held", title: "Held", expires: "2026-10-15T12:01:00Z",
+    action: { exec: ["primary-tool"] },
+    actions: [{ title: "Other", action: { exec: ["other-tool"] } }]
+  }), src, safe());
+  const entry = [{ source: src, snapshot: parsed }];
+  const row = parsed.rows[0];
+  assert.equal(Home.currentExecutable(entry, row.key, row.homeExecution, row.run, Date.parse("2026-10-15T12:00:00Z")), true);
+  assert.equal(Home.currentExecutable(entry, row.key, row.actions[0].homeExecution, row.actions[0].run, Date.parse("2026-10-15T12:00:00Z")), true);
+  assert.equal(Home.currentExecutable(entry, row.key, row.homeExecution, row.actions[0].run, Date.parse("2026-10-15T12:00:00Z")), false);
+  assert.equal(Home.currentExecutable(entry, row.key, row.homeExecution, row.run, Date.parse("2026-10-15T12:02:00Z")), false);
+  assert.equal(Home.currentExecutable([{ source: src, snapshot: Home.displayOnly(parsed) }],
+    row.key, row.homeExecution, row.run, Date.parse("2026-10-15T12:00:00Z")), false);
 });

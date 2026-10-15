@@ -36,6 +36,7 @@ import "lib/Appearance.js" as Appearance
 import "lib/Ansi.js" as Ansi
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
+import "lib/HomeSources.js" as HomeParser
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -790,7 +791,8 @@ Item {
       }
       root.armedKey = ""
       // A run that did not start teaches nothing.
-      if (root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)) root.teach(row)
+      if (root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable,
+                       row.provider === "home" ? row.key : "", row.homeExecution)) root.teach(row)
       return
     }
     if (row.complete && !row.copy) { root.complete(row); return }
@@ -832,7 +834,17 @@ Item {
   // The one place a row's run starts a program. `key` is the row's, so what
   // was run is remembered for ranking (lib/History.js). An undoable one is
   // run where what it prints is read (components/Undoer.qml).
-  function execute(run, toggleId, key, snap, name, undoable) {
+  function currentHomeExecutable(run, key, token) {
+    if (!run || run.kind !== "exec" || !key) return true
+    return HomeParser.currentExecutable(watchedHome.snapshots, key, token, run, Date.now())
+  }
+
+  function execute(run, toggleId, key, snap, name, undoable, homeKey, homeExecution) {
+    if (!root.currentHomeExecutable(run, homeKey, homeExecution)) {
+      root.armedKey = ""
+      if (root.paletteOpen) root.closePalette()
+      return false
+    }
     // Watched for failing, by the row's name (lib/Run.js watched), unless
     // the Undoer runs it and says so itself.
     // A paste goes to the window the bar opened over, focused first.
@@ -987,7 +999,8 @@ Item {
     if (a.nodi) { root.setPref(a, row); return }
     var own = !!a.own
     var remembered = own && row.remember
-    root.execute(a.run, own ? row.toggle : "", remembered ? row.key : "", remembered ? History.snapshot(row) : null, own ? row.title : a.label, a.undoable)
+    root.execute(a.run, own ? row.toggle : "", remembered ? row.key : "", remembered ? History.snapshot(row) : null,
+                 own ? row.title : a.label, a.undoable, row.provider === "home" ? row.key : "", a.homeExecution)
   }
 
   function helpBack() {
@@ -1333,6 +1346,8 @@ Item {
     // (AskTools.refusedAtOnce); any other it proposes.
     var refused = agent === true && !proposed && s ? AskTools.refusedAtOnce(k, s.provider) : ""
     if (refused) return refused
+    if (s && s.provider === "home" && !root.currentHomeExecutable(s.run, k, s.homeExecution))
+      return "watched row is no longer current"
     // Watched by its title unless the Undoer runs it and says so itself,
     // as execute() has it: the Undoer takes an argv, and a watched run is
     // a command and its environment since its title left the arguments
@@ -1912,6 +1927,7 @@ Item {
     id: watchedHome
     sources: root.config.home || []
     onUpdated: {
+      if (root.paletteOpen && root.paletteRow && root.paletteRow.provider === "home") root.closePalette()
       for (var i = 0; i < diagnostics.length; i++)
         console.warn("nodi: home source " + diagnostics[i].id + " (" + diagnostics[i].file + "): " + diagnostics[i].error)
       if (root.opened && !root.homeHeld && root.queryNow().trim() === "") root.recompute()
@@ -2422,6 +2438,8 @@ Item {
       rememberKey: row.remember ? String(row.key || "") : "",
       history: History.snapshot(row),
       undoable: !!row.undoable,
+      provider: String(row.provider || ""),
+      homeExecution: typeof row.homeExecution === "string" ? row.homeExecution : "",
       turn: String(turnId)
     })
   }
@@ -2446,7 +2464,8 @@ Item {
   function askCommit(snapshot) {
     input.text = ""
     var executed = root.execute(snapshot.run, snapshot.toggle, snapshot.rememberKey,
-                                snapshot.history, snapshot.title, snapshot.undoable)
+                                snapshot.history, snapshot.title, snapshot.undoable,
+                                snapshot.provider === "home" ? snapshot.key : "", snapshot.homeExecution)
     return executed
       ? { status: "executed", key: snapshot.key, title: snapshot.title }
       : { status: "failed", key: snapshot.key, title: snapshot.title,
