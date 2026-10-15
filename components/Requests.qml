@@ -65,7 +65,10 @@ Item {
   }
 
   function socketSlot(param) {
-    try { return "socket:" + String(JSON.parse(param).socket || "") } catch (e) { return "socket:" }
+    try {
+      var p = JSON.parse(param)
+      return "socket:" + JSON.stringify([String(p.socket || ""), String(p.keyword || "")])
+    } catch (e) { return "socket:[]" }
   }
 
   function startSocket(name, key, source, param) {

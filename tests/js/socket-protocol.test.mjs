@@ -20,7 +20,7 @@ test("request and cancellation frames carry only bounded protocol data", () => {
   }));
   assert.deepEqual(plain(frame), {
     version: 1, id: "17-8fa2", q: "words", keyword: "search",
-    window: { class: "foot", title: "private", address: "0x1", pid: "42", workspace: "2" }
+    window: { class: "foot" }
   });
   assert.equal(P.requestFrame("id", { keyword: "k", query: "x".repeat(P.LIMITS.query + 20) }).endsWith("\n"), true);
   assert.equal(JSON.parse(P.requestFrame("id", { keyword: "k", query: "x".repeat(P.LIMITS.query + 20) })).q.length, P.LIMITS.query);

@@ -15,6 +15,9 @@ Item {
   property int arrivals: 0
   property string serverError: ""
   property int serverReady: 0
+  property int warmIndex: 0
+  property var dispatchSamples: []
+  property var parseSamples: []
   property string path: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/nodi-socket-test-" + Date.now() + ".sock"
 
   function check(value, message) { if (!value) failures.push(message) }
@@ -53,6 +56,11 @@ Item {
       onRead: function(data) {
         if (String(data).trim() !== "READY") return
         test.serverReady++
+        if (test.phase === 5) {
+          test.waited = 0
+          requests.request("rows", test.param("reconnect"))
+          return
+        }
         if (test.phase >= 0) return
         startup.stop()
         test.phase = 0
@@ -65,7 +73,6 @@ Item {
     onExited: function(exitCode) {
       test.serverError = "exit " + exitCode + ": " + serverStderr.text
       if (test.phase === 4) {
-        requests.request("rows", test.param("reconnect"))
         restart.start()
         test.phase = 5
         test.waited = 0
@@ -106,10 +113,35 @@ Item {
         check(stream.state === "ready" && JSON.stringify(stream.value) === '["One","Two"]',
               "streamed rows complete in order: " + JSON.stringify(stream))
         check(arrivals >= 2, "streaming recomputes in bounded batches before completion: " + arrivals)
-        var reader = requests.readers["socket:" + path]
+        var reader = requests.readers[requests.socketSlot(param("stream"))]
         check(reader && reader.lastDispatchMs < 50 && reader.lastParseMs < 50,
               "warm dispatch and parse overhead stay under 50 ms: " + (reader ? reader.lastDispatchMs + "/" + reader.lastParseMs : "no reader"))
-        phase = 1; waited = 0
+        phase = 8; waited = 0
+        warmIndex = 0
+        requests.request("rows", param("warm-" + warmIndex))
+      } else if (phase === 8) {
+        var warm = requests.request("rows", param("warm-" + warmIndex), { fetch: false })
+        if (warm.state !== "ready" && waited < 100) return
+        var warmReader = requests.readers[requests.socketSlot(param("warm-" + warmIndex))]
+        check(warm.state === "ready", "warm query completed: " + JSON.stringify(warm))
+        if (warmReader) {
+          dispatchSamples.push(warmReader.lastDispatchMs)
+          parseSamples.push(warmReader.lastParseMs)
+        }
+        warmIndex++
+        waited = 0
+        if (warmIndex < 20) {
+          requests.request("rows", param("warm-" + warmIndex))
+          return
+        }
+        dispatchSamples.sort(function(a, b) { return a - b })
+        parseSamples.sort(function(a, b) { return a - b })
+        var p95 = Math.ceil(dispatchSamples.length * 0.95) - 1
+        check(dispatchSamples.length === 20 && dispatchSamples[p95] < 50,
+              "warm dispatch p95 stays under 50 ms: " + JSON.stringify(dispatchSamples))
+        check(parseSamples.length === 20 && parseSamples[p95] < 50,
+              "warm parse p95 stays under 50 ms: " + JSON.stringify(parseSamples))
+        phase = 1
         requests.request("rows", param("slow"))
         supersede.start()
       } else if (phase === 1) {
@@ -139,7 +171,7 @@ Item {
       } else if (phase === 5) {
         var reconnected = requests.request("rows", param("reconnect"), { fetch: false })
         if (reconnected.state !== "ready" && waited < 120) return
-        var reconnectReader = requests.readers["socket:" + path]
+        var reconnectReader = requests.readers[requests.socketSlot(param("reconnect"))]
         check(reconnected.state === "ready" && JSON.stringify(reconnected.value) === '["reconnect"]',
               "a later request reconnects lazily: " + JSON.stringify(reconnected) + " server=" + server.running + " " + serverError
               + " ready=" + serverReady + " attempts=" + (reconnectReader ? reconnectReader.attempts : -1)
@@ -165,6 +197,9 @@ Item {
   }
 
   function start() {
+    var other = JSON.stringify({ keyword: "other", socket: path })
+    check(requests.socketSlot(param("same")) !== requests.socketSlot(other),
+          "configured sources sharing a socket keep separate connections")
     server.running = true
     startup.start()
   }
