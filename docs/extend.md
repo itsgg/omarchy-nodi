@@ -207,6 +207,108 @@ open a window. If it fails, Nodi's toast says why, and no undo is
 offered, whatever it printed. The undo itself runs as any action does, in
 your session. The offer lasts while the shell runs, not across a restart.
 
+## Unix-socket filters
+
+A filter can use a persistent Unix socket in place of a command:
+
+```jsonc
+"filters": [
+  {
+    "keyword": "search",
+    "title": "Search",
+    "socket": "$XDG_RUNTIME_DIR/example-row-source/search.sock",
+    "timeoutMs": 1000,
+    "max": 50
+  }
+]
+```
+
+Set exactly one of `command` and `socket`. Nodi expands a leading
+`$XDG_RUNTIME_DIR`, `${XDG_RUNTIME_DIR}`, `$HOME`, `${HOME}` or `~/` when
+it reads the config. The result must be an explicitly configured absolute
+path with no `.` or `..` path segment, control character, unexpanded
+variable or trailing slash. A relative path and a path longer than 4096
+characters are left out. `timeoutMs` is held from 100 to 10000 ms; `max`
+is held from 1 to 1000 and defaults to 50. A target that is not a Unix
+socket fails as a source.
+
+Nodi keeps one Quickshell local-socket connection per configured path while
+it is useful. A missing or exited service is reconnected only when a query
+needs it, with at most five attempts. It starts no helper process for a
+query. Query text and window context are in the request body and never in
+process arguments.
+
+Each request is one JSON line:
+
+```json
+{"version":1,"id":"h-k83w","q":"words","keyword":"search","window":{"class":"foot","title":"","address":"","pid":"","workspace":""}}
+```
+
+The ID is opaque. The daemon returns zero or more row lines and one
+completion line, all with that exact ID:
+
+```json
+{"id":"h-k83w","row":{"id":"result:1","title":"Result","action":{"open":"https://example.test"}}}
+{"id":"h-k83w","done":true}
+```
+
+Rows use the same fields, action checks, confirmation display and field
+limits as script-filter rows. A response with another ID, malformed JSON,
+or an unsafe over-nested row is discarded. Responses are limited to 1 MB
+per query, 128 KB per line, 12 levels of nesting, 64 members in an object
+or array, and the configured row count. Rows arrive in fixed, bounded
+batches so a line does not cause a layout by itself. The previous complete
+answer stays visible while its replacement is pending.
+
+When another keystroke replaces a query, Nodi sends:
+
+```json
+{"version":1,"cancel":"h-k83w"}
+```
+
+The daemon should stop work for that ID. Nodi also rejects any later rows
+with the old ID, so a daemon that finishes late cannot replace current
+results. Socket filters are not called by an agent's command-bar search.
+
+The installed Quickshell 0.3.1 API metadata exposes
+`Quickshell.Io.Socket` path, connection state, write, flush and error
+members. It exposes no peer PID, UID, credentials or native socket
+descriptor, so Nodi cannot verify peer credentials. Same UID would not by
+itself make row actions trusted. Put the socket in a user-owned mode-0700
+directory, create the socket mode 0600, and configure its path explicitly.
+Rows remain untrusted data until activation; executable actions still use
+Nodi's existing confirmation and risk display.
+
+systemd user socket activation can own that directory and socket:
+
+```ini
+# ~/.config/systemd/user/example-row-source.socket
+[Unit]
+Description=Example row source socket
+
+[Socket]
+ListenStream=%t/example-row-source/search.sock
+DirectoryMode=0700
+SocketMode=0600
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
+```
+
+```ini
+# ~/.config/systemd/user/example-row-source.service
+[Unit]
+Description=Example row source
+
+[Service]
+ExecStart=/usr/local/bin/example-row-source
+```
+
+The daemon reads the inherited listening socket supplied by systemd. Enable
+it with `systemctl --user enable --now example-row-source.socket`; Nodi's
+first connection then activates the service.
+
 ## Answers
 
 An answer is a program that answers a question you type after a keyword,
