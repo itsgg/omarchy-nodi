@@ -12,6 +12,35 @@ import { tmpdir } from "node:os";
 const Hotkey = load("lib/Hotkey.js");
 const Jsonc = load("lib/Jsonc.js");
 
+test("Quickshell tests use a private headless Wayland session", { skip: !existsSync("/usr/bin/sway") }, () => {
+  const liveRuntime = mkdtempSync(join(tmpdir(), "nodi-live-wayland-"));
+  try {
+    const helper = join(process.cwd(), "tools/private-wayland.sh");
+    const probe = [
+      'test -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"',
+      'test "${HYPRLAND_INSTANCE_SIGNATURE-unset}" = unset',
+      'test "${DISPLAY-unset}" = unset',
+      'printf "%s\\n%s\\n%s\\n" "$XDG_RUNTIME_DIR" "$WAYLAND_DISPLAY" "${PIPEWIRE_RUNTIME_DIR-unset}"'
+    ].join(" && ");
+    const out = execFileSync(helper, ["bash", "-c", probe], {
+      env: {
+        ...process.env,
+        XDG_RUNTIME_DIR: liveRuntime,
+        WAYLAND_DISPLAY: "wayland-live",
+        DISPLAY: ":0",
+        HYPRLAND_INSTANCE_SIGNATURE: "live-session"
+      },
+      timeout: 15000
+    }).toString().trim().split("\n");
+    assert.notEqual(out[0], liveRuntime, "the test command cannot use the live runtime directory");
+    assert.match(out[1], /^wayland-[0-9]+$/);
+    assert.equal(out[2], liveRuntime, "desktop tests can still inspect the live PipeWire service");
+    assert.equal(existsSync(out[0]), false, "the private compositor is removed after the command");
+  } finally {
+    rmSync(liveRuntime, { recursive: true, force: true });
+  }
+});
+
 const clipboard = [
   { type: "text", text: "omarchy plugin add https://github.com/itsgg/omarchy-nodi --enable" },
   { type: "text", text: "--copy-only $(rm -rf ~)" },

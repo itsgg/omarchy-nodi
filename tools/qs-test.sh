@@ -4,9 +4,8 @@
 # `signal done(bool ok, string report)` and `function start()`, called once
 # `done` is connected, so a test that finishes at once is still heard
 # (codex 2026-10-04); nothing it makes is a window, so
-# nothing appears on the screen and no hotkey is bound. Like
-# compile-check.sh, it uses the session's Wayland display and stops qs by
-# its own pid.
+# nothing appears on the screen and no hotkey is bound. A private headless
+# Sway instance supplies layer-shell without touching the user's compositor.
 set -euo pipefail
 PATH=/usr/bin:/bin
 # A variable of the shell's that no agent Ask starts may see unless named
@@ -17,7 +16,7 @@ export PATH NODI_TEST_INHERITED
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 shell=${OMARCHY_PATH:-/usr/share/omarchy}/shell
 command -v qs >/dev/null || { echo "qs-test: qs not found, skipped"; exit 0; }
-[[ -n ${WAYLAND_DISPLAY:-} ]] || { echo "qs-test: no Wayland display, skipped"; exit 0; }
+command -v sway >/dev/null || { echo "qs-test: sway not found, skipped"; exit 0; }
 
 work=$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" nodi-qstest.XXXXXX)
 pid=""
@@ -62,7 +61,7 @@ ShellRoot {
 }
 QML
 
-qs --no-color -p "$work/shell.qml" >"$work/out" 2>&1 &
+"$root/tools/private-wayland.sh" qs --no-color -p "$work/shell.qml" >"$work/out" 2>&1 &
 pid=$!
 # A minute, or five when real agents are asked (tests/qml/AgentsLiveTest.qml).
 limit=600
