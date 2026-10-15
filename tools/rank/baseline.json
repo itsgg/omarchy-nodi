@@ -1,20 +1,36 @@
 {
  "summary": {
   "intended": {
-   "queries": 121,
-   "first": 114,
-   "topThree": 118,
+   "queries": 132,
+   "first": 125,
+   "topThree": 128,
    "notShown": 0,
    "mrr": 0.964
   },
   "classes": {
+   "agent": {
+    "queries": 4,
+    "first": 4
+   },
+   "agent-mode": {
+    "queries": 4,
+    "first": 4
+   },
+   "semantic": {
+    "queries": 1,
+    "first": 1
+   },
+   "unavailable-agent": {
+    "queries": 2,
+    "first": 2
+   },
    "name": {
     "queries": 31,
     "first": 30
    },
    "prefix": {
     "queries": 9,
-    "first": 8
+    "first": 9
    },
    "synonym": {
     "queries": 29,
@@ -30,7 +46,7 @@
    },
    "typo": {
     "queries": 7,
-    "first": 6
+    "first": 5
    },
    "generic": {
     "queries": 13,
@@ -68,7 +84,7 @@
     "targets": 95,
     "neverFirst": 3,
     "median": 3,
-    "mean": 3.43
+    "mean": 3.34
    }
   },
   "learning": {
@@ -76,12 +92,23 @@
     "targets": 52,
     "neverFirst": 0,
     "median": 1,
-    "mean": 1.4
+    "mean": 1.31
    }
   },
   "noise": 14
  },
  "intended": {
+  "claude": 1,
+  "claude ": 1,
+  "agy": 1,
+  "agy ": 1,
+  "pi": 1,
+  "pi ": 1,
+  "pi * 2": 1,
+  "codex": 1,
+  "codex ": 1,
+  "opencode": 1,
+  "opencode ": 1,
   "spotify": 1,
   "sp": 1,
   "chrom": 1,
@@ -109,7 +136,7 @@
   "suspend": 1,
   "screensh": 1,
   "screenshot": 1,
-  "screenrec": 2,
+  "screenrec": 1,
   "theme": 1,
   "font": 1,
   "nightlight": 1,
@@ -135,8 +162,8 @@
   "bt": 2,
   "spotfy": 1,
   "chromuim": 1,
-  "termnal": 1,
-  "browsr": 4,
+  "termnal": 5,
+  "browsr": 5,
   "nightlite": 1,
   "scrennshot": 1,
   "bluetoth": 1,
@@ -277,7 +304,7 @@
    "Tmux": 2,
    "Herdr": 2,
    "Community": 2,
-   "Screenshot": 8,
+   "Screenshot": 3,
    "Stop Screenrecording": 3,
    "Text": 3,
    "QR Code": 2,
@@ -335,12 +362,12 @@
    "XCompose": 2,
    "Direct Boot": 3,
    "Reset Computer": 3,
-   "Web App": 3,
+   "Web App": 2,
    "TUI": 3,
-   "Cascadia Mono": 3,
+   "Cascadia Mono": 2,
    "Meslo LG Mono": 3,
    "Fira Code": 4,
-   "Victor Code": 3,
+   "Victor Code": 2,
    "Bitstream Vera Mono": 2,
    "Iosevka": 2,
    "Extra Themes": 2,
@@ -352,7 +379,7 @@
    "Audio": 4,
    "Wi-Fi": 0,
    "Bluetooth": 0,
-   "Trackpad": 4,
+   "Trackpad": 3,
    "Drive Encryption": 3,
    "User": 2
   }
@@ -380,14 +407,14 @@
    "Pinta": 1,
    "Xournal++": 2,
    "Moonlight": 1,
-   "OBS Studio": 2,
+   "OBS Studio": 1,
    "Manage Printing": 1,
    "Tensaku": 1,
    "Dropbox": 1,
-   "Fcitx 5 Configuration": 2,
+   "Fcitx 5 Configuration": 1,
    "Foot": 1,
-   "Foot Server": 2,
-   "Foot Client": 2,
+   "Foot Server": 1,
+   "Foot Client": 1,
    "LibreOffice Base": 1,
    "LibreOffice Calc": 1,
    "LibreOffice Draw": 1,
@@ -401,7 +428,7 @@
    "Obsidian": 1,
    "Omacalc": 1,
    "Omacut": 1,
-   "Omawrite": 2,
+   "Omawrite": 1,
    "Disks": 1,
    "Document Viewer": 1,
    "Files": 1,

@@ -185,7 +185,7 @@ var provider = {
     for (var j = 0; j < all.length; j++) {
       var s = all[j]
       if (s.keyword && word === String(s.keyword).toLowerCase() && (rest === "" || Placeholders.takesArguments(s.text))) {
-        rows.push(row(s, rest, ctx, { tier: "exact", kind: "answer" }))
+        rows.push(row(s, rest, ctx, { tier: "exact", kind: "answer", intent: "alias" }))
         continue
       }
       if (!q) continue

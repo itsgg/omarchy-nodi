@@ -259,6 +259,10 @@ var provider = {
                    remember: !(cmd.open && Placeholders.hasPlaceholders(cmd.open)) })
       }
     }
+    // Keywords are user-facing aliases, including the defaults. An exact
+    // keyword must beat a provider mode or semantic answer with the same
+    // word; its arguments do not make it less explicit.
+    for (var o = 0; o < out.length; o++) out[o].intent = "alias"
     return out
   }
 }

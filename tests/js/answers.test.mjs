@@ -340,13 +340,14 @@ test("help", () => {
   assert.ok(run("?money").some(r => r.helpTopic === "currency"), "help finds a topic by its command keywords");
   const m = run("?in"), none = run("?zzqx");
   assert.ok(m.some(r => r.helpTopic === "time") && m.some(r => r.helpTopic === "units"));
+  assert.equal(run("?open")[0].helpTopic, "ask", "an exact example word outranks an earlier topic's description");
   assert.equal(none.length, 1); assert.match(none[0].title, /^No topic matches/);
   const chip = x => (Engine.mode(x, config) || {}).label;
   assert.equal(chip("?"), "Help"); assert.equal(chip("?units"), "Help: Units");
   assert.equal(top(" ? ").title, "Keys");
 });
 
-test("home: an empty bar shows the rows run most, then reminders", () => {
+test("home: an empty bar shows immediate reminders before recent rows", () => {
   const Run = load("lib/Run.js");
   const t = now().getTime();
   const snap = (title, extra) => Object.assign({ title, subtitle: "", icon: "", kind: "app", provider: "apps", run: Run.app(title.toLowerCase()) }, extra || {});
@@ -364,11 +365,11 @@ test("home: an empty bar shows the rows run most, then reminders", () => {
   // Firefox 20 runs; Wi-Fi 6; Foot 3; Old 50 runs two hundred days ago,
   // halved every 30 days to under one (ROADMAP 38: a count ages now). Six
   // rows of history are a home of its own: no starters (ROADMAP 77).
-  assert.deepEqual(plain(rows.map(r => r.title)), ["Firefox", "Wi-Fi", "Foot", "Old", "Tea", "Stretch"]);
+  assert.deepEqual(plain(rows.map(r => r.title)), ["Tea", "Stretch", "Firefox", "Wi-Fi", "Foot", "Old"]);
   assert.equal(rows.find(r => r.title === "Wi-Fi").badge, "OFF", "toggles show their state now, not when they were run");
-  assert.equal(rows[0].section, "Recent");
-  assert.equal(rows[4].section, "Reminders");
-  assert.deepEqual(plain([rows[4].subtitle, rows[4].run, rows[4].complete]), ["In 5 min, at 14:05", null, "reminders"], "Enter lists them; no command");
+  assert.equal(rows[0].section, "Reminders");
+  assert.equal(rows[2].section, "Recent");
+  assert.deepEqual(plain([rows[0].subtitle, rows[0].run, rows[0].complete]), ["In 5 min, at 14:05", null, "reminders"], "Enter lists them; no command");
   assert.deepEqual(plain(run("", { history: {} }).map(r => r.provider)), Array(5).fill("starter"), "nothing run yet: only what to try (ROADMAP 77)");
 });
 

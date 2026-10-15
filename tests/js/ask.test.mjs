@@ -12,6 +12,7 @@ const run_launch = args => spawnSync("/usr/bin/bash", ["-c", load("lib/Agents.js
 const A = load("lib/AskTools.js");
 const G = load("lib/Agents.js");
 const Rows = load("lib/Rows.js");
+const Engine = load("lib/Engine.js");
 
 test("the bar's server answers initialize, ping, tools/list and tools/call; a notification gets nothing", () => {
   const calls = [];
@@ -1462,11 +1463,15 @@ test("available ACP agents are direct one-shot Ask prefixes, including custom ag
     assert.equal(row.title, "Ask " + name + ": " + question);
   }
 
-  const complete = plain(run("codex", { ask: idle }, cfg)).find(r => r.provider === "ask" && r.complete === "codex ");
-  assert.deepEqual([complete.title, complete.nodi], ["Ask Codex", ""]);
-  assert.ok(complete.score < 50, "a bare agent name is a completion, not the leading result");
-  assert.notEqual(run("pi * 2", { ask: idle }, cfg)[0].provider, "ask",
-    "an agent name does not steal a calculation");
+  for (const [id, name] of [["claude", "Claude"], ["codex", "Codex"], ["pi", "Pi"], ["agy", "Agy"], ["work", "Work"]]) {
+    const bare = plain(run(id, { ask: idle }, cfg));
+    assert.deepEqual([bare[0].key, bare[0].title], ["ask:direct:" + id, "Ask " + name], id + " is the exact command");
+    const modeRows = plain(run(id + " ", { ask: idle }, cfg));
+    assert.ok(modeRows.length > 0 && modeRows.every(r => r.provider === "ask"), id + " space is exclusive");
+    assert.equal(Engine.mode(id + " ", cfg, modeRows).label, "Ask " + name);
+  }
+  assert.equal(run("pi * 2", { ask: idle }, cfg)[0].provider, "math",
+    "a whole-query calculation beats an agent with arguments");
   assert.ok(!plain(run("opencode review", { ask: idle }, cfg)).some(r => r.provider === "ask" && r.nodi === "askAs"),
     "an unavailable agent does not claim a direct prefix");
   assert.ok(!plain(run("gemini review", { ask: idle }, cfg)).some(r => r.provider === "ask" && r.nodi === "askAs"),

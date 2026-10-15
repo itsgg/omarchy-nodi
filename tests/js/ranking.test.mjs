@@ -76,20 +76,20 @@ test("golden queries: the meant row comes first", { skip: !existsSync(REAL_MENU)
   assert.deepEqual(failures, []);
 });
 
-test("learning: a row picked for a query comes first for it after two picks", { skip: !existsSync(REAL_MENU) }, () => {
+test("learning reorders equally matched rows without crossing a match tier", { skip: !existsSync(REAL_MENU) }, () => {
   const svc = world();
   const now = svc.now().getTime();
   const Hist = load("lib/History.js");
-  for (const q of ["sound", "term", "screen"]) {
-    const before = Engine.run(q, config, svc);
-    const second = before[1];
-    assert.ok(second, q + " has a second row");
-    // One pick is worth a kind or a tier gap; two pass an app named well.
-    svc.picks = Hist.pick(Hist.pick({}, q, second.key, now), q, second.key, now);
-    assert.equal(Engine.run(q, config, svc)[0].key, second.key, q + ": after two picks of " + second.title);
-    svc.picks = {};
-    assert.equal(Engine.run(q, config, svc)[0].key, before[0].key, q + ": reset puts it back");
-  }
+  const before = Engine.run("calc", config, svc);
+  const first = before.find(r => r.key === "app:libreoffice-calc");
+  const second = before.find(r => r.key === "app:omacalc");
+  assert.ok(first && second);
+  assert.deepEqual([first.intent, first.tier], [second.intent, second.tier]);
+  svc.picks = Hist.pick(Hist.pick({}, "calc", second.key, now), "calc", second.key, now);
+  assert.equal(Engine.run("calc", config, svc)[0].key, second.key);
+
+  svc.picks = Hist.pick(Hist.pick({}, "sound", "app:audacity", now), "sound", "app:audacity", now);
+  assert.equal(Engine.run("sound", config, svc)[0].key, "toggle:sound", "learning stays below a better match tier");
 });
 
 test("a group named like an Object method still groups, and a hidden favourite does not lengthen Recent", () => {

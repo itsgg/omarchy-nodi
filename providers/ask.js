@@ -163,9 +163,32 @@ function directAgent(query, ctx) {
     var name = String(a.name || "").toLowerCase()
     if (token !== String(a.id || "").toLowerCase() && token !== name) continue
     return { id: String(a.id), name: String(a.name || a.id), model: String(a.model || ""),
-             question: String(m[2] || "").trim(), prefix: m[1].toLowerCase() }
+             question: String(m[2] || "").trim(), prefix: m[1].toLowerCase(), spaced: m[2] !== undefined }
   }
   return null
+}
+
+function escaped(word) { return String(word || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
+
+// A bare agent followed only by whitespace is a mode of its own. Once a
+// question starts, the whole query remains available to semantic providers:
+// `pi ` is Ask Pi, while `pi * 2` is still a calculation.
+function modes(local) {
+  var out = [{ pattern: /^\s*ask\s/i, label: "Ask", icon: "󰚩", exclusive: true, hint: "ask <question>" }]
+  var list = Agents.registry(local)
+  var seen = Object.create(null)
+  for (var i = 0; i < list.length; i++) {
+    var a = list[i]
+    var names = [a.id, a.name]
+    for (var n = 0; n < names.length; n++) {
+      var token = String(names[n] || "").trim().toLowerCase()
+      if (!token || /\s/.test(token) || seen[token]) continue
+      seen[token] = true
+      out.push({ pattern: new RegExp("^\\s*" + escaped(token) + "\\s+$", "i"), label: "Ask " + a.name,
+                 icon: "󰚩", exclusive: true, hint: token + " <question>" })
+    }
+  }
+  return out
 }
 
 var CONTINUE = 't=${NODI_TEXT-}; unset NODI_TEXT'
@@ -176,7 +199,7 @@ var provider = {
   id: "ask",
   name: "Ask",
   icon: "󰚩",
-  modes: [{ pattern: /^\s*ask\s/i, label: "Ask", icon: "󰚩", exclusive: true, hint: "ask <question>" }],
+  modes: modes,
   commands: [
     { title: "Ask your agent", keywords: "ask ai agent question chat llm answer", text: "A quick answer, streamed into the bar", complete: "ask " }
   ],
@@ -220,7 +243,8 @@ var provider = {
     if (direct && !q)
       return [{ key: "ask:direct:" + direct.id, title: "Ask " + direct.name,
                 subtitle: direct.model || "Question", icon: "󰚩", score: 40,
-                copy: "", complete: direct.prefix + " ", remember: false }]
+                copy: "", complete: direct.prefix + " ", remember: false,
+                intent: direct.spaced ? "mode" : "exactCommand" }]
     // A one-shot prefix cannot bypass the operation already owned by the
     // active session. Preserve its capture and busy rows before offering
     // another agent.
@@ -232,7 +256,7 @@ var provider = {
       return decorate([{ key: "ask:direct:" + direct.id, title: "Ask " + direct.name + ": " + q,
                          subtitle: direct.model ? direct.name + " " + direct.model : direct.name,
                          icon: "󰚩", score: 90, copy: q, nodi: "askAs", actionLabel: "Ask",
-                         remember: false, data: { id: direct.id, question: q } }])
+                         remember: false, intent: "commandArgs", data: { id: direct.id, question: q } }])
     if (!q) return decorate([{ title: "Ask " + name, subtitle: a.missing ? a.missing + " is not on your login PATH: install it, or name another agent in nodi.json" : "Question",
                            score: 40, copy: "", remember: false, hint: "ask <question>" }])
     // Nothing would happen on Enter: say why (Fable 2026-10-06).
@@ -243,6 +267,7 @@ var provider = {
                     subtitle: a.missing ? a.missing + " is not on your login PATH: install it, or name another agent in nodi.json"
                             : a.install ? "Enter installs " + a.install + " from npm first, once" : name, icon: "󰚩", score: 98,
                     copy: q, nodi: direct ? "askAs" : "ask", actionLabel: "Ask", remember: false,
+                    intent: direct ? "commandArgs" : "mode",
                     data: direct ? { id: direct.id, question: q } : null }]
       if (direct) return decorate(rows)
       var sel = ctx.selection || {}

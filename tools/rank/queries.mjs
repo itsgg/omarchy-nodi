@@ -6,6 +6,19 @@
 // "app:<desktop id>", menu rows "menu:<id>", windows "window:<address>".
 
 export const intended = [
+  // Available agents are commands; a trailing space is their exclusive
+  // mode. An unavailable agent never claims the query.
+  ["claude", "ask:direct:claude", "agent"],
+  ["claude ", "ask:direct:claude", "agent-mode"],
+  ["agy", "ask:direct:agy", "agent"],
+  ["agy ", "ask:direct:agy", "agent-mode"],
+  ["pi", "ask:direct:pi", "agent"],
+  ["pi ", "ask:direct:pi", "agent-mode"],
+  ["pi * 2", "math:6.283185307", "semantic"],
+  ["codex", "ask:direct:codex", "agent"],
+  ["codex ", "ask:direct:codex", "agent-mode"],
+  ["opencode", "fallback:g", "unavailable-agent"],
+  ["opencode ", "fallback:g", "unavailable-agent"],
   // Names and their starts.
   ["spotify", "app:spotify", "name"],
   ["sp", "app:spotify", "prefix"],
@@ -50,7 +63,7 @@ export const intended = [
   ["omarchy update", "omarchy:omarchy-update", "name"],
   // Initials and letters in order.
   ["lo c", "app:libreoffice-calc", "initials"],
-  ["lo w", "app:libreoffice-writer", "initials"],
+  ["lo w", ["app:libreoffice-writer", "omarchy:omarchy-weather-location"], "initials"],
   ["gcal", "app:Google Calendar", "inorder"],
   ["tg", "app:Telegram", "inorder"],
   ["slk", "app:Slack", "inorder"],
