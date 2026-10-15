@@ -2132,11 +2132,17 @@ Item {
     root.directAskAgent = direct ? target : ""
     root.askStatus = askSession.status
     // The window's working directory, one bounded read now; the Ask waits
-    // for it, and goes without it when the read fails (windowCwdReader).
-    var argv = Sources.cwdArgv(snapshot.window.pid || 0)
-    if (argv) {
+    // for it, and goes without it when the read fails (windowCwdReader). The
+    // pid goes in the reader's environment, never its argv, and only while
+    // the window list still holds this window's address with that pid: a pid
+    // is a number another program may take. The address stays here, out of
+    // what the agent is told.
+    var pid = snapshot.window.pid || 0
+    var address = String(root.cameFrom.address || "")
+    var env = Sources.cwdEnv(pid)
+    if (env && Sources.sameWindow(root.windows, address, pid)) {
       root.pendingAsk.cwdWait = true
-      windowCwdReader.run(argv, { pending: root.pendingAsk, pid: snapshot.window.pid })
+      windowCwdReader.run(Sources.cwdArgv(), { pending: root.pendingAsk, pid: pid, address: address, env: env })
       return true
     }
     if (direct ? askSession.agent === target : askSession.agent === root.resolvedAgent)
@@ -2147,9 +2153,10 @@ Item {
 
   // The read of the window's working directory (Sources.cwdArgv), started
   // only by startAsk: a second at most, and 8 KB. Its answer is the
-  // pending Ask's if that is still the one waiting and the window is still
-  // the same process; failing, timing out, another pid's answer or a
-  // vanished process leave the directory out, and the Ask goes on.
+  // pending Ask's if that is still the one waiting and the window list still
+  // holds the same window (address and pid) as it did at the start; failing,
+  // timing out, another pid's answer, a vanished process or a replaced
+  // window leave the directory out, and the Ask goes on.
   Reader {
     id: windowCwdReader
     timeoutMs: 1000
@@ -2157,7 +2164,7 @@ Item {
     onFinished: function(text, ok, tag) {
       var pending = tag ? tag.pending : null
       if (!pending || root.pendingAsk !== pending) return
-      var cwd = ok && Number(root.cameFrom.pid) === tag.pid ? Sources.windowCwd(text, tag.pid) : ""
+      var cwd = ok && Sources.sameWindow(root.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
       if (cwd) pending.snapshot.window.cwd = cwd
       pending.cwdWait = false
       root.flushAsk()

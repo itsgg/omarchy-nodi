@@ -172,8 +172,9 @@ test("the selection and the clipboard's text read at an open, each ended by its 
 // ---------------------------------------------------------------- window cwd
 
 const ranCwd = (pid, ms = 2000) => {
-  const argv = S.limited(S.cwdArgv(pid), ms, 8192);
-  const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } });
+  const argv = S.limited(S.cwdArgv(), ms, 8192);
+  const env = S.cwdEnv(pid);
+  const r = spawnSync(argv[0], argv.slice(1), { encoding: "utf8", env: { PATH: "/usr/bin:/bin", ...(env || {}) } });
   return { text: r.stdout, ok: r.status === 0 };
 };
 
@@ -182,13 +183,44 @@ const sleeper = (cwd) => {
   return Number(p.stdout.trim());
 };
 
-test("window cwd: the argv is fixed, the pid its own argument, and a bad pid starts nothing", () => {
+test("window cwd: the argv is fixed and holds no pid; the pid is in the environment only", () => {
   const argv = plain(S.cwdArgv(4211));
+  assert.deepEqual(argv, plain(S.cwdArgv()), "no argument changes it");
   assert.equal(argv[0], "/usr/bin/bash");
-  assert.ok(!argv.join("\u0000").includes("4211") || argv[argv.length - 1] === "4211", "the pid is an argument, never in the script");
-  assert.equal(argv[argv.length - 1], "4211");
-  for (const bad of [0, -1, 1.5, NaN, Infinity, "4211", "1; touch /tmp/x", null, undefined, {}, [4211], 2 ** 40])
-    assert.equal(S.cwdArgv(bad), null, JSON.stringify(bad));
+  assert.ok(!argv.join("\u0000").includes("4211"), "the pid is nowhere in the argv: " + JSON.stringify(argv));
+  assert.ok(!/\b4211\b/.test(JSON.stringify(S.limited(S.cwdArgv(4211), 1000, 8192))), "nor in the argv the Reader really starts");
+  assert.deepEqual(plain(S.cwdEnv(4211)), { NODI_WINDOW_PID: "4211" });
+  assert.deepEqual(plain(S.cwdEnv(1)), { NODI_WINDOW_PID: "1" });
+  assert.deepEqual(plain(S.cwdEnv(4194304)), { NODI_WINDOW_PID: "4194304" });
+  for (const bad of [0, -1, 1.5, NaN, Infinity, "4211", "1; touch /tmp/x", null, undefined, {}, [4211], 2 ** 40, 4194305])
+    assert.equal(S.cwdEnv(bad), null, JSON.stringify(bad));
+});
+
+test("window cwd: the program takes its pid from the environment only, and a bad one reads nothing", () => {
+  const argv = S.limited(S.cwdArgv(), 1000, 8192);
+  const run = (env, extra = []) => spawnSync(argv[0], argv.slice(1).concat(extra), { encoding: "utf8", env: { PATH: "/usr/bin:/bin", ...env } });
+  assert.notEqual(run({}).status, 0, "no pid in the environment: nothing");
+  assert.notEqual(run({}, [String(process.pid)]).status, 0, "a pid in the argv is not read");
+  for (const bad of ["", "0", "-1", "1; touch /tmp/nodi-x", "$(id)", "../1", "1 2", "01", "99999999999"]) {
+    const r = run({ NODI_WINDOW_PID: bad });
+    assert.notEqual(r.status, 0, JSON.stringify(bad));
+    assert.equal(r.stdout, "", JSON.stringify(bad));
+  }
+  assert.equal(existsSync("/tmp/nodi-x"), false);
+});
+
+test("window cwd: a window is its address and pid together; a gone or replaced one is not it", () => {
+  const list = [{ address: "0xa", pid: 4211 }, { address: "0xb", pid: 77 }];
+  assert.equal(S.sameWindow(list, "0xa", 4211), true);
+  assert.equal(S.sameWindow(list, "0xa", 77), false, "the address holds another pid");
+  assert.equal(S.sameWindow(list, "0xc", 4211), false, "the window is gone");
+  assert.equal(S.sameWindow([{ address: "0xb", pid: 4211 }], "0xa", 4211), false, "the pid was taken by another window");
+  assert.equal(S.sameWindow([], "0xa", 4211), false);
+  assert.equal(S.sameWindow("junk", "0xa", 4211), false);
+  assert.equal(S.sameWindow(list, "", 4211), false);
+  assert.equal(S.sameWindow(list, "0xa", 0), false);
+  assert.equal(S.sameWindow(list, "0xa", "4211"), false, "a pid is a number");
+  assert.equal(S.sameWindow([{ address: "0xa", pid: 0 }], "0xa", 0), false);
 });
 
 test("window cwd: a live process's cwd is read with its pid, read-only", { skip: !existsSync("/proc/self/cwd") }, () => {

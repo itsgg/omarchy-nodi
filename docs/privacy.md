@@ -123,7 +123,9 @@ Everything Nodi reads, writes, starts and sends, and when.
   (`_meta.nodi`, [Ask](ask.md) shows it): what the row is for, the window
   you came from (class, title, workspace, process id, and the directory
   `/proc/<pid>/cwd` links to, read once as you choose, for a second at
-  most, and left out if it fails), and, for an action on the selected or
+  most, passed to the reader in its environment, not its command line,
+  and left out if it fails or the window is no longer the one that process
+  id was seen with), and, for an action on the selected or
   copied text, that text, how old it is, and whether it was the selection
   or the clipboard. Nothing is read before you choose, nothing goes in a
   command line, a log or a row's key, and the note is not kept with the

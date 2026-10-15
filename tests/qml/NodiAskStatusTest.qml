@@ -29,6 +29,14 @@ Item {
 
   function check(ok, what) { if (!ok) failures.push(what) }
 
+  // The window list as a step needs it. The shell keeps nodi.windows from
+  // Hyprland's own model, which a real session rewrites at any window event,
+  // and an Ask checks it again as its read ends; so the step's list is set
+  // again every millisecond while it runs.
+  property var pinned: []
+  function pinWindows(list) { test.pinned = list; nodi.windows = list }
+  Timer { interval: 1; repeat: true; running: test.pinned.length > 0 && test.step < test.steps.length; onTriggered: nodi.windows = test.pinned }
+
   function window(extra) {
     return Object.assign({ address: "0xa", "class": "foot", title: "project", pid: test.pid, workspace: "3", stableId: "", monitor: -1, width: 0, floating: false }, extra || {})
   }
@@ -39,7 +47,7 @@ Item {
     { name: "an action about the selection", q: "Fix the selection",
       go: function() {
         nodi.cameFrom = test.window()
-        nodi.windows = [{ address: "0xa", workspaceId: 3 }]
+        test.pinWindows([{ address: "0xa", workspaceId: 3, pid: Number(test.pid) }])
         nodi.selection = "teh"
         nodi.selectionSource = "selection"
         nodi.selectionSeenAt = Date.now() - 4000
@@ -95,11 +103,39 @@ Item {
     { name: "a window that is gone: no working directory, the question still goes", q: "Where did it go",
       go: function() {
         nodi.cameFrom = test.window({ pid: "4194301" })
+        test.pinWindows([{ address: "0xa", workspaceId: 3, pid: 4194301 }])
         nodi.doNodi({ nodi: "askWith", ask: { question: "Where did it go", message: "echo prompt context gone", context: "", purpose: "ask" } })
       },
       want: function(m) {
         test.check(m.window && m.window["class"] === "foot" && m.window.pid === 4194301 && m.window.cwd === undefined, "a vanished process: " + JSON.stringify(m))
       } },
+    { name: "a window the list no longer holds has no working directory, though its pid is live", q: "Whose directory",
+      go: function() {
+        // The window closed and the list holds another window under that
+        // pid, as after the number was taken: the live process is not the
+        // window's, so its directory is not read.
+        nodi.cameFrom = test.window()
+        test.pinWindows([{ address: "0xb", workspaceId: 1, pid: Number(test.pid) }])
+        nodi.doNodi({ nodi: "askWith", ask: { question: "Whose directory", message: "echo prompt context replaced", context: "", purpose: "ask" } })
+      },
+      want: function(m) {
+        test.check(m.window && m.window["class"] === "foot" && m.window.cwd === undefined, "a replaced window: " + JSON.stringify(m))
+        test.check(JSON.stringify(m).indexOf("0x") === -1, "no window address in the note: " + JSON.stringify(m))
+      } },
+    { name: "a window whose pid changed has no working directory", q: "Whose directory now",
+      go: function() {
+        nodi.cameFrom = test.window()
+        test.pinWindows([{ address: "0xa", workspaceId: 3, pid: Number(test.pid) + 1 }])
+        nodi.doNodi({ nodi: "askWith", ask: { question: "Whose directory now", message: "echo prompt context repid", context: "", purpose: "ask" } })
+      },
+      want: function(m) { test.check(m.window && m.window.cwd === undefined, "another pid for the address: " + JSON.stringify(m)) } },
+    { name: "a window the list holds is read again", q: "Whose directory again",
+      go: function() {
+        nodi.cameFrom = test.window()
+        test.pinWindows([{ address: "0xa", workspaceId: 3, pid: Number(test.pid) }])
+        nodi.doNodi({ nodi: "askWith", ask: { question: "Whose directory again", message: "echo prompt context held", context: "", purpose: "ask" } })
+      },
+      want: function(m) { test.check(m.window && m.window.cwd === test.real, "the same window: " + JSON.stringify(m)) } },
     { name: "no window at all: no window, the question still goes", q: "Alone in the bar",
       go: function() {
         nodi.cameFrom = test.window({ address: "", "class": "", title: "", pid: "", workspace: "" })

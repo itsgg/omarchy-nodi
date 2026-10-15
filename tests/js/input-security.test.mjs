@@ -34,6 +34,13 @@ test("a window's working directory is read once, bounded, and only as an Ask sta
   assert.ok(reader, "its own reader, so every limit applies");
   assert.ok(Number(reader[1].match(/timeoutMs:\s*(\d+)/)[1]) <= 1000, "a deadline of a second at most");
   assert.ok(Number(reader[1].match(/maxBytes:\s*(\d+)/)[1]) <= 8192, "what it may print is capped");
+  const call = nodi.slice(start, end).match(/windowCwdReader\.run\(([^\n]*)\)/);
+  assert.ok(call, "the read is started in startAsk");
+  assert.match(call[1], /Sources\.cwdArgv\(\)/, "the argv is fixed: no pid in it");
+  assert.match(call[1], /env:\s*env/, "the pid is carried in the reader's environment");
+  assert.match(nodi.slice(start, end), /Sources\.sameWindow\(root\.windows, address, pid\)[\s\S]*windowCwdReader\.run/, "only for a window the list still holds");
+  assert.match(nodi, /Sources\.sameWindow\(root\.windows, tag\.address, tag\.pid\)/, "and checked again before the answer is taken");
+  assert.doesNotMatch(nodi, /snapshot\.window\.address|window:\s*\{[^}]*address/, "the address is not put in the snapshot");
   assert.doesNotMatch(nodi, /prepareDirectAsk[\s\S]{0,400}snapshot/, "a prepared ask collects nothing");
 });
 
