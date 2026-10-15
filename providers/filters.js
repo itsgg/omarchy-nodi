@@ -93,16 +93,26 @@ function refreshOf(f) { return duration(f.refresh, REFRESH, 10000, 24 * 3600000)
 function rerunOf(f) { return duration(f.rerun, 0, 500, 60000) }
 function timeoutOf(f) { return Math.min(10000, Math.max(500, Number(f.timeoutMs) || 3000)) }
 
-// The filters set in nodi.json that can run: a keyword without a space,
-// and a command of strings.
+function commandFilter(f) {
+  return Array.isArray(f.command) && f.command.length > 0
+    && f.command.every(function(a) { return typeof a === "string" }) && f.command[0] !== ""
+    && f.command[0].charAt(0) !== "-"
+}
+
+function socketFilter(f) {
+  return typeof f.socket === "string" && f.socket.charAt(0) === "/" && f.socket.length <= 4096
+    && !/(?:^|\/)\.{1,2}(?:\/|$)/.test(f.socket) && f.socket.charAt(f.socket.length - 1) !== "/"
+}
+
+// The filters set in nodi.json: a keyword without a space, and exactly one
+// external transport. Socket sources are query sources, not command lists
+// or command-driven steps.
 function list(settings) {
   if (!Array.isArray(settings)) return []
   return settings.filter(function(f) {
-    // The program is the first word as it is: timeout(1), which starts
-    // it, would read one starting with "-" as an option of its own.
-    return f && typeof f.keyword === "string" && /^\S+$/.test(f.keyword) && Array.isArray(f.command) && f.command.length > 0
-      && f.command.every(function(a) { return typeof a === "string" }) && f.command[0] !== ""
-      && f.command[0].charAt(0) !== "-"
+    if (!f || typeof f.keyword !== "string" || !/^\S+$/.test(f.keyword)) return false
+    var command = commandFilter(f), socket = socketFilter(f)
+    return (command ? 1 : 0) + (socket ? 1 : 0) === 1 && !(socket && (f.list === true || f.format === "rofi"))
   })
 }
 
@@ -181,58 +191,12 @@ function parse(textOut, f) { return parseLines(textOut, f).rows }
 // Nodi's lines as { rows, data }: data from a line { "data": "..." }, for
 // the next step's NODI_DATA.
 function parseLines(textOut, f) {
-  var lines = String(textOut || "").split("\n")
-  var rows = []
-  var data = ""
-  var read = 0
   var limit = f.list ? LIST_LIMIT : LIMIT
-  for (var i = 0; i < lines.length && rows.length < limit; i++) {
-    var line = lines[i].trim()
-    if (!line) continue
-    var o
-    try { o = JSON.parse(line) } catch (e) { continue }
-    if (o && typeof o === "object" && !Array.isArray(o) && typeof o.data === "string" && o.title === undefined) { data = o.data.slice(0, 4096); continue }
-    if (!o || typeof o !== "object" || Array.isArray(o) || typeof o.title !== "string" || !o.title) continue
-    read++
-    var act = actionOf(o.action)
-    var id = text(o.id, MAX.id)
-    var row = {
-      // An id names the row; without one, its place keeps two rows of the
-      // same title apart (the ranking and a second Enter go by key).
-      key: "filter:" + f.keyword + ":" + (id ? "id:" + id : "#" + rows.length + ":" + o.title),
-      title: text(o.title, MAX.title),
-      subtitle: text(o.subtitle, MAX.subtitle),
-      icon: text(o.icon, 8) || f.icon || "",
-      image: typeof o.image === "string" && o.image.charAt(0) === "/" ? o.image : "",
-      badge: text(o.badge, MAX.badge),
-      score: 97 - rows.length * 0.01,
-      copy: act.copy || "",
-      run: act.run || null,
-      complete: typeof o.complete === "string" && o.complete ? o.complete.slice(0, MAX.title) : (act.complete || ""),
-      match: text(o.match, MAX.subtitle),
-      // Read again at the filter's pace while it shows ("rerun").
-      liveMs: f.rerunMs || 0,
-      confirm: confirmOf(o.confirm).confirm,
-      confirmWord: confirmOf(o.confirm).confirmWord,
-      risk: text(o.risk, MAX.risk),
-      // What a program's row runs is shown before it runs, once it asks.
-      showsCommand: true,
-      undoable: o.undoable === true,
-      remember: !!id,
-      preview: previewOf(o.preview),
-      group: f.title || f.keyword,
-      next: act.next !== undefined ? nextOf(f, act.next, o.info, 1) : null,
-      actions: Array.isArray(o.actions) ? o.actions.slice(0, 12).map(function(a) {
-        var x = actionOf(a && a.action)
-        var c = confirmOf(a && a.confirm)
-        return x.run ? { label: text(a.title, MAX.title), icon: "", run: x.run, confirm: c.confirm, confirmWord: c.confirmWord, risk: text(a && a.risk, MAX.risk),
-                         undoable: !!a && a.undoable === true } : null
-      }).filter(function(a) { return a && a.label }) : []
-    }
-    rows.push(row)
-  }
-  for (var r = 0; r < rows.length; r++) if (rows[r].next) rows[r].next.data = data
-  return { rows: rows, data: data }
+  return External.parseLines(textOut, f, { limit: limit, nextOf: nextOf })
+}
+
+function socketRows(raw, f) {
+  return External.objects(raw, f, { limit: Math.max(1, Math.min(1000, Number(f.max) || LIMIT)) })
 }
 
 // A rofi script's output as { rows, data, message, noCustom }.
@@ -298,14 +262,22 @@ function parseOf(textOut, ok, param) {
   return parse(textOut, { keyword: p.keyword, title: p.title, icon: p.icon, rerunMs: p.rerunMs || 0, list: !!p.list })
 }
 
-function sourceOf(f) { return f.list === true ? "filter-list" : "filter" }
+function sourceOf(f) { return socketFilter(f) ? "filter-socket" : f.list === true ? "filter-list" : "filter" }
 
 // What a run of `f` is keyed by and runs with. The window is in the key
 // too: what a program says of one window is not its answer for another. A
 // list's run has neither query nor window: one list serves every query.
 function paramOf(f, query, ctx) {
   // A list follows its refresh; rerun is for a run on each query.
-  var p = { keyword: f.keyword, title: f.title || f.keyword, icon: f.icon || "", command: f.command, timeoutMs: timeoutOf(f) }
+  var p = { keyword: f.keyword, title: f.title || f.keyword, icon: f.icon || "", timeoutMs: timeoutOf(f) }
+  if (socketFilter(f)) {
+    p.socket = f.socket
+    p.query = query
+    p.window = ctx.window || null
+    p.max = Math.max(1, Math.min(1000, Number(f.max) || LIMIT))
+    return JSON.stringify(p)
+  }
+  p.command = f.command
   if (f.list === true) { p.list = true; p.refreshMs = refreshOf(f) }
   else { p.query = query; p.window = ctx.window || null; p.rerunMs = rerunOf(f); if (f.argument === true) p.argument = true }
   return JSON.stringify(p)
@@ -469,6 +441,22 @@ var provider = {
       maxBytes: 1048576,
       supersede: true,
       sessionPath: true
+    },
+    "filter-socket": {
+      socket: true,
+      parse: function(raw, ok, param) {
+        if (!ok) throw "socket source could not answer"
+        var p = JSON.parse(param)
+        return socketRows(Array.isArray(raw) ? raw : [], p)
+      },
+      maxAgeMs: 3000,
+      retryMs: 1000,
+      timeoutMs: 10000,
+      maxBytes: 1048576,
+      maxLineBytes: 131072,
+      batchMs: 16,
+      supersede: true,
+      transient: true
     },
     // A list's read, on a reader of its own and never ended by another
     // read: on the one filter reader, two root lists ended each other's

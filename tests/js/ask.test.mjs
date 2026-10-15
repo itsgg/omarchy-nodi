@@ -1247,7 +1247,7 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   // every other does, with all its arguments ({ fetch: false } among them).
   const calls = [];
   const req = A.forAgent(function() { calls.push([...arguments]); return { state: "ready", value: [] }; });
-  for (const name of ["filter", "filter-list", "filter-step", "script-output"]) assert.equal(req(name, "p").state, "error", name);
+  for (const name of ["filter", "filter-list", "filter-step", "filter-socket", "script-output"]) assert.equal(req(name, "p").state, "error", name);
   assert.deepEqual(calls, [], "none of his programs asked for");
   req("rates", "USD", { fetch: false });
   assert.deepEqual(calls, [["rates", "USD", { fetch: false }]]);
@@ -1255,10 +1255,12 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   // Engine.agentRows, which Nodi.qml's is (tools/hygiene.mjs): a filter
   // that runs its query is never asked; his own search asks it.
   const cfg = Object.assign({}, config, { filters: [{ keyword: "x", title: "X", command: ["bash", "-c"] },
-                                                  { keyword: "l", title: "L", command: ["bash", "-c"], list: true, root: true }] });
+                                                  { keyword: "l", title: "L", command: ["bash", "-c"], list: true, root: true },
+                                                  { keyword: "s", title: "S", socket: "/run/user/1000/s.sock" }] });
   const asked = [];
   const rows = plain(Engine.agentRows("x touch /tmp/pwn", cfg, services({ asked, filter: () => { throw new Error("started") } })));
   Engine.agentRows("l touch", cfg, services({ asked, filter: () => { throw new Error("started") } }));
+  Engine.agentRows("s secret", cfg, services({ asked, filter: () => { throw new Error("started") } }));
   assert.ok(!asked.some(k => /^filter/.test(k)), "the filters were not asked: " + asked.join(" "));
   assert.ok(!rows.some(r => r.provider === "filters"), "and offer nothing");
   assert.ok(rows.length <= 8 && rows.every(r => r.run && !r.help && !r.nodi));

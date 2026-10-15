@@ -354,3 +354,35 @@ test("an action of a kind it does not know is no action", () => {
   assert.ok(!rows[0].run);
   assert.deepEqual(plain(F.actionOf("open")), {}, "nor one that is no object");
 });
+
+test("socket filters use a transient superseding request with query and window only in its body parameter", () => {
+  const socket = { keyword: "s", title: "Socket search", socket: "/run/user/1000/example/search.sock", timeoutMs: 900, max: 7 };
+  const asked = [];
+  F.shown.s = undefined;
+  const window = { class: "foot", title: "private", address: "0x1", pid: "42", workspace: "2" };
+  const rows = Engine.run("s words", Object.assign({}, config, { filters: [socket] }), services({ asked, window }));
+  assert.equal(rows[0].title, "Asking Socket search...");
+  const key = asked.find(k => k.startsWith("filter-socket:"));
+  assert.ok(key);
+  const param = JSON.parse(key.slice("filter-socket:".length));
+  assert.deepEqual(plain(param), {
+    keyword: "s", title: "Socket search", icon: "", socket: socket.socket,
+    query: "words", window, timeoutMs: 900, max: 7
+  });
+  assert.equal(JSON.stringify(F.provider.sources["filter-socket"]).includes("argv"), false);
+  assert.equal(F.provider.sources["filter-socket"].socket, true);
+  assert.equal(F.provider.sources["filter-socket"].supersede, true);
+  assert.equal(F.provider.sources["filter-socket"].transient, true);
+});
+
+test("socket rows use the shared bounded external row normalizer", () => {
+  const f = { keyword: "s", title: "Socket", socket: "/run/user/1000/example.sock", max: 1 };
+  const got = F.socketRows([
+    { id: "one", title: "One", action: { open: "https://example.test" } },
+    { id: "two", title: "Two", action: { exec: ["program", "--flag"] } }
+  ], f);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].key, "filter:s:id:one");
+  assert.deepEqual(plain(got[0].run), { kind: "open", target: "https://example.test" });
+  assert.equal(got[0].showsCommand, true);
+});

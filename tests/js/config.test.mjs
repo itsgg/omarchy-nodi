@@ -100,3 +100,30 @@ test("merged config always carries normalized home sources and defaults to none"
     id: "feed", file: "/home/person/feed.jsonl", title: "feed", max: 8, priority: 0, trustedActions: false
   }]);
 });
+
+test("socket filters expand an explicit absolute path and bound their options", () => {
+  const merged = Config.merge(defaults, { filters: [
+    { keyword: "search", title: "Search", socket: "$XDG_RUNTIME_DIR/example/search.sock", timeoutMs: 99999, max: 5000 },
+    { keyword: "home", socket: "${HOME}/.local/run/home.sock", timeoutMs: 1, max: 0 }
+  ] }, "", { home: "/home/person", runtimeDir: "/run/user/1000" });
+  assert.deepEqual(plain(merged.filters), [
+    { keyword: "search", title: "Search", socket: "/run/user/1000/example/search.sock", timeoutMs: 10000, max: 1000 },
+    { keyword: "home", socket: "/home/person/.local/run/home.sock", timeoutMs: 100, max: 1 }
+  ]);
+});
+
+test("filters require exactly one valid command or socket and reject unsafe socket paths", () => {
+  const filters = Config.filters([
+    { keyword: "command", command: ["program"] },
+    { keyword: "both", command: ["program"], socket: "/run/user/1000/both.sock" },
+    { keyword: "neither" },
+    { keyword: "relative", socket: "relative.sock" },
+    { keyword: "traversal", socket: "$XDG_RUNTIME_DIR/example/../other.sock" },
+    { keyword: "unknown", socket: "$OTHER/example.sock" },
+    { keyword: "control", socket: "/run/user/1000/a\u0000b" },
+    { keyword: "missing", socket: "$XDG_RUNTIME_DIR/example.sock" },
+    { keyword: "valid", socket: "/run/user/1000/valid.sock" }
+  ], { home: "/home/person", runtimeDir: "" });
+  assert.deepEqual(plain(filters.map(f => f.keyword)), ["command", "valid"]);
+  assert.deepEqual(plain(filters[0]), { keyword: "command", command: ["program"] }, "command filters retain their existing shape");
+});
