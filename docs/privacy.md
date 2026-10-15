@@ -119,6 +119,15 @@ Everything Nodi reads, writes, starts and sends, and when.
   manager's), keeps them until it next opens, and sends one to the agent
   only when you pick one of the agent's rows on it, or to a streamed-answer
   fallback when you choose that row.
+- When you choose an Ask, the agent is sent, beside the question, a note
+  (`_meta.nodi`, [Ask](ask.md) shows it): what the row is for, the window
+  you came from (class, title, workspace, process id, and the directory
+  `/proc/<pid>/cwd` links to, read once as you choose, for a second at
+  most, and left out if it fails), and, for an action on the selected or
+  copied text, that text, how old it is, and whether it was the selection
+  or the clipboard. Nothing is read before you choose, nothing goes in a
+  command line, a log or a row's key, and the note is not kept with the
+  conversation's summaries.
 - Its folders, `~/.cache/nodi/`, `~/.local/state/nodi/` and
   `~/.local/share/nodi/`, are yours alone (0700), made so at each start
   and each open; a file it replaces is written beside it under a name of

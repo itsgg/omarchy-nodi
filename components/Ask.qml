@@ -5,6 +5,7 @@ import "../lib/Acp.js" as Acp
 import "../lib/AskTools.js" as AskTools
 import "../lib/AskActions.js" as AskActions
 import "../lib/Agents.js" as Agents
+import "../lib/PromptContext.js" as PromptContext
 
 // A quick answer from a coding agent, held open over ACP (ROADMAP 84,
 // lib/Acp.js), so that asking costs the model's time and not the agent's
@@ -174,6 +175,11 @@ Item {
   property string message: ""
   property string context: ""
   property var image: null           // { mediaType, data } sent with the question
+  // What Nodi saw when the Ask was chosen (lib/PromptContext.js build's
+  // input), kept until the prompt is sent, and with the question after it so
+  // asking again tells the agent what the first turn did. Never shown,
+  // logged or kept past the conversation.
+  property var snapshot: null
   property string answer: ""
   // The conversation's turns answered before the current one, { question,
   // answer }: drawn above it in the pane, and what "Continue in your agent"
@@ -335,12 +341,15 @@ Item {
 
   // `message` and `context` default to the question and none; asked again
   // without them, a question goes with what it was sent with before.
-  function send(q, message, context, image) {
+  // `snapshot` is what Nodi saw as the Ask was chosen: asked again with a
+  // new one, the window is the new one's and the selection and purpose the
+  // first turn's, which the message still holds.
+  function send(q, message, context, image, snapshot) {
     if (ask.busy()) return false
     // Asked again, a question goes with what it was sent with before, read
     // before a fresh start forgets it (Fable 2026-10-06).
     var again = message === undefined && String(q) === ask.question
-    var kept = again ? { message: ask.message, context: ask.context, image: ask.image } : null
+    var kept = again ? { message: ask.message, context: ask.context, image: ask.image, snapshot: ask.snapshot } : null
     // Long after the last answer, a question starts a conversation afresh;
     // else the answer before this one is a turn of it now, for the pane to
     // draw above the next (as Raycast's Quick AI shows one), but not one
@@ -351,6 +360,10 @@ Item {
     ask.message = message !== undefined ? String(message) : kept ? kept.message : String(q)
     ask.context = context !== undefined ? String(context) : kept ? kept.context : ""
     ask.image = image !== undefined ? image : kept ? kept.image : null
+    var snap = snapshot !== undefined ? snapshot : kept ? kept.snapshot : null
+    if (kept && snapshot && kept.snapshot && kept.snapshot.selection)
+      snap = Object.assign({}, snapshot, { purpose: kept.snapshot.purpose, selection: kept.snapshot.selection })
+    ask.snapshot = snap && typeof snap === "object" ? snap : null
     ask.allowed = ""
     ask.refused = []
     ask.question = String(q)
@@ -358,7 +371,7 @@ Item {
     ask.error = ""
     ask.phase = "waiting"
     ask.used = true
-    ask.pending = { text: ask.message, image: ask.image }
+    ask.pending = { text: ask.message, image: ask.image, snapshot: ask.snapshot }
     // A session being recycled is still running until it exits: the
     // question waits for the fresh one (agy 2026-10-03).
     if (ask.stage === "ready" && !ask.recycling) ask.flush()
@@ -390,7 +403,8 @@ Item {
     ask.cut = false
     var preface = ask.instructed ? "" : Agents.firstPromptInstructions(ask.agent, ask.instructions)
     ask.instructed = true
-    ask.turn = ask.toAgent("prompt", function(id) { return Acp.prompt(id, ask.sessionId, text, image, preface) })
+    var nodi = p.snapshot ? PromptContext.build(p.snapshot) : undefined
+    ask.turn = ask.toAgent("prompt", function(id) { return Acp.prompt(id, ask.sessionId, text, image, preface, nodi) })
   }
 
   function stableActionInput(value) {
@@ -948,6 +962,7 @@ Item {
     ask.message = ""
     ask.context = ""
     ask.image = null
+    ask.snapshot = null
     ask.answer = ""
     ask.error = ""
     ask.phase = "idle"
@@ -975,6 +990,7 @@ Item {
     ask.message = ""
     ask.context = ""
     ask.image = null
+    ask.snapshot = null
     ask.answer = ""
     ask.error = ""
     ask.phase = "idle"

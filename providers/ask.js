@@ -274,12 +274,12 @@ var provider = {
       var ab = Selection.about(sel)
       if (sel.text) rows.push({ key: "ask:selection", title: "Ask about " + ab.noun + ": " + q, subtitle: Selection.shown(sel.text), icon: "󰗧",
                                 score: 97, copy: q, nodi: "askWith", actionLabel: "Ask", remember: false,
-                                ask: { question: q, message: aboutText(q, sel.text), context: ab.context } })
+                                ask: { question: q, message: aboutText(q, sel.text), context: ab.context, purpose: "ask" } })
       var w = ctx.window || {}
       if (w.stableId) rows.push({ key: "ask:window", title: "Ask about this window: " + q, subtitle: w.title || w["class"] || "The window you came from",
                                   icon: "󰹑", score: 96, copy: q, nodi: "askWindow", actionLabel: "Ask", remember: false,
                                   ask: { question: q, message: q + "\n\nThe picture is the window the question is about"
-                                         + (w.title ? ", titled " + JSON.stringify(String(w.title)) : "") + ".", context: "window" } })
+                                         + (w.title ? ", titled " + JSON.stringify(String(w.title)) : "") + ".", context: "window", purpose: "ask" } })
       return decorate(rows)
     }
     if (a.phase === "waiting" || a.phase === "streaming") {

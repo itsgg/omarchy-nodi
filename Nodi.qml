@@ -1376,7 +1376,7 @@ Item {
       // the field showing the question, so the answer and its paste are Ask's.
       if (askSession.busy() || windowShot.active) return
       root.askRows = ({ turn: "", rows: ({}) })
-      root.startAsk("", row.ask.question, row.ask.message, row.ask.context)
+      root.startAsk("", row.ask.question, row.ask.message, row.ask.context, undefined, row.ask.purpose)
       input.text = "ask " + row.ask.question
       input.cursorPosition = input.text.length
     } else if (row.nodi === "askNew") {
@@ -2105,32 +2105,75 @@ Item {
              current: a.id === root.resolvedAgentId }
   })
 
-  function startAsk(id, question, message, context, image) {
+  // What the agent is told of the Ask beside its question
+  // (lib/PromptContext.js), seen now, as the Ask is chosen and never before:
+  // the window the bar came from, and the selection only when the action is
+  // about it (`context`) and the message holds its text, so the structured
+  // copy never carries what the textual prompt does not.
+  function askContext(message, context, purpose) {
+    var snap = { purpose: purpose || "", window: Sources.windowSnapshot(root.cameFrom, root.windows) }
+    var source = context === "copied" ? "clipboard" : context === "selection" ? "selection" : ""
+    if (source && root.selectionSource === source && root.selection !== "" && String(message || "").indexOf(root.selection) !== -1) {
+      var seen = source === "clipboard" ? root.copiedSeenAt : root.selectionSeenAt
+      snap.selection = { text: root.selection, source: source === "clipboard" ? "clipboard" : "primary", ageMs: Math.max(0, Date.now() - seen) }
+    }
+    return snap
+  }
+
+  function startAsk(id, question, message, context, image, purpose) {
     if (askSession.busy() || windowShot.active) return false
     var direct = !!id
     var target = direct ? Agents.canonicalId(id) : root.resolvedAgent
     if (direct && (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)
         || root.agentAvailability[target] !== true)) return false
+    var snapshot = root.askContext(message, context, purpose)
     root.pendingAsk = { direct: direct, target: target, question: String(question || ""),
-                        message: message, context: context, image: image }
+                        message: message, context: context, image: image, snapshot: snapshot, cwdWait: false }
     root.directAskAgent = direct ? target : ""
     root.askStatus = askSession.status
+    // The window's working directory, one bounded read now; the Ask waits
+    // for it, and goes without it when the read fails (windowCwdReader).
+    var argv = Sources.cwdArgv(snapshot.window.pid || 0)
+    if (argv) {
+      root.pendingAsk.cwdWait = true
+      windowCwdReader.run(argv, { pending: root.pendingAsk, pid: snapshot.window.pid })
+      return true
+    }
     if (direct ? askSession.agent === target : askSession.agent === root.resolvedAgent)
       root.flushAsk()
     else Qt.callLater(root.flushAsk)
     return true
   }
 
+  // The read of the window's working directory (Sources.cwdArgv), started
+  // only by startAsk: a second at most, and 8 KB. Its answer is the
+  // pending Ask's if that is still the one waiting and the window is still
+  // the same process; failing, timing out, another pid's answer or a
+  // vanished process leave the directory out, and the Ask goes on.
+  Reader {
+    id: windowCwdReader
+    timeoutMs: 1000
+    maxBytes: 8192
+    onFinished: function(text, ok, tag) {
+      var pending = tag ? tag.pending : null
+      if (!pending || root.pendingAsk !== pending) return
+      var cwd = ok && Number(root.cameFrom.pid) === tag.pid ? Sources.windowCwd(text, tag.pid) : ""
+      if (cwd) pending.snapshot.window.cwd = cwd
+      pending.cwdWait = false
+      root.flushAsk()
+    }
+  }
+
   function flushAsk() {
     var pending = root.pendingAsk
-    if (!pending) return
+    if (!pending || pending.cwdWait) return
     if (pending.direct ? askSession.agent !== pending.target : askSession.agent !== root.resolvedAgent) {
       Qt.callLater(root.flushAsk)
       return
     }
     root.pendingAsk = null
     if (pending.prepare) askSession.prepare(pending.question, pending.message, pending.context)
-    else askSession.send(pending.question, pending.message, pending.context, pending.image)
+    else askSession.send(pending.question, pending.message, pending.context, pending.image, pending.snapshot)
   }
 
   function prepareDirectAsk(id, question, message, context) {
@@ -2283,8 +2326,8 @@ Item {
       var data = ok ? String(text).replace(/\s+/g, "") : ""
       // No picture (the window gone, grim failing): the question goes as
       // text, and says so.
-      if (data) root.startAsk("", a.question, a.message, a.context, { mediaType: "image/jpeg", data: data })
-      else root.startAsk("", a.question, a.question + "\n\n(The window could not be captured.)", "")
+      if (data) root.startAsk("", a.question, a.message, a.context, { mediaType: "image/jpeg", data: data }, a.purpose)
+      else root.startAsk("", a.question, a.question + "\n\n(The window could not be captured.)", "", undefined, a.purpose)
     }
   }
 

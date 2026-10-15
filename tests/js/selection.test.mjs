@@ -204,3 +204,12 @@ test("a keyword whose words make the site opens no site of its own", () => {
   assert.equal(top("pages ", {}, cfg).run, null);
   assert.equal(top("port ", {}, cfg).run, null);
 });
+
+test("each Claude row names its purpose by the action, not by parsing its prose", () => {
+  const rows = run("selected ", fresh("teh fox")).filter(r => r.nodi === "askWith");
+  assert.deepEqual(plain(rows.map(r => [r.key, r.ask.purpose])),
+    [["selection:fix", "fix"], ["selection:translate", "translate"], ["selection:summarize", "summarize"], ["selection:explain", "explain"]]);
+  assert.equal(top("rewrite more formal", stale("hey")).ask.purpose, "rewrite");
+  assert.ok(run("rewrite ", stale("x")).every(r => r.ask.purpose === "rewrite"), "the presets too");
+  assert.equal(top("copied ", { selection: { text: "x", fresh: true, source: "clipboard" } }).ask.purpose, "fix", "a copy is the same purpose");
+});

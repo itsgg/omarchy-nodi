@@ -1558,3 +1558,13 @@ test("disabled Nodi-owned actions survive normalization and cannot be activated"
   assert.deepEqual([action.nodi, action.disabled, action.reason], ["askAgent", true, "codex is missing"]);
   assert.equal(Rows.activatable(action), false);
 });
+
+test("the rows that ask about the selection or the window say their purpose is ask", () => {
+  const idle = { ask: { phase: "idle", question: "", answer: "", model: "haiku" } };
+  const rows = plain(run("ask what is this", {
+    ...idle, selection: { text: "x", fresh: true, source: "selection" }, window: { stableId: "ab12", title: "Docs", class: "firefox" }
+  }));
+  const about = rows.filter(r => r.key === "ask:selection" || r.key === "ask:window");
+  assert.deepEqual(about.map(r => r.key), ["ask:selection", "ask:window"]);
+  assert.deepEqual(about.map(r => r.ask.purpose), ["ask", "ask"]);
+});

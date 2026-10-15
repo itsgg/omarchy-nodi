@@ -199,11 +199,41 @@ case, Title Case, Sentence case, snake_case, kebab-case, camelCase.
 agent, which Enter pastes. `"translate": { "language": "Tamil" }` sets
 where Translate on selected text goes (English unless set).
 
+### What goes with each question
+
+When you choose an Ask, and only then, Nodi sends the agent a small
+note beside the question, in the `_meta.nodi` field of the prompt, and
+the question itself is the same with or without it:
+
+```json
+{ "version": 1, "purpose": "ask",
+  "window": { "class": "foot", "title": "project", "workspace": 3, "pid": 4211, "cwd": "/home/user/project" },
+  "selection": { "text": "selected text", "source": "primary", "ageMs": 4000 } }
+```
+
+- `purpose` is what the row you chose is for (`ask`, `fix`, `translate`,
+  `summarize`, `explain`, `rewrite`).
+- `window` describes the window you came from: its class, its title
+  (300 characters), its workspace number, its process id, and `cwd`, the
+  directory that process is in, which Nodi reads from `/proc` once as
+  you choose the Ask, in at most a second. It is left out when that read
+  fails, the process has gone, or the directory has been deleted. It is
+  the window's directory, not the one the agent runs in.
+- `selection` is there only for an action on the selected or copied
+  text, and holds the very text the question carries (65,536 characters
+  at most), whether it was the selection or the clipboard, and how long
+  ago Nodi first saw it.
+
+A field Nodi does not know is left out. Nothing is read in the
+background, and an Ask you only type, without choosing it, sends nothing.
+The note is information: it gives the agent no way to act. An agent that
+ignores `_meta` loses nothing.
+
 ## What the agent is given
 
 What you ask it; the text, or the picture and the title of the window,
-you ask about; Nodi's instructions for it; and the rows its searches of
-the bar return. It runs in `~/.cache/nodi/ask`, an empty directory, and
+you ask about; the note above; Nodi's instructions for it; and the rows
+its searches of the bar return. It runs in `~/.cache/nodi/ask`, an empty directory, and
 is offered no files and no terminal of Nodi's. For Claude and Agy, the
 table above says what of the agent's own is turned off; Codex's listed
 settings are best-effort because its final built-in router is unobservable. The

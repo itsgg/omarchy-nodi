@@ -138,3 +138,29 @@ test("an answer ends with the tools he refused, the note bounded and under the c
   assert.ok(A.withRefused("😀".repeat(600), ["Bash"], 1000).length <= 1000);
   assert.ok(!/[\uD800-\uDBFF]\n/.test(A.withRefused("a" + "😀".repeat(600), ["Bash"], 1000)), "no half a character before the note");
 });
+
+test("a prompt carries Nodi's metadata beside its blocks, which stay as they were", () => {
+  const A = load("lib/Acp.js");
+  const image = { mediaType: "image/jpeg", data: "AAAA" };
+  const nodi = { version: 1, purpose: "ask", window: { class: "foot", cwd: "/home/user/project" }, selection: { text: "t", source: "primary", ageMs: 4000 } };
+  for (const [text, img, preface] of [["hi", null, ""], ["what is this", image, ""], ["hi", null, "You answer briefly."], ["hi", image, "You answer briefly."]]) {
+    const bare = JSON.parse(A.prompt(5, "s", text, img, preface));
+    const withMeta = JSON.parse(A.prompt(5, "s", text, img, preface, nodi));
+    assert.deepEqual(withMeta.params.prompt, bare.params.prompt, "the text and image blocks are unchanged");
+    assert.equal(withMeta.params.sessionId, "s");
+    assert.deepEqual(plain(withMeta.params._meta), { nodi }, "_meta.nodi is beside prompt");
+    assert.deepEqual(Object.keys(withMeta.params).sort(), ["_meta", "prompt", "sessionId"]);
+    assert.equal(Object.prototype.hasOwnProperty.call(bare.params, "_meta"), false, "no metadata given, none sent");
+  }
+});
+
+test("a prompt with no usable metadata has no _meta at all", () => {
+  const A = load("lib/Acp.js");
+  for (const none of [undefined, null, "", "text", 7, true, [], [{ version: 1 }]]) {
+    const p = JSON.parse(A.prompt(1, "s", "hi", null, "", none)).params;
+    assert.equal(Object.prototype.hasOwnProperty.call(p, "_meta"), false, JSON.stringify(none));
+    assert.deepEqual(p, { sessionId: "s", prompt: [{ type: "text", text: "hi" }] });
+  }
+  const line = A.prompt(1, "s", "hi", null, "", { version: 1, purpose: "ask" });
+  assert.ok(line.endsWith("\n") && line.indexOf("\n") === line.length - 1, "still one line");
+});
