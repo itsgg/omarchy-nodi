@@ -49,3 +49,12 @@ test("prompt context is built only where a turn is sent, and never logged", () =
   assert.equal((ask.match(/PromptContext\.build\(/g) || []).length, 1, "built once, at the prompt");
   for (const file of [ask, nodi]) assert.doesNotMatch(file, /console\.\w+\([^)]*(snapshot|PromptContext|promptMeta)/i);
 });
+
+test("a window's picture question is snapshotted when chosen, and sent as it was", () => {
+  const chosen = nodi.slice(nodi.indexOf('row.nodi === "askWindow"'), nodi.indexOf('row.nodi === "ask")'));
+  assert.match(chosen, /root\.shotAsk\s*=\s*Object\.assign\(\{\},\s*row\.ask,\s*\{\s*captured:\s*root\.askCapture\(/, "taken at the row's invocation");
+  const done = nodi.slice(nodi.indexOf("id: windowShot"), nodi.indexOf("What the agent found for one turn"));
+  assert.equal((done.match(/a\.captured\)/g) || []).length, 1, "the capture sends that snapshot");
+  assert.match(done, /Qt\.callLater\(function\(\) \{ root\.startAsk\(/, "after the reader has ended, which startAsk refuses while it reports");
+  assert.doesNotMatch(done, /askContext|askCapture|cameFrom/, "nothing is read again when the picture is done");
+});

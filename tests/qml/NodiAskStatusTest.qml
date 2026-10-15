@@ -136,6 +136,32 @@ Item {
         nodi.doNodi({ nodi: "askWith", ask: { question: "Whose directory again", message: "echo prompt context held", context: "", purpose: "ask" } })
       },
       want: function(m) { test.check(m.window && m.window.cwd === test.real, "the same window: " + JSON.stringify(m)) } },
+    { name: "a window's picture is pending while the bar's window changes: the first window's context is sent", q: "echo prompt context pending",
+      go: function() {
+        nodi.cameFrom = test.window({ stableId: "deadbeef", width: 800 })
+        test.pinWindows([{ address: "0xa", workspaceId: 3, pid: Number(test.pid) }])
+        nodi.doNodi({ nodi: "askWindow", ask: { question: "echo prompt context pending", message: "echo prompt context pending", context: "window", purpose: "ask" } })
+        // The capture is a program still running: the bar now knows another window.
+        nodi.cameFrom = test.window({ address: "0xz", "class": "other", title: "other title", pid: "4194301", workspace: "9", stableId: "feedface" })
+      },
+      want: function(m) {
+        test.check(m.window && m.window["class"] === "foot" && m.window.title === "project" && m.window.pid === Number(test.pid) && m.window.workspace === 3,
+                   "the window the question was asked about: " + JSON.stringify(m))
+        test.check(m.window && m.window.cwd === test.real, "its own directory, its address still in the list: " + JSON.stringify(m))
+        test.check(JSON.stringify(m).indexOf("0x") === -1 && JSON.stringify(m).indexOf("other") === -1, "no address, nothing of the other window: " + JSON.stringify(m))
+      } },
+    { name: "a window gone from the list while its picture is pending has no working directory", q: "echo prompt context pending gone",
+      go: function() {
+        nodi.cameFrom = test.window({ stableId: "deadbeef", width: 800 })
+        test.pinWindows([{ address: "0xa", workspaceId: 3, pid: Number(test.pid) }])
+        nodi.doNodi({ nodi: "askWindow", ask: { question: "echo prompt context pending gone", message: "echo prompt context pending gone", context: "window", purpose: "ask" } })
+        nodi.cameFrom = test.window({ address: "0xz", "class": "other", title: "other title", pid: String(Number(test.pid)), workspace: "9" })
+        test.pinWindows([{ address: "0xz", workspaceId: 9, pid: Number(test.pid) }])
+      },
+      want: function(m) {
+        test.check(m.window && m.window["class"] === "foot" && m.window.cwd === undefined, "the original window's context, no directory: " + JSON.stringify(m))
+        test.check(JSON.stringify(m).indexOf("0x") === -1 && JSON.stringify(m).indexOf("other") === -1, "no address, nothing of the other window: " + JSON.stringify(m))
+      } },
     { name: "no window at all: no window, the question still goes", q: "Alone in the bar",
       go: function() {
         nodi.cameFrom = test.window({ address: "", "class": "", title: "", pid: "", workspace: "" })

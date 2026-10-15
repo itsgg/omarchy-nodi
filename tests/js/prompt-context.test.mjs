@@ -62,7 +62,7 @@ test("a working directory is an absolute path of the bound, or nothing", () => {
   const long = "/" + "d".repeat(4095);
   assert.equal(cwd(long), long, "4096 characters fit");
   assert.equal(cwd(long + "d"), undefined, "a longer path is left out, not cut into another place");
-  for (const bad of ["", "relative/dir", "./x", "~/x", " /lead", "/a\nb", "/a\u0000b", "/a\tb", "/a\u001b[31m", "/dir (deleted)", 5, {}, null])
+  for (const bad of ["", "relative/dir", "./x", "~/x", " /lead", "/a\nb", "/a\u0000b", "/a\tb", "/a\u001b[31m", "/a\u0080b", "/a\u0085b", "/a\u009bb", "/a\u009fb", "/dir (deleted)", 5, {}, null])
     assert.equal(cwd(bad), undefined, JSON.stringify(bad));
 });
 

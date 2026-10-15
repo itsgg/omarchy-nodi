@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, mkdirSync, rmSync, readdirSync, symlinkSync, readFileSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { load, plain } from "./load.mjs";
@@ -264,6 +264,44 @@ test("window cwd: a vanished process and a deleted directory give nothing", { sk
   assert.equal(S.windowCwd(dead.text, finished), "");
 });
 
+// Every program a PATH search could start is replaced by one that records
+// its argv and does nothing else, so a pid or a path entering the argv of any
+// child the script starts shows in the log. A child started by an absolute
+// path is not found this way: the script is held to start none (the last
+// assertion).
+test("window cwd: no child process of the script is ever given the pid or the path", { skip: !existsSync("/proc/self/cwd") }, () => {
+  const base = mkdtempSync(join(tmpdir(), "nodi-argv-"));
+  const bin = join(base, "bin");
+  mkdirSync(bin);
+  const log = join(base, "argv.log");
+  writeFileSync(join(base, "logger"), '#!/bin/sh\nprintf "%s\\n" "$0 $*" >> "$NODI_ARGV_LOG"\n', { mode: 0o755 });
+  for (const dir of ["/usr/bin", "/bin"]) {
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) {
+      const link = join(bin, name);
+      if (!existsSync(link) && !/[\/]/.test(name)) try { symlinkSync(join(base, "logger"), link); } catch (e) {}
+    }
+  }
+  const work = join(base, "my work dir");
+  mkdirSync(work);
+  const pid = sleeper(work);
+  const argv = S.cwdArgv();
+  try {
+    const run = (env) => spawnSync("/usr/bin/bash", argv.slice(1), { encoding: "utf8", env: { NODI_ARGV_LOG: log, ...env } });
+    // Every program is a recorder, as a search would find it: none runs.
+    const withSearch = run({ PATH: bin, NODI_WINDOW_PID: String(pid) });
+    assert.equal(withSearch.status, 0, "it needs no program: " + withSearch.stderr);
+    assert.equal(S.windowCwd(withSearch.stdout, pid), execFileSync("realpath", [work]).toString().trim());
+    assert.equal(existsSync(log) ? readFileSync(log, "utf8") : "", "", "no child was started by a search of PATH");
+    // And with nothing to search at all.
+    const empty = join(base, "empty");
+    mkdirSync(empty);
+    const bare = run({ PATH: empty, NODI_WINDOW_PID: String(pid) });
+    assert.equal(S.windowCwd(bare.stdout, pid), execFileSync("realpath", [work]).toString().trim(), "builtins alone read it");
+    assert.ok(!/(^|[\s;|&(`$])\/(?:usr\/)?(?:s?bin|lib)\//.test(argv[2]), "no program is named by a path either");
+  } finally { process.kill(pid); rmSync(base, { recursive: true, force: true }); }
+});
+
 test("window cwd: the answer must be this pid's, one line, an absolute path", () => {
   assert.equal(S.windowCwd("4211\t/home/user/project\n", 4211), "/home/user/project");
   assert.equal(S.windowCwd("4211\t/\n", 4211), "/");
@@ -274,7 +312,7 @@ test("window cwd: the answer must be this pid's, one line, an absolute path", ()
   assert.equal(S.windowCwd("4211\t/home/user/project\n", "4211"), "", "the expected pid is a number");
   assert.equal(S.windowCwd("4211\t/home/user/project\n", 4212), "");
   for (const bad of ["", "\n", null, undefined, 5, "4211\n", "4211\t\n", "4211\trelative\n", "4211\t~/x\n", "4211\t/a\nb\n",
-                     "4211\t/a\n4211\t/b\n", "4211\t/a\tb\n", "4211\t/a\u0000b\n", "4211\t/a\u001bb\n", "4211\t/x (deleted)\n",
+                     "4211\t/a\n4211\t/b\n", "4211\t/a\tb\n", "4211\t/a\u0000b\n", "4211\t/a\u001bb\n", "4211\t/a\u0080b\n", "4211\t/a\u0085b\n", "4211\t/a\u009bb\n", "4211\t/a\u009fb\n", "4211\t/x (deleted)\n",
                      "4211 /x\n", "\n4211\t/x\n", "4211\t/" + "d".repeat(4096) + "\n", "x4211\t/x\n"])
     assert.equal(S.windowCwd(bad, 4211), "", JSON.stringify(bad));
   assert.equal(S.windowCwd("4211\t/" + "d".repeat(4095) + "\n", 4211).length, 4096);
@@ -303,4 +341,9 @@ test("the window an Ask is about: its class, title, pid and workspace number, fr
   assert.deepEqual(plain(S.windowSnapshot(null, list)), {});
   assert.deepEqual(plain(S.windowSnapshot({ address: "0xa", "class": "", title: "", pid: "" }, list)), { workspace: 3 }, "unknown fields are left out");
   assert.equal(S.windowSnapshot({ address: "0xa", pid: "4211abc", "class": "c", title: "t" }, list).pid, undefined, "a pid is digits");
+});
+
+test("window cwd: a path with a character just past C1 is kept, one inside it is not", () => {
+  assert.equal(S.windowCwd("4211\t/a\u00a0b\n", 4211), "/a\u00a0b", "U+00A0 is a space, not a control");
+  assert.equal(S.windowCwd("4211\t/a\u009fb\n", 4211), "");
 });

@@ -1395,7 +1395,7 @@ Item {
       var w = root.cameFrom
       if (askSession.busy() || windowShot.active || !w.stableId) return
       root.askRows = ({ turn: "", rows: ({}) })
-      root.shotAsk = row.ask
+      root.shotAsk = Object.assign({}, row.ask, { captured: root.askCapture(row.ask.message, row.ask.context, row.ask.purpose) })
       // grim scales the window's buffer, which is its layout width times
       // its own monitor's scale (Fable 2026-10-06), else the focused one's.
       var mon = Hyprland.focusedMonitor
@@ -2120,13 +2120,23 @@ Item {
     return snap
   }
 
-  function startAsk(id, question, message, context, image, purpose) {
+  // What askContext saw, with the window's own address, which stays here:
+  // taken when the Ask is chosen and carried by an Ask that waits for a
+  // picture (askWindow), so that what is sent is of the window the question
+  // was asked about, not of the one the bar knows when the picture is done.
+  function askCapture(message, context, purpose) {
+    return { snapshot: root.askContext(message, context, purpose), address: String(root.cameFrom.address || "") }
+  }
+
+  // `captured` (askCapture) is the context of an Ask chosen earlier.
+  function startAsk(id, question, message, context, image, purpose, captured) {
     if (askSession.busy() || windowShot.active) return false
     var direct = !!id
     var target = direct ? Agents.canonicalId(id) : root.resolvedAgent
     if (direct && (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)
         || root.agentAvailability[target] !== true)) return false
-    var snapshot = root.askContext(message, context, purpose)
+    var made = captured && captured.snapshot ? captured : root.askCapture(message, context, purpose)
+    var snapshot = made.snapshot
     root.pendingAsk = { direct: direct, target: target, question: String(question || ""),
                         message: message, context: context, image: image, snapshot: snapshot, cwdWait: false }
     root.directAskAgent = direct ? target : ""
@@ -2138,7 +2148,7 @@ Item {
     // is a number another program may take. The address stays here, out of
     // what the agent is told.
     var pid = snapshot.window.pid || 0
-    var address = String(root.cameFrom.address || "")
+    var address = made.address
     var env = Sources.cwdEnv(pid)
     if (env && Sources.sameWindow(root.windows, address, pid)) {
       root.pendingAsk.cwdWait = true
@@ -2333,8 +2343,12 @@ Item {
       var data = ok ? String(text).replace(/\s+/g, "") : ""
       // No picture (the window gone, grim failing): the question goes as
       // text, and says so.
-      if (data) root.startAsk("", a.question, a.message, a.context, { mediaType: "image/jpeg", data: data }, a.purpose)
-      else root.startAsk("", a.question, a.question + "\n\n(The window could not be captured.)", "", undefined, a.purpose)
+      // Once this read has ended: the reader is still active while it
+      // reports, which startAsk refuses.
+      var image = data ? { mediaType: "image/jpeg", data: data } : undefined
+      var message = data ? a.message : a.question + "\n\n(The window could not be captured.)"
+      var context = data ? a.context : ""
+      Qt.callLater(function() { root.startAsk("", a.question, message, context, image, a.purpose, a.captured) })
     }
   }
 
