@@ -37,9 +37,10 @@ Item {
 
   function ensureWire(recreate) {
     if (recreate && reader.wire) {
-      reader.wire.connected = false
-      reader.wire.destroy()
+      var spent = reader.wire
       reader.wire = null
+      spent.connected = false
+      spent.destroy()
     }
     if (!reader.wire) reader.wire = socketType.createObject(reader, { path: reader.socketPath })
     return reader.wire
@@ -151,7 +152,8 @@ Item {
     if (reader.responseDone) reader.end(true, "")
   }
 
-  function disconnected() {
+  function disconnected(transport) {
+    if (transport && transport !== reader.wire) return
     if (!reader.active || reader.responseDone || reader.retryScheduled) return
     if (reader.attempts >= reader.maxReconnects) {
       reader.end(false, "socket disconnected")
@@ -184,24 +186,26 @@ Item {
         onRead: function(data) { reader.acceptLine(data) }
       }
       onConnectionStateChanged: {
+        if (transport !== reader.wire) return
         if (connected) {
           reader.retryScheduled = false
           retry.stop()
           reader.dispatch()
         } else {
-          reader.disconnected()
+          reader.disconnected(transport)
         }
       }
       onError: function(error) {
+        if (transport !== reader.wire) return
         if (connected) connected = false
-        reader.disconnected()
+        reader.disconnected(transport)
       }
     }
   }
 
   Timer {
     id: retry
-    interval: Math.min(400, 50 * Math.pow(2, Math.max(0, reader.attempts - 1)))
+    interval: Math.min(400, 200 * Math.pow(2, Math.max(0, reader.attempts - 1)))
     onTriggered: {
       reader.retryScheduled = false
       reader.connectOrSend()

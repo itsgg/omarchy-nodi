@@ -90,7 +90,7 @@ Item {
 
   Timer {
     id: restart
-    interval: 150
+    interval: 800
     onTriggered: server.running = true
   }
 
