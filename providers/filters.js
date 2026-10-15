@@ -136,6 +136,17 @@ function filterFor(query, settings) {
   return null
 }
 
+// A keyword with no space after it names the filter but does not run it.
+// The hint it makes fills the separating space on Enter or Tab.
+function bareFilterFor(query, settings) {
+  var m = String(query).match(/^\s*(\S+)$/)
+  if (!m) return null
+  var all = list(settings)
+  for (var i = 0; i < all.length; i++)
+    if (all[i].keyword.toLowerCase() === m[1].toLowerCase()) return all[i]
+  return null
+}
+
 // What Enter does, from the line's "action", through lib/Run.js like every
 // other row's; anything else is no action.
 function actionOf(a) {
@@ -540,7 +551,17 @@ var provider = {
   ],
   match: function(query, ctx) {
     var hit = filterFor(query, ctx.settings)
-    if (!hit) return rootRows(query, ctx)
+    if (!hit) {
+      var bare = bareFilterFor(query, ctx.settings)
+      if (bare) {
+        var name = bare.title || bare.keyword
+        return [{ key: "filter:" + bare.keyword + ":hint", title: name,
+                  subtitle: "Type " + bare.keyword + " and " + (bare.placeholder || "words"),
+                  icon: bare.icon || "󰈲", tier: "exact", kind: "hint", intent: "exactCommand",
+                  complete: bare.keyword + " ", copy: "", remember: false, group: name }]
+      }
+      return rootRows(query, ctx)
+    }
     var f = hit.filter
     var step = stepOf(f, ctx)
     if (step) return stepRows(f, hit.query, step, ctx)
