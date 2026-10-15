@@ -51,12 +51,14 @@ Everything Nodi reads, writes, starts and sends, and when.
   bar (`omarchy-shell shell call io.github.itsgg.nodi toast @file:...`).
 - Files named under `"home"` are watched continuously in the shell
   process and parsed as bounded JSONL snapshots; opening the bar starts no
-  source program. Nodi keeps the last valid snapshot through a missing,
-  partial or invalid replacement. A source is display-only unless its
-  config explicitly says `"trustedActions": true`. On each read of such a
-  source, Nodi uses `stat` and `id` to require the configured path itself
-  to be a regular non-symlink file owned by the current user and writable
-  by neither group nor world before accepting an executable action.
+  source program. Reads are capped before bytes reach the shell. Nodi may
+  keep stale display data through a missing, partial or invalid replacement,
+  but removes its executable capabilities immediately. A source is
+  display-only unless its config explicitly says `"trustedActions": true`.
+  On each read of such a source, Nodi checks the same opened descriptor and
+  its path before and after the read, requiring the same regular non-symlink
+  file owned by the current user and writable by neither group nor world
+  before accepting an executable action.
   Executable rows always show the exact command, ask before running and
   are not saved for replay. File ownership and mode do not stop another
   process running as the same user from changing the file; use a sandbox

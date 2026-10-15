@@ -12,7 +12,7 @@ const source = (more = {}) => Object.assign({
   id: "tasks", file: "/run/user/1000/tasks.jsonl", title: "Tasks", max: 4,
   priority: 10, trustedActions: false
 }, more);
-const safe = { path: "/run/user/1000/tasks.jsonl", regular: true, symlink: false, uid: 1000, ownerUid: 1000, mode: 0o600 };
+const safe = { path: "/run/user/1000/tasks.jsonl", sameFile: true, regular: true, symlink: false, uid: 1000, ownerUid: 1000, mode: 0o600 };
 
 test("JSONL rows inherit source groups and keep explicit groups, priorities and stable IDs", () => {
   const got = Home.parse([
@@ -23,9 +23,9 @@ test("JSONL rows inherit source groups and keep explicit groups, priorities and 
   assert.equal(got.valid, true);
   assert.equal(got.error, "");
   assert.deepEqual(plain(got.rows.map(r => [r.key, r.group, r.priority, r.remember])), [
-    ["home:tasks:one", "Tasks", 2, true],
-    ["home:tasks:two", "Due", 9, true],
-    ["home:tasks:#2", "Tasks", 0, false]
+    ["home:tasks:id:one", "Tasks", 2, true],
+    ["home:tasks:id:two", "Due", 9, true],
+    ["home:tasks:line:2", "Tasks", 0, false]
   ]);
 });
 
@@ -77,7 +77,7 @@ test("parser and merger enforce explicit byte, line, field, per-source and globa
   }), source(), safe);
   assert.deepEqual(plain([long.rows[0].key.length, long.rows[0].title.length, long.rows[0].subtitle.length,
     long.rows[0].group.length, long.rows[0].badge.length]),
-    [("home:tasks:".length + Home.MAX.id), Home.MAX.title, Home.MAX.subtitle, Home.MAX.group, Home.MAX.badge]);
+    [("home:tasks:id:".length + Home.MAX.id), Home.MAX.title, Home.MAX.subtitle, Home.MAX.group, Home.MAX.badge]);
   const many = Array.from({ length: Home.MAX_ROWS_PER_SOURCE + 20 }, (_, i) => JSON.stringify({ id: String(i), title: "R" + i })).join("\n");
   assert.equal(Home.parse(many, source({ max: 100000 }), safe).rows.length, Home.MAX_ROWS_PER_SOURCE);
   const snapshots = Array.from({ length: 8 }, (_, i) => {
@@ -121,13 +121,49 @@ test("home source rows follow immediate context and precede favourites while obe
     homeSources: [{ source: feed, snapshot }]
   }));
   const keys = rows.map(r => r.key);
-  assert.ok(keys.indexOf("undo:watched") < keys.indexOf("home:tasks:one"), "undo stays ahead");
-  assert.ok(keys.indexOf("selection:actions") < keys.indexOf("home:tasks:one"), "fresh selection stays ahead");
-  assert.ok(keys.indexOf("home:tasks:one") < keys.indexOf("app:favourite"), "watched rows precede favourites");
+  assert.ok(keys.indexOf("undo:watched") < keys.indexOf("home:tasks:id:one"), "undo stays ahead");
+  assert.ok(keys.indexOf("selection:actions") < keys.indexOf("home:tasks:id:one"), "fresh selection stays ahead");
+  assert.ok(keys.indexOf("home:tasks:id:one") < keys.indexOf("app:favourite"), "watched rows precede favourites");
 
-  const hidden = Prefs.hiddenRow(prefs, "home:tasks:one", { title: "Watched", provider: "home" });
+  const hidden = Prefs.hiddenRow(prefs, "home:tasks:id:one", { title: "Watched", provider: "home" });
   const without = Engine.home(config, services({
     history: {}, reminders: [], prefs: hidden, homeSources: [{ source: feed, snapshot }]
   }));
-  assert.equal(without.some(r => r.key === "home:tasks:one"), false);
+  assert.equal(without.some(r => r.key === "home:tasks:id:one"), false);
+});
+
+test("adversarial source groups cannot escape the watched slot or change rendered priority order", () => {
+  const first = source({ id: "first", title: "First", priority: 20, max: 10 });
+  const second = source({ id: "second", title: "Second", priority: 10, max: 10 });
+  const one = Home.parse([
+    '{"id":"a","title":"A","group":"Favourites","priority":9}',
+    '{"id":"b","title":"B","group":"Undo","priority":8}'
+  ].join("\n"), first, safe);
+  const two = Home.parse([
+    '{"id":"c","title":"C","group":"Undo","priority":7}',
+    '{"id":"d","title":"D","group":"Favourites","priority":6}'
+  ].join("\n"), second, safe);
+  const prefs = Object.assign(Prefs.empty(), {
+    favourites: [{ key: "app:favourite", s: { title: "Favourite", provider: "apps", run: { kind: "app", id: "favourite" } } }]
+  });
+  const rows = Engine.home(config, services({
+    history: {}, reminders: [], prefs, now: () => new Date(NOW),
+    undo: [{ key: "undo:real", title: "Undo real", run: { kind: "exec", argv: ["undo-tool"] }, at: NOW - 1000 }],
+    homeSources: [{ source: first, snapshot: one }, { source: second, snapshot: two }]
+  }));
+  assert.deepEqual(plain(rows.map(r => r.key).filter(k => k === "undo:real" || k === "app:favourite" || k.startsWith("home:"))), [
+    "undo:real",
+    "home:first:id:a", "home:first:id:b",
+    "home:second:id:c", "home:second:id:d",
+    "app:favourite"
+  ]);
+});
+
+test("rendering an empty home does not ask any source process to run", () => {
+  let requests = 0;
+  Engine.home(Object.assign({}, config, { providers: [] }), services({
+    history: {}, reminders: [], homeSources: [],
+    request() { requests++; throw new Error("unexpected producer request"); }
+  }));
+  assert.equal(requests, 0);
 });

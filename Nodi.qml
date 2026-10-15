@@ -36,7 +36,6 @@ import "lib/Appearance.js" as Appearance
 import "lib/Ansi.js" as Ansi
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
-import "lib/HomeSources.js" as HomeParser
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -745,22 +744,6 @@ Item {
       root.openRec.moved++
     root.shownQuery = root.queryNow()
     if (root.rows.length > 0) card.keepVisible(root.selectedIndex)
-  }
-
-  function scheduleHomeExpiry() {
-    var next = HomeParser.merge(watchedHome.snapshots, Date.now()).nextExpiry
-    homeExpiry.stop()
-    if (!next) return
-    homeExpiry.interval = Math.max(1, Math.min(2147483647, next - Date.now() + 1))
-    homeExpiry.start()
-  }
-
-  Timer {
-    id: homeExpiry
-    onTriggered: {
-      if (root.opened && root.queryNow().trim() === "" && !root.homeHeld) root.recompute()
-      root.scheduleHomeExpiry()
-    }
   }
 
   function move(delta) {
@@ -1929,7 +1912,6 @@ Item {
     id: watchedHome
     sources: root.config.home || []
     onUpdated: {
-      root.scheduleHomeExpiry()
       for (var i = 0; i < diagnostics.length; i++)
         console.warn("nodi: home source " + diagnostics[i].id + " (" + diagnostics[i].file + "): " + diagnostics[i].error)
       if (root.opened && !root.homeHeld && root.queryNow().trim() === "") root.recompute()

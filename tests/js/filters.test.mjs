@@ -94,6 +94,13 @@ test("what it may print: lines that are not rows are skipped; actions map to Nod
   assert.equal(F.parse('{"title": "' + "t".repeat(500) + '"}', f)[0].title.length, F.MAX.title);
 });
 
+test("a script filter query action keeps its full completion text", () => {
+  const query = "x " + "word ".repeat(100);
+  const [row] = F.parse(JSON.stringify({ title: "Long query", action: { query } }), { keyword: "x", title: "X" });
+  assert.equal(row.complete, query);
+  assert.ok(row.complete.length > 200);
+});
+
 test("a run that goes wrong says so; a bad action is no action", () => {
   const broken = Object.assign({}, cfg, { filters: [{ keyword: "b", title: "Broken", command: ["/usr/bin/false"] }] });
   const rows = Engine.run("b x", broken, services({ filter: read }));

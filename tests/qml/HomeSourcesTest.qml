@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import "../../components"
+import "../../lib/HomeSources.js" as Parser
 
 // A watched JSONL source keeps its last valid snapshot through a partial
 // write and then accepts an atomic replacement. Run only by tools/qs-test.sh
@@ -27,8 +28,11 @@ Item {
     var row = all.length && all[0].snapshot && all[0].snapshot.rows[0]
     return row && row.run ? row.run.kind : ""
   }
-  function command(script) {
-    writer.command = ["/usr/bin/bash", "-c", script, "nodi-home-sources-test", test.file]
+  function activeRows() {
+    return Parser.merge(watched.snapshots, Date.now()).rows.length
+  }
+  function command(script, value) {
+    writer.command = ["/usr/bin/bash", "-c", script, "nodi-home-sources-test", test.file, value || ""]
     writer.running = true
   }
   function finish() {
@@ -62,14 +66,28 @@ Item {
         test.check(row.confirm && row.showsCommand && !row.remember,
                    "a metadata-gated executable requires confirmation and is not replayable")
         test.phase = 5
-        watched.sources = [{
-          id: "test", file: test.file, title: "Test", max: 4,
-          priority: 0, trustedActions: false
-        }]
-      } else if (test.phase === 5 && test.runKind() === "") {
-        test.check(watched.snapshots.length === 0,
-                   "a trust downgrade drops the executable snapshot before rereading")
+        test.command('printf "%s\\n" \'{"id":"next","title":"Replacement","action":{"exec":["example-tool","arg"]}}\' > "$1"; chmod 666 -- "$1"')
+      } else if (test.phase === 5 && /trust changed/.test(test.diagnostic())) {
+        test.check(test.title() === "Replacement", "trust loss discarded display data")
+        test.check(test.runKind() === "", "filesystem trust loss retained executable capability")
         test.phase = 6
+        test.command('rm -f -- "$1"')
+      } else if (test.phase === 6 && /could not be read/.test(test.diagnostic())) {
+        test.check(test.title() === "Replacement", "a read failure discarded stale display data")
+        test.check(test.runKind() === "", "a read failure restored executable capability")
+        test.phase = 7
+        test.command('umask 077; /usr/bin/head -c 262145 /dev/zero | /usr/bin/tr "\\0" x > "$1"')
+      } else if (test.phase === 7 && /exceeds/.test(test.diagnostic())) {
+        test.check(test.title() === "Replacement", "an oversized read discarded stale display data")
+        test.check(test.runKind() === "", "an oversized read restored executable capability")
+        test.phase = 8
+        var expiry = new Date(Date.now() + 3000).toISOString()
+        test.command('rm -f -- "$1"; umask 077; printf "%s\\n" "$2" > "$1"',
+                     JSON.stringify({ id: "expires", title: "Expiring", expires: expiry }))
+      } else if (test.phase === 8 && test.title() === "Expiring" && test.activeRows() === 1) {
+        test.phase = 9
+      } else if (test.phase === 9 && test.activeRows() === 0) {
+        test.phase = 10
         test.finish()
       }
     }
@@ -97,7 +115,7 @@ Item {
 
   Timer {
     id: timeout
-    interval: 6000
+    interval: 20000
     onTriggered: {
       test.failures.push("timed out in phase " + test.phase + " with "
                          + test.title() + " / " + test.runKind() + " / " + test.diagnostic())

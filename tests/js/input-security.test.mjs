@@ -6,6 +6,7 @@ import { root } from "./load.mjs";
 
 const card = readFileSync(join(root, "components/Card.qml"), "utf8");
 const nodi = readFileSync(join(root, "Nodi.qml"), "utf8");
+const homeSources = readFileSync(join(root, "components/HomeSources.qml"), "utf8");
 
 test("the card keeps no editable TextInput alive", () => {
   assert.doesNotMatch(card, /\bTextInput\s*\{/);
@@ -57,4 +58,17 @@ test("a window's picture question is snapshotted when chosen, and sent as it was
   assert.equal((done.match(/a\.captured\)/g) || []).length, 1, "the capture sends that snapshot");
   assert.match(done, /Qt\.callLater\(function\(\) \{ root\.startAsk\(/, "after the reader has ended, which startAsk refuses while it reports");
   assert.doesNotMatch(done, /askContext|askCapture|cameFrom/, "nothing is read again when the picture is done");
+});
+
+test("watched files use FileView only for notifications and a bounded descriptor reader for bytes", () => {
+  const view = homeSources.match(/FileView\s*\{([\s\S]*?)\n\s*\}/);
+  assert.ok(view);
+  assert.match(view[1], /preload:\s*false/);
+  assert.match(view[1], /blockLoading:\s*true/);
+  assert.match(view[1], /blockAllReads:\s*true/);
+  assert.doesNotMatch(homeSources, /\.text\s*\(/);
+  assert.match(homeSources, /Parser\.readArgv\(/);
+
+  const open = nodi.slice(nodi.indexOf("  function open("), nodi.indexOf("  function close("));
+  assert.doesNotMatch(open, /watchedHome|readArgv|homeSourceReader/, "opening the bar does not start a watched-source process");
 });

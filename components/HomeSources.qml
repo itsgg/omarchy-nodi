@@ -2,9 +2,8 @@ import QtQuick
 import Quickshell.Io
 import "../lib/HomeSources.js" as Parser
 
-// One in-process FileView per configured JSONL home source. Valid snapshots
-// replace atomically; a malformed, missing, or half-written file leaves the
-// last valid snapshot in place and publishes a diagnostic.
+// FileView only reports changes. Reader opens each path once, bounds the bytes
+// before QML sees them, and validates trust against that same descriptor.
 Item {
   id: root
 
@@ -16,6 +15,14 @@ Item {
   property var _snapshots: []
   property var _diagnostics: []
   signal updated()
+
+  function scheduleExpiry() {
+    var next = Parser.merge(root._snapshots, Date.now()).nextExpiry
+    expiry.stop()
+    if (!next) return
+    expiry.interval = Math.max(1, Math.min(2147483647, next - Date.now() + 1))
+    expiry.start()
+  }
 
   function sameSource(a, b) {
     return !!a && !!b && a.id === b.id && a.file === b.file
@@ -41,6 +48,7 @@ Item {
     root._records = kept
     root._snapshots = snapshots
     root._diagnostics = diagnostics
+    root.scheduleExpiry()
     root.updated()
   }
 
@@ -51,16 +59,35 @@ Item {
       if (root.sameSource(root._records[i].source, source)) previous = root._records[i]
       else next.push(root._records[i])
     }
+    var usable = snapshot && snapshot.valid === true ? snapshot
+      : (previous ? Parser.displayOnly(previous.snapshot) : null)
     next.push({
       source: source,
-      snapshot: snapshot && snapshot.valid === true ? snapshot : (previous ? previous.snapshot : null),
+      snapshot: usable,
       error: String(error || "")
     })
     root._records = next
     root.publish()
   }
 
+  // A change or read attempt invalidates the old trust immediately. Display
+  // data may remain while the new read settles, but executable actions cannot.
+  function revoke(source, error) {
+    var previous = null
+    for (var i = 0; i < root._records.length; i++)
+      if (root.sameSource(root._records[i].source, source)) { previous = root._records[i]; break }
+    if (previous && previous.snapshot) root.record(source, Parser.displayOnly(previous.snapshot), error || previous.error)
+  }
+
   onSourcesChanged: root.publish()
+
+  Timer {
+    id: expiry
+    onTriggered: {
+      root.updated()
+      root.scheduleExpiry()
+    }
+  }
 
   Repeater {
     model: root.sources
@@ -69,22 +96,12 @@ Item {
       id: watched
       required property var modelData
       readonly property var source: modelData
-      property string pendingText: ""
       property bool reloadPending: false
 
-      function boundedText(value) {
-        var text = String(value || "")
-        return text.length > Parser.MAX_BYTES + 1 ? text.slice(0, Parser.MAX_BYTES + 1) : text
-      }
-
-      function parse(info) {
-        var parsed = Parser.parse(watched.pendingText, watched.source, info)
-        root.record(watched.source, parsed.valid ? parsed : null, parsed.error)
-      }
-
       function readSettled() {
-        if (metadata.busy) { watched.reloadPending = true; return }
-        file.reload()
+        root.revoke(watched.source, "")
+        if (reader.busy) { watched.reloadPending = true; return }
+        reader.run(Parser.readArgv(watched.source.file), watched.source.file)
       }
 
       Timer {
@@ -98,32 +115,19 @@ Item {
         path: watched.source.file
         watchChanges: true
         printErrors: false
-        onLoaded: {
-          watched.pendingText = watched.boundedText(text())
-          if (watched.source.trustedActions === true) {
-            metadata.run([
-              "/usr/bin/bash", "-c",
-              'set -e; [ -f "$1" ] && [ ! -L "$1" ]; /usr/bin/stat -c "%u %a" -- "$1"; /usr/bin/id -u',
-              "nodi-home-source-metadata", watched.source.file
-            ], null)
-          } else {
-            watched.parse(null)
-          }
+        preload: false
+        blockLoading: true
+        blockAllReads: true
+        onFileChanged: {
+          root.revoke(watched.source, "")
+          settle.restart()
         }
-        onLoadFailed: function(error) {
-          var said = error === FileViewError.FileNotFound ? "file not found"
-            : error === FileViewError.PermissionDenied ? "permission denied"
-            : error === FileViewError.NotAFile ? "not a regular file"
-            : "file could not be read"
-          root.record(watched.source, null, said)
-        }
-        onFileChanged: settle.restart()
       }
 
       Reader {
-        id: metadata
+        id: reader
         timeoutMs: 1000
-        maxBytes: 128
+        maxBytes: Parser.MAX_BYTES + 1024
         terminateLines: false
         onFinished: function(text, ok) {
           if (watched.reloadPending) {
@@ -131,21 +135,17 @@ Item {
             settle.restart()
             return
           }
-          var info = null
-          if (ok) {
-            var fields = text.trim().split(/\s+/)
-            if (fields.length === 3) {
-              info = {
-                path: watched.source.file,
-                regular: true,
-                symlink: false,
-                uid: Number(fields[0]),
-                ownerUid: Number(fields[2]),
-                mode: parseInt(fields[1], 8)
-              }
-            }
+          if (!ok) {
+            root.record(watched.source, null, "file could not be read")
+            return
           }
-          watched.parse(info)
+          var read = Parser.readResult(text, watched.source.file)
+          if (!read.ok) {
+            root.record(watched.source, null, read.error)
+            return
+          }
+          var parsed = Parser.parse(read.text, watched.source, read.info)
+          root.record(watched.source, parsed.valid ? parsed : null, parsed.error || read.error)
         }
       }
 

@@ -48,20 +48,23 @@ expired row disappears at its expiry time.
 An `id` is stable within its source, and the stored key combines both.
 A row without one can be shown and used but is never remembered, hidden
 or replayed. Duplicate IDs after the first are treated the same way.
-Nodi keeps the last valid snapshot if a replacement is incomplete or
-invalid and reports the file diagnostic in its log. A file is limited to
-256 KB, a line to 128 KB, a source to 100 accepted rows, all sources to
-500 rows and the config to 16 sources. Text, previews, nesting, action
-counts and command arguments have their own bounds too.
+Nodi keeps the display data from the last valid snapshot if a replacement
+is incomplete or invalid and reports the file diagnostic in its log.
+Executable capabilities are removed as soon as a file changes or a read or
+trust check fails. Reads are capped at 256 KB plus one byte before their
+contents reach Nodi; a line is limited to 128 KB, a source to 100 accepted
+rows, all sources to 500 rows and the config to 16 sources. Text, previews,
+nesting, action counts and command arguments have their own bounds too.
 
 A source is display-only by default. Copy, query and safe web, mail or
 absolute-path opens still work; executable and paste actions are removed.
-To allow `exec`, set `"trustedActions": true` on the source. Nodi accepts
-one only when the expanded path itself is a regular non-symlink file owned
-by the current user with no group or world write bit. Every executable
-row or secondary action still requires confirmation, shows its exact
-command and is never saved as replayable history or a favourite. Source
-data cannot turn those rules off.
+To allow `exec`, set `"trustedActions": true` on the source. Nodi opens the
+path once and accepts one only when that descriptor and the path before and
+after the bounded read identify the same regular non-symlink file, owned by
+the current user with no group or world write bit. Every executable row or
+secondary action still requires confirmation, shows its exact command and
+is never saved as replayable history or a favourite. Source data cannot
+turn those rules off.
 
 Those checks do not prove that another process running as the same user
 cannot replace or rewrite the file. Keep a trusted producer in a sandbox
