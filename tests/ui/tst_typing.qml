@@ -19,6 +19,7 @@ Item {
     when: windowShown
 
     function test_each_key_reads_its_own_query() {
+      verify(String(card.input).indexOf("QQuickTextEdit") !== -1, "the query is a clipboard-safe TextEdit")
       fake.probe = function() { return card.composedNow() }
       fake.calls = []
       card.input.forceActiveFocus()
@@ -30,6 +31,16 @@ Item {
       keyClick(Qt.Key_C)
       seen = fake.calls.filter(function(c) { return c[0] === "queryChanged" }).map(function(c) { return c[1] })
       compare(seen[seen.length - 1], "acb", "typed in the middle, read in the middle")
+    }
+
+    function test_palette_uses_the_same_safe_editor() {
+      verify(String(card.paletteInput).indexOf("QQuickTextEdit") !== -1, "the action filter is a clipboard-safe TextEdit")
+      fake.paletteOpen = true
+      card.paletteInput.forceActiveFocus()
+      keyClick(Qt.Key_F)
+      compare(card.paletteInput.text, "f")
+      card.paletteInput.text = ""
+      fake.paletteOpen = false
     }
 
     // Naming an alias, the empty field asks for a word, not a search

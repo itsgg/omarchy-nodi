@@ -195,7 +195,7 @@ BorderSurface {
         font.pixelSize: Math.round(nodi.inputFont * 1.05)
       }
 
-      TextInput {
+      TextEdit {
         id: input
         // Under Ctrl+K its own field takes this one's place, so the query
         // waits here as it was (ROADMAP 52).
@@ -210,6 +210,8 @@ BorderSurface {
         selectedTextColor: nodi.selectedText
         font.family: nodi.fontFamily
         font.pixelSize: nodi.inputFont
+        textFormat: TextEdit.PlainText
+        wrapMode: TextEdit.NoWrap
         clip: true
         focus: true
         onTextChanged: nodi.queryChanged()
@@ -239,16 +241,32 @@ BorderSurface {
         Keys.onPressed: function(event) {
           // From the modifiers too, so a Ctrl already down when the bar opens counts.
           nodi.ctrlHeld = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
+          if (event.matches(StandardKey.Paste)) {
+            nodi.pasteInput("input")
+            event.accepted = true
+            return
+          }
           if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
         }
         // While Ctrl is held the first nine rows show the digit that runs them.
         Keys.onReleased: function(event) { if (event.key === Qt.Key_Control) nodi.ctrlHeld = false }
         onActiveFocusChanged: if (!activeFocus) nodi.ctrlHeld = false
+
+        MouseArea {
+          anchors.fill: parent
+          acceptedButtons: Qt.MiddleButton
+          onPressed: function(mouse) { mouse.accepted = true }
+        }
+        DropArea {
+          anchors.fill: parent
+          onEntered: function(drag) { drag.accepted = true }
+          onDropped: function(drop) { drop.accepted = true }
+        }
       }
 
       // What is typed while Ctrl+K is up: it filters the actions, by the
       // words that start theirs.
-      TextInput {
+      TextEdit {
         id: paletteInput
         visible: nodi.paletteOpen
         anchors.left: promptGlyph.right
@@ -260,6 +278,8 @@ BorderSurface {
         selectedTextColor: nodi.selectedText
         font.family: nodi.fontFamily
         font.pixelSize: nodi.inputFont
+        textFormat: TextEdit.PlainText
+        wrapMode: TextEdit.NoWrap
         clip: true
         onTextChanged: nodi.paletteTyped(text)
         Accessible.name: "Actions for " + (nodi.paletteRow ? nodi.paletteRow.title : "the row")
@@ -280,7 +300,23 @@ BorderSurface {
 
         Keys.priority: Keys.BeforeItem
         Keys.onPressed: function(event) {
+          if (event.matches(StandardKey.Paste)) {
+            nodi.pasteInput("palette")
+            event.accepted = true
+            return
+          }
           if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
+        }
+
+        MouseArea {
+          anchors.fill: parent
+          acceptedButtons: Qt.MiddleButton
+          onPressed: function(mouse) { mouse.accepted = true }
+        }
+        DropArea {
+          anchors.fill: parent
+          onEntered: function(drag) { drag.accepted = true }
+          onDropped: function(drop) { drop.accepted = true }
         }
       }
 

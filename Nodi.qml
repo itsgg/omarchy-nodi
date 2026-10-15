@@ -481,6 +481,34 @@ Item {
     }
   }
 
+  // Qt 6.11's editable TextInput reads every foreign clipboard offer when
+  // it changes. Card uses TextEdit instead and sends its explicit paste keys
+  // here, where the shared Reader enforces both a deadline and a byte cap.
+  function pasteInput(target) {
+    if (!pasteReader.busy) pasteReader.run(Sources.pasteArgv(), { target: target })
+  }
+
+  function insertPaste(field, text) {
+    var start = field.selectionStart
+    var end = field.selectionEnd
+    if (end > start) field.remove(start, end)
+    field.insert(start, String(text || "").replace(/[\r\n]+/g, " "))
+  }
+
+  Reader {
+    id: pasteReader
+    timeoutMs: 2000
+    maxBytes: 65536
+    onFinished: function(text, ok, tag) {
+      if (!ok) {
+        root.toast(pasteReader.overflowed ? "Paste is larger than 64 KiB" : "Could not read the clipboard", "")
+        return
+      }
+      if (!root.opened || !tag || (tag.target === "palette" && !root.paletteOpen)) return
+      root.insertPaste(tag.target === "palette" ? card.paletteInput : input, text)
+    }
+  }
+
   readonly property int keepQueryMs: 120000
   property real closedAt: 0
 

@@ -115,6 +115,10 @@ test("clipboard and launcher hides", () => {
   assert.deepEqual(plain(S.hidden("a.desktop\n# comment\n\nb\n")), { a: true, b: true });
 });
 
+test("an explicit paste reads text only when it is requested", () => {
+  assert.deepEqual(plain(S.pasteArgv()), ["/usr/bin/wl-paste", "--no-newline", "--type", "text"]);
+});
+
 test("directory: a name with a newline is left out, not misread", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-dir-"));
   try {
