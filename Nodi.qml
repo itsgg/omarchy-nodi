@@ -36,6 +36,7 @@ import "lib/Appearance.js" as Appearance
 import "lib/Ansi.js" as Ansi
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
+import "lib/HomeSources.js" as HomeParser
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -78,6 +79,7 @@ Item {
   readonly property bool captures: true
   readonly property string home: Quickshell.env("HOME")
   readonly property string user: Quickshell.env("USER")
+  readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR")
   // The shell assigns this on load (shell.qml's plugin loader); readonly
   // would make that assignment throw and stop the shell wiring Nodi in.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy"
@@ -97,7 +99,8 @@ Item {
   property bool userConfigGood: false   // a nodi.json has parsed since load
   property string configWarned: ""      // the error last notified, so each is said once
   property string hotkeyWarned: ""
-  readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir)
+  readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir,
+                                              { home: root.home, runtimeDir: root.runtimeDir })
 
   property var zones: ({})          // { "Asia/Tokyo": { offset: 540, abbr: "JST" } }
   property real zonesFetchedAt: 0
@@ -678,6 +681,7 @@ Item {
       filterStep: root.filterStep,
       session: root.closedAt,
       prefs: root.prefs,
+      homeSources: watchedHome.snapshots,
       ask: { phase: askSession.phase, question: askSession.question, message: askSession.message, answer: askSession.answer, error: askSession.error,
              agentId: typeof askSession.agent === "string" ? askSession.agent : "",
              agent: askSession.agentName, model: askSession.modelName, status: root.askStatus, activity: askSession.activity,
@@ -741,6 +745,22 @@ Item {
       root.openRec.moved++
     root.shownQuery = root.queryNow()
     if (root.rows.length > 0) card.keepVisible(root.selectedIndex)
+  }
+
+  function scheduleHomeExpiry() {
+    var next = HomeParser.merge(watchedHome.snapshots, Date.now()).nextExpiry
+    homeExpiry.stop()
+    if (!next) return
+    homeExpiry.interval = Math.max(1, Math.min(2147483647, next - Date.now() + 1))
+    homeExpiry.start()
+  }
+
+  Timer {
+    id: homeExpiry
+    onTriggered: {
+      if (root.opened && root.queryNow().trim() === "" && !root.homeHeld) root.recompute()
+      root.scheduleHomeExpiry()
+    }
   }
 
   function move(delta) {
@@ -1901,6 +1921,20 @@ Item {
   Timer { id: hotkeyRecheck; interval: 5000; onTriggered: root.ensureHotkey() }
 
   // ---------------------------------------------------------------- config
+
+  // External JSONL rows are watched continuously by FileView delegates. They
+  // are snapshots only: opening the bar starts no source program and does not
+  // wait for a source read.
+  HomeSources {
+    id: watchedHome
+    sources: root.config.home || []
+    onUpdated: {
+      root.scheduleHomeExpiry()
+      for (var i = 0; i < diagnostics.length; i++)
+        console.warn("nodi: home source " + diagnostics[i].id + " (" + diagnostics[i].file + "): " + diagnostics[i].error)
+      if (root.opened && !root.homeHeld && root.queryNow().trim() === "") root.recompute()
+    }
+  }
 
   // The theme's sixteen colours, which a file's coloured lines are drawn
   // in (lib/Ansi.js, ROADMAP 82): read where the shell reads its theme,

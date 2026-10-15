@@ -16,6 +16,7 @@
   "scripts": { "dirs": ["~/.config/omarchy/nodi/scripts"] },
   "filters": [],
   "answers": [],
+  "home": [],
   "keywords": [
     { "keyword": "g", "title": "Search Google", "open": "https://www.google.com/search?q={q}", "suggest": true },
     { "keyword": "yt", "title": "Search YouTube", "open": "https://www.youtube.com/results?search_query={q}", "suggest": true },

@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/ExternalRows.js" as External
 .import "../lib/Score.js" as Score
 .import "../lib/Match.js" as Match
 
@@ -74,9 +75,9 @@
 var LIMIT = 50
 // A list is read once and searched here, so it may hold more.
 var LIST_LIMIT = 1000
-var MAX = { title: 200, subtitle: 300, badge: 24, markdown: 65536, id: 200, risk: 500 }
+var MAX = External.MAX
 
-function text(v, max) { return typeof v === "string" ? v.slice(0, max) : "" }
+function text(v, max) { return External.text(v, max) }
 
 // "10m", "30s", "2h", "500ms" in milliseconds, held between `min` and
 // `max`; `fallback` for anything else.
@@ -150,20 +151,12 @@ function bareFilterFor(query, settings) {
 // What Enter does, from the line's "action", through lib/Run.js like every
 // other row's; anything else is no action.
 function actionOf(a) {
-  if (!a || typeof a !== "object") return {}
-  if (Array.isArray(a.exec)) return { run: Run.exec(a.exec) }
-  if (typeof a.open === "string") return { run: Run.open(a.open) }
-  if (typeof a.copy === "string" && a.copy) return { run: Run.copy(a.copy), copy: a.copy }
-  if (typeof a.paste === "string" && a.paste) return { run: Run.paste(a.paste), copy: a.paste }
-  if (typeof a.query === "string") return { complete: a.query }
-  if (typeof a.next === "string") return { next: a.next.slice(0, 4096) }
-  return {}
+  return External.actionOf(a)
 }
 
 // A theme's icon by name, or an absolute path; anything else is none.
 function iconOf(v) {
-  var s = typeof v === "string" ? v : ""
-  return s.charAt(0) === "/" || /^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(s) ? s.slice(0, 200) : ""
+  return External.iconOf(v)
 }
 
 // A step on: what Enter hands the program's next run.
@@ -174,17 +167,11 @@ function nextOf(f, pick, info, retv) {
 // How a line asks before it runs: { confirm, confirmWord }. true is a
 // second Enter; a word is that word, typed (lib/Rows.js checks its shape).
 function confirmOf(c) {
-  if (c === true) return { confirm: true, confirmWord: "" }
-  if (typeof c === "string" && c) return { confirm: true, confirmWord: c }
-  return { confirm: false, confirmWord: "" }
+  return External.confirmOf(c)
 }
 
 function previewOf(p) {
-  if (typeof p === "string") return p ? { markdown: p.slice(0, MAX.markdown) } : null
-  if (!p || typeof p !== "object") return null
-  var out = { title: text(p.title, MAX.title), subtitle: text(p.subtitle, MAX.subtitle) }
-  if (typeof p.markdown === "string") out.markdown = p.markdown.slice(0, MAX.markdown)
-  return out.title || out.subtitle || out.markdown ? out : null
+  return External.previewOf(p)
 }
 
 // The program's output as rows for the filter `f`; null when nothing in it

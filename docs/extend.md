@@ -6,6 +6,68 @@ Nodi, off until you name them. `nodi` works the bar from a terminal or a
 script, and `nodi mcp` lets a coding agent use it. Keywords and snippets,
 which need no program, are in [Settings](settings.md#keywords-and-snippets).
 
+## Watched home sources
+
+A program that already writes state can place rows on Nodi's empty home
+without being started by Nodi. Name its JSONL file in `nodi.json`:
+
+```jsonc
+"home": [
+  {
+    "id": "tasks",
+    "file": "$XDG_RUNTIME_DIR/example/home.jsonl",
+    "title": "Tasks",
+    "max": 4,
+    "priority": 20
+  }
+]
+```
+
+`file` must expand to an absolute path. Nodi expands `~`, `$HOME`,
+`${HOME}`, `$XDG_RUNTIME_DIR` and `${XDG_RUNTIME_DIR}` at the start of
+the path. It watches the file in the shell process; opening the bar starts
+no source program. Replace the file atomically so Nodi never has to see a
+partial write:
+
+```sh
+tmp="$XDG_RUNTIME_DIR/example/home.jsonl.new"
+printf '%s\n' '{"id":"renew","title":"Renew passport","group":"Due","priority":20}' > "$tmp"
+chmod 600 "$tmp"
+mv -f -- "$tmp" "$XDG_RUNTIME_DIR/example/home.jsonl"
+```
+
+Each non-empty line is one JSON object. It may have `id`, `title`,
+`subtitle`, `icon`, an absolute `image`, `badge`, `group`, `priority`,
+`expires` (an ISO 8601 time with a zone), `preview`, `action`, `confirm`,
+`risk` and `actions`. Actions use the same `exec`, `open`, `copy` and
+`query` forms as script-filter rows. Source priority is considered first,
+then row priority and file order. Watched rows come after immediate rows
+such as an undo, fresh selection or meeting, and before favourites. An
+expired row disappears at its expiry time.
+
+An `id` is stable within its source, and the stored key combines both.
+A row without one can be shown and used but is never remembered, hidden
+or replayed. Duplicate IDs after the first are treated the same way.
+Nodi keeps the last valid snapshot if a replacement is incomplete or
+invalid and reports the file diagnostic in its log. A file is limited to
+256 KB, a line to 128 KB, a source to 100 accepted rows, all sources to
+500 rows and the config to 16 sources. Text, previews, nesting, action
+counts and command arguments have their own bounds too.
+
+A source is display-only by default. Copy, query and safe web, mail or
+absolute-path opens still work; executable and paste actions are removed.
+To allow `exec`, set `"trustedActions": true` on the source. Nodi accepts
+one only when the expanded path itself is a regular non-symlink file owned
+by the current user with no group or world write bit. Every executable
+row or secondary action still requires confirmation, shows its exact
+command and is never saved as replayable history or a favourite. Source
+data cannot turn those rules off.
+
+Those checks do not prove that another process running as the same user
+cannot replace or rewrite the file. Keep a trusted producer in a sandbox
+or other policy fence that permits it to write only its own source file;
+Nodi cannot verify that external policy.
+
 ## Script commands
 
 Script commands are executable files in `~/.config/omarchy/nodi/scripts`

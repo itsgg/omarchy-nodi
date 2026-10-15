@@ -49,6 +49,18 @@ Everything Nodi reads, writes, starts and sends, and when.
   A script of Nodi's says one by writing its words to a file in a folder
   of `$XDG_RUNTIME_DIR` only you can read, and naming the file to the
   bar (`omarchy-shell shell call io.github.itsgg.nodi toast @file:...`).
+- Files named under `"home"` are watched continuously in the shell
+  process and parsed as bounded JSONL snapshots; opening the bar starts no
+  source program. Nodi keeps the last valid snapshot through a missing,
+  partial or invalid replacement. A source is display-only unless its
+  config explicitly says `"trustedActions": true`. On each read of such a
+  source, Nodi uses `stat` and `id` to require the configured path itself
+  to be a regular non-symlink file owned by the current user and writable
+  by neither group nor world before accepting an executable action.
+  Executable rows always show the exact command, ask before running and
+  are not saved for replay. File ownership and mode do not stop another
+  process running as the same user from changing the file; use a sandbox
+  or policy fence around a trusted producer. Nodi cannot verify one.
 - A command a row runs that fails is reported in that toast, "<row>
   failed": a command of Nodi's own rows or a script filter's with the last
   line of errors it wrote (one that fails without a word, or a program
