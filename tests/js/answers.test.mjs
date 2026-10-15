@@ -373,6 +373,18 @@ test("home: an empty bar shows immediate reminders before recent rows", () => {
   assert.deepEqual(plain(run("", { history: {} }).map(r => r.provider)), Array(5).fill("starter"), "nothing run yet: only what to try (ROADMAP 77)");
 });
 
+test("home: a distant reminder does not displace a favourite", () => {
+  const Run = load("lib/Run.js");
+  const Prefs = load("lib/Prefs.js");
+  const t = now().getTime();
+  const snap = { title: "Firefox", subtitle: "", icon: "", kind: "app", provider: "apps", run: Run.app("firefox") };
+  const prefs = Prefs.toggledFavourite(Prefs.empty(), "app:firefox", snap);
+  const reminders = [{ id: "later", at: t + 30 * 86400000, set: t, message: "Renew passport" }];
+  const rows = run("", { history: {}, prefs, reminders });
+  assert.equal(rows[0].key, "app:firefox");
+  assert.ok(rows.some(r => r.key === "reminder:later"), "the reminder remains on home below saved work");
+});
+
 test("a city is looked up as the table's own key, never an Object method", () => {
   assert.ok(!run("constructor time").some(r => r.provider === "time" && /Looking up/.test(r.title)));
 });

@@ -15,6 +15,8 @@ test("the card keeps no editable TextInput alive", () => {
 test("all native paste paths are replaced by the bounded reader", () => {
   assert.match(nodi, /timeoutMs:\s*2000/);
   assert.match(nodi, /maxBytes:\s*65536/);
+  assert.match(nodi, /id:\s*pasteReader[\s\S]*?terminateLines:\s*false/,
+    "explicit paste keeps exact clipboard text instead of Reader's synthetic line ending");
   assert.doesNotMatch(card, /\bReader\s*\{/);
   assert.equal((card.match(/StandardKey\.Paste/g) || []).length, 2);
   assert.equal((card.match(/acceptedButtons:\s*Qt\.MiddleButton/g) || []).length, 2);

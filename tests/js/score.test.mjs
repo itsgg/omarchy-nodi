@@ -99,26 +99,22 @@ test("kind decides between rows named equally well", () => {
   assert.ok(Score.score("prefix", "hint") < Score.score("keyword", "app"), "a hint never beats an app it names");
 });
 
-test("structured rank keeps explicit intent above learning and compares each field in order", () => {
+test("structured rank keeps explicit intent above the old score, which still orders one intent", () => {
   const r = (intent, extra = {}) => Score.rank(Object.assign({
     intent, tier: "exact", pick: 0, kind: "item", habit: 0,
-    fit: 0, local: 0, order: 0, seq: 0
+    fit: 0, local: 0, score: 0, order: 0, seq: 0
   }, extra));
-  const intents = ["alias", "mode", "exactCommand", "semantic", "commandArgs", "ordinary", "hint", "status"];
+  const intents = ["userAlias", "alias", "mode", "exactCommand", "semantic", "commandArgs", "ordinary", "hint", "status"];
   for (let i = 1; i < intents.length; i++)
-    assert.ok(Score.compare(r(intents[i - 1], { tier: "fuzzy" }),
-                            r(intents[i], { pick: Score.PICK_MAX, kind: "answer", habit: Score.HABIT_MAX, fit: 1, local: 1000 })) < 0,
+    assert.ok(Score.compare(r(intents[i - 1], { score: -1000 }),
+                            r(intents[i], { score: 1000 })) < 0,
       intents[i - 1] + " stays above " + intents[i]);
-  assert.ok(Score.compare(r("ordinary", { tier: "exact" }), r("ordinary", { tier: "prefix", pick: 10 })) < 0, "match tier first");
-  assert.ok(Score.compare(r("ordinary", { pick: 1, kind: "status" }), r("ordinary", { kind: "answer" })) < 0, "query-specific pick before kind");
-  assert.ok(Score.compare(r("ordinary", { kind: "app" }), r("ordinary", { kind: "item", habit: 1 })) < 0, "kind before general habit");
-  assert.ok(Score.compare(r("ordinary", { habit: 1 }), r("ordinary", { fit: 1 })) < 0, "habit before title fit");
-  assert.ok(Score.compare(r("ordinary", { fit: 1 }), r("ordinary", { local: 100 })) < 0, "fit before provider-local order");
-  assert.ok(Score.compare(r("ordinary", { local: 2 }), r("ordinary", { local: 1 })) < 0, "larger local rank first");
+  assert.ok(Score.compare(r("ordinary", { score: 11 }), r("ordinary", { score: 10 })) < 0,
+    "the established tier, kind, learning, fit and provider score remains one numeric order");
   assert.ok(Score.compare(r("ordinary", { order: 1 }), r("ordinary", { order: 2 })) < 0, "provider order breaks ties");
   assert.ok(Score.compare(r("ordinary", { seq: 1 }), r("ordinary", { seq: 2 })) < 0, "stable sequence last");
-  assert.equal(Score.rank({ intent: "made-up", pick: Infinity, local: "high" }).intent, "ordinary");
-  assert.deepEqual([Score.rank({ pick: Infinity, local: "high" }).pick, Score.rank({ pick: Infinity, local: "high" }).local], [0, 0]);
+  assert.equal(Score.rank({ intent: "made-up", score: Infinity }).intent, "ordinary");
+  assert.equal(Score.rank({ score: Infinity }).score, 0);
 });
 
 test("habit: a use that halves every 30 days, growing with its log up to HABIT_MAX (ROADMAP 38)", () => {

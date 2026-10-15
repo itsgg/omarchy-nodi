@@ -63,7 +63,7 @@ export const intended = [
   ["omarchy update", "omarchy:omarchy-update", "name"],
   // Initials and letters in order.
   ["lo c", "app:libreoffice-calc", "initials"],
-  ["lo w", ["app:libreoffice-writer", "omarchy:omarchy-weather-location"], "initials"],
+  ["lo w", "app:libreoffice-writer", "initials"],
   ["gcal", "app:Google Calendar", "inorder"],
   ["tg", "app:Telegram", "inorder"],
   ["slk", "app:Slack", "inorder"],

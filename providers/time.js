@@ -371,6 +371,7 @@ var provider = {
     // "sun" or "wed" alone is a guess at a date, never above an app of that
     // name; a date with a number or a relative word is an answer.
     var sure = /\d|today|tomorrow|yesterday|next|last|this|coming|christmas|xmas|new year|until|since|ago|from now/.test(q)
+    if (!sure) for (var i = 0; i < dates.length; i++) dates[i].guess = true
     return Score.answers(dates, sure ? "exact" : "keyword")
   }
 }

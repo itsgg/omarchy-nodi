@@ -20,6 +20,14 @@ BorderSurface {
   function composedNow() {
     return input.preeditText !== "" ? input.text.slice(0, input.cursorPosition) + input.preeditText + input.text.slice(input.cursorPosition) : input.text
   }
+  function revealCursor(viewport, editor) {
+    var left = editor.cursorRectangle.x
+    var right = left + editor.cursorRectangle.width
+    var limit = Math.max(0, viewport.contentWidth - viewport.width)
+    if (left < viewport.contentX) viewport.contentX = Math.max(0, left)
+    else if (right > viewport.contentX + viewport.width)
+      viewport.contentX = Math.min(limit, right - viewport.width)
+  }
   width: nodi.cardWidth
   height: contentTopInset + contentBottomInset + layout.implicitHeight
   radius: nodi.cornerRadius
@@ -195,8 +203,9 @@ BorderSurface {
         font.pixelSize: Math.round(nodi.inputFont * 1.05)
       }
 
-      TextEdit {
-        id: input
+      Flickable {
+        id: inputViewport
+        objectName: "inputViewport"
         // Under Ctrl+K its own field takes this one's place, so the query
         // waits here as it was (ROADMAP 52).
         visible: !nodi.paletteOpen
@@ -204,119 +213,147 @@ BorderSurface {
         anchors.leftMargin: Style.spacing.xxl
         anchors.right: modeChip.visible ? modeChip.left : (helpHint.visible ? helpHint.left : parent.right)
         anchors.rightMargin: Style.spacing.md
-        anchors.verticalCenter: parent.verticalCenter
-        color: nodi.foreground
-        selectionColor: nodi.selectedBackground
-        selectedTextColor: nodi.selectedText
-        font.family: nodi.fontFamily
-        font.pixelSize: nodi.inputFont
-        textFormat: TextEdit.PlainText
-        wrapMode: TextEdit.NoWrap
+        height: parent.height
         clip: true
-        focus: true
-        onTextChanged: nodi.queryChanged()
-        onPreeditTextChanged: nodi.queryChanged()
-        Accessible.name: "Nodi"
-        Accessible.searchEdit: true
-        Accessible.description: card.selectedSpoken
-        // Hidden under Ctrl+K, and so from a screen reader too.
-        Accessible.ignored: !visible
+        interactive: false
+        boundsBehavior: Flickable.StopAtBounds
+        contentWidth: Math.max(width, input.contentWidth)
+        contentHeight: height
 
-        Text {
-          textFormat: Text.PlainText
-          anchors.fill: parent
-          verticalAlignment: Text.AlignVCenter
-          // Not over a composition either (Sonnet 2026-10-07: it drew on it).
-          objectName: "placeholder"
-          visible: !card.composed
-          // Naming an alias, the field takes a word, not a search: it
-          // suggested "uuid" there (2026-10-10, driven live).
-          text: nodi.aliasRow ? "A word for " + String(nodi.aliasRow.title || "this row") : (nodi.placeholder || "Search")
-          color: nodi.secondary
-          font: input.font
-          elide: Text.ElideRight
-        }
-
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: function(event) {
-          // From the modifiers too, so a Ctrl already down when the bar opens counts.
-          nodi.ctrlHeld = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
-          if (event.matches(StandardKey.Paste)) {
-            nodi.pasteInput("input")
-            event.accepted = true
-            return
+        TextEdit {
+          id: input
+          width: inputViewport.width
+          y: Math.round((inputViewport.height - height) / 2)
+          color: nodi.foreground
+          selectionColor: nodi.selectedBackground
+          selectedTextColor: nodi.selectedText
+          font.family: nodi.fontFamily
+          font.pixelSize: nodi.inputFont
+          textFormat: TextEdit.PlainText
+          wrapMode: TextEdit.NoWrap
+          focus: true
+          onTextChanged: {
+            nodi.queryChanged()
+            card.revealCursor(inputViewport, input)
           }
-          if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
-        }
-        // While Ctrl is held the first nine rows show the digit that runs them.
-        Keys.onReleased: function(event) { if (event.key === Qt.Key_Control) nodi.ctrlHeld = false }
-        onActiveFocusChanged: if (!activeFocus) nodi.ctrlHeld = false
+          onPreeditTextChanged: nodi.queryChanged()
+          onCursorRectangleChanged: card.revealCursor(inputViewport, input)
+          Accessible.name: "Nodi"
+          Accessible.searchEdit: true
+          Accessible.description: card.selectedSpoken
+          // Hidden under Ctrl+K, and so from a screen reader too.
+          Accessible.ignored: !inputViewport.visible
 
-        MouseArea {
-          anchors.fill: parent
-          acceptedButtons: Qt.MiddleButton
-          onPressed: function(mouse) { mouse.accepted = true }
-        }
-        DropArea {
-          anchors.fill: parent
-          onEntered: function(drag) { drag.accepted = true }
-          onDropped: function(drop) { drop.accepted = true }
+          Text {
+            textFormat: Text.PlainText
+            anchors.fill: parent
+            verticalAlignment: Text.AlignVCenter
+            // Not over a composition either (Sonnet 2026-10-07: it drew on it).
+            objectName: "placeholder"
+            visible: !card.composed
+            // Naming an alias, the field takes a word, not a search: it
+            // suggested "uuid" there (2026-10-10, driven live).
+            text: nodi.aliasRow ? "A word for " + String(nodi.aliasRow.title || "this row") : (nodi.placeholder || "Search")
+            color: nodi.secondary
+            font: input.font
+            elide: Text.ElideRight
+          }
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function(event) {
+            // From the modifiers too, so a Ctrl already down when the bar opens counts.
+            nodi.ctrlHeld = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
+            if (event.matches(StandardKey.Paste)) {
+              nodi.pasteInput("input")
+              event.accepted = true
+              return
+            }
+            if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
+          }
+          // While Ctrl is held the first nine rows show the digit that runs them.
+          Keys.onReleased: function(event) { if (event.key === Qt.Key_Control) nodi.ctrlHeld = false }
+          onActiveFocusChanged: if (!activeFocus) nodi.ctrlHeld = false
+
+          MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.MiddleButton
+            onPressed: function(mouse) { mouse.accepted = true }
+          }
+          DropArea {
+            anchors.fill: parent
+            onEntered: function(drag) { drag.accepted = true }
+            onDropped: function(drop) { drop.accepted = true }
+          }
         }
       }
 
       // What is typed while Ctrl+K is up: it filters the actions, by the
       // words that start theirs.
-      TextEdit {
-        id: paletteInput
+      Flickable {
+        id: paletteViewport
         visible: nodi.paletteOpen
         anchors.left: promptGlyph.right
         anchors.leftMargin: Style.spacing.xxl
-        anchors.right: input.right
-        anchors.verticalCenter: parent.verticalCenter
-        color: nodi.foreground
-        selectionColor: nodi.selectedBackground
-        selectedTextColor: nodi.selectedText
-        font.family: nodi.fontFamily
-        font.pixelSize: nodi.inputFont
-        textFormat: TextEdit.PlainText
-        wrapMode: TextEdit.NoWrap
+        anchors.right: inputViewport.right
+        height: parent.height
         clip: true
-        onTextChanged: nodi.paletteTyped(text)
-        Accessible.name: "Actions for " + (nodi.paletteRow ? nodi.paletteRow.title : "the row")
-        Accessible.searchEdit: true
-        Accessible.description: card.selectedSpoken
-        Accessible.ignored: !visible
+        interactive: false
+        boundsBehavior: Flickable.StopAtBounds
+        contentWidth: Math.max(width, paletteInput.contentWidth)
+        contentHeight: height
 
-        Text {
-          textFormat: Text.PlainText
-          anchors.fill: parent
-          verticalAlignment: Text.AlignVCenter
-          visible: !paletteInput.text
-          text: "Search actions"
-          color: nodi.secondary
-          font: paletteInput.font
-          elide: Text.ElideRight
-        }
-
-        Keys.priority: Keys.BeforeItem
-        Keys.onPressed: function(event) {
-          if (event.matches(StandardKey.Paste)) {
-            nodi.pasteInput("palette")
-            event.accepted = true
-            return
+        TextEdit {
+          id: paletteInput
+          width: paletteViewport.width
+          y: Math.round((paletteViewport.height - height) / 2)
+          color: nodi.foreground
+          selectionColor: nodi.selectedBackground
+          selectedTextColor: nodi.selectedText
+          font.family: nodi.fontFamily
+          font.pixelSize: nodi.inputFont
+          textFormat: TextEdit.PlainText
+          wrapMode: TextEdit.NoWrap
+          onTextChanged: {
+            nodi.paletteTyped(text)
+            card.revealCursor(paletteViewport, paletteInput)
           }
-          if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
-        }
+          onCursorRectangleChanged: card.revealCursor(paletteViewport, paletteInput)
+          Accessible.name: "Actions for " + (nodi.paletteRow ? nodi.paletteRow.title : "the row")
+          Accessible.searchEdit: true
+          Accessible.description: card.selectedSpoken
+          Accessible.ignored: !paletteViewport.visible
 
-        MouseArea {
-          anchors.fill: parent
-          acceptedButtons: Qt.MiddleButton
-          onPressed: function(mouse) { mouse.accepted = true }
-        }
-        DropArea {
-          anchors.fill: parent
-          onEntered: function(drag) { drag.accepted = true }
-          onDropped: function(drop) { drop.accepted = true }
+          Text {
+            textFormat: Text.PlainText
+            anchors.fill: parent
+            verticalAlignment: Text.AlignVCenter
+            visible: !paletteInput.text
+            text: "Search actions"
+            color: nodi.secondary
+            font: paletteInput.font
+            elide: Text.ElideRight
+          }
+
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function(event) {
+            if (event.matches(StandardKey.Paste)) {
+              nodi.pasteInput("palette")
+              event.accepted = true
+              return
+            }
+            if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
+          }
+
+          MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.MiddleButton
+            onPressed: function(mouse) { mouse.accepted = true }
+          }
+          DropArea {
+            anchors.fill: parent
+            onEntered: function(drag) { drag.accepted = true }
+            onDropped: function(drop) { drop.accepted = true }
+          }
         }
       }
 

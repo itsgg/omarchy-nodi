@@ -499,6 +499,7 @@ Item {
     id: pasteReader
     timeoutMs: 2000
     maxBytes: 65536
+    terminateLines: false
     onFinished: function(text, ok, tag) {
       if (!ok) {
         root.toast(pasteReader.overflowed ? "Paste is larger than 64 KiB" : "Could not read the clipboard", "")

@@ -76,7 +76,7 @@ test("golden queries: the meant row comes first", { skip: !existsSync(REAL_MENU)
   assert.deepEqual(failures, []);
 });
 
-test("learning reorders equally matched rows without crossing a match tier", { skip: !existsSync(REAL_MENU) }, () => {
+test("learning reorders rows within ordinary search but never crosses explicit intent", { skip: !existsSync(REAL_MENU) }, () => {
   const svc = world();
   const now = svc.now().getTime();
   const Hist = load("lib/History.js");
@@ -89,7 +89,23 @@ test("learning reorders equally matched rows without crossing a match tier", { s
   assert.equal(Engine.run("calc", config, svc)[0].key, second.key);
 
   svc.picks = Hist.pick(Hist.pick({}, "sound", "app:audacity", now), "sound", "app:audacity", now);
-  assert.equal(Engine.run("sound", config, svc)[0].key, "toggle:sound", "learning stays below a better match tier");
+  assert.equal(Engine.run("sound", config, svc)[0].key, "app:audacity",
+    "inside ordinary search, learning can lift the row the user repeatedly chose");
+});
+
+test("guessed dates stay below an app named by the same word", () => {
+  const sunshine = { id: "sunshine", name: "Sunshine", generic: "", comment: "", keywords: [], icon: "", wmclass: "", actions: [] };
+  const rows = Engine.run("sun", config, services({ apps: [sunshine] }));
+  assert.equal(rows[0].key, "app:sunshine");
+  assert.ok(rows.some(r => r.provider === "time" && r.guess), "the possible weekday remains available as a guess");
+});
+
+test("a user alias typed whole stays above a built-in keyword", () => {
+  const P = load("lib/Prefs.js");
+  const app = { id: "terminal", name: "Terminal", generic: "", comment: "", keywords: [], icon: "", wmclass: "", actions: [] };
+  const snapshot = { title: "Terminal", subtitle: "", icon: "", provider: "apps", run: { kind: "app", id: "terminal" } };
+  const prefs = P.withAlias(P.empty(), "gh", "app:terminal", snapshot);
+  assert.equal(Engine.run("gh", config, services({ apps: [app], prefs }))[0].key, "app:terminal");
 });
 
 test("a group named like an Object method still groups, and a hidden favourite does not lengthen Recent", () => {

@@ -43,6 +43,19 @@ Item {
       fake.paletteOpen = false
     }
 
+    function test_long_query_keeps_the_cursor_in_view() {
+      var viewport = findChild(card, "inputViewport")
+      verify(viewport !== null)
+      card.input.text = Array(120).join("x")
+      card.input.cursorPosition = card.input.length
+      tryVerify(function() { return viewport.contentX > 0 }, 1000, "the field scrolls to its end")
+      verify(card.input.cursorRectangle.x >= viewport.contentX)
+      verify(card.input.cursorRectangle.x + card.input.cursorRectangle.width <= viewport.contentX + viewport.width + 1)
+      card.input.cursorPosition = 0
+      tryCompare(viewport, "contentX", 0, 1000)
+      card.input.text = ""
+    }
+
     // Naming an alias, the empty field asks for a word, not a search
     // (2026-10-10, driven live: it suggested "uuid" there).
     function test_alias_placeholder_asks_for_a_word() {

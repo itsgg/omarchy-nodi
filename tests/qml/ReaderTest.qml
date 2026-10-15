@@ -15,7 +15,7 @@ Item {
   signal done(bool ok, string report)
   property var failures: []
   property double startedAt: 0
-  property int pending: 2
+  property int pending: 3
 
   function check(cond, what) { if (!cond) test.failures.push(what) }
   function finish() { if (--test.pending === 0) test.done(test.failures.length === 0, test.failures.join("; ")) }
@@ -46,9 +46,20 @@ Item {
     }
   }
 
+  Reader {
+    id: exact
+    terminateLines: false
+    onFinished: function(text, ok) {
+      check(ok, "exact read ran")
+      check(text === "claude", "a non-line read has no synthetic newline: " + JSON.stringify(text))
+      test.finish()
+    }
+  }
+
   function start() {
     test.startedAt = Date.now()
     reader.run(["/usr/bin/seq", "1", String(test.lines)], null)
     capped.run(["/usr/bin/printf", "aaa\\nbbbbbbbbbb"], null)
+    exact.run(["/usr/bin/printf", "claude"], null)
   }
 }
