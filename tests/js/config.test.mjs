@@ -60,12 +60,12 @@ test("a comment never closed is an error, and a comment separates what it sits b
 test("home sources expand approved paths and normalize bounded settings", () => {
   const env = { home: "/home/person", runtimeDir: "/run/user/1000" };
   const got = Config.homeSources([
-    { id: "runtime", file: "$XDG_RUNTIME_DIR/example/home.jsonl", title: "Example\nFeed\u0000", max: 4, priority: 20, trustedActions: true },
+    { id: "runtime", file: "$XDG_RUNTIME_DIR/example/home.jsonl", title: "Example\nFeed\u0000", icon: "view-list", max: 4, priority: 20, trustedActions: true },
     { id: "home", file: "~/feeds/home.jsonl", max: 10000, priority: -10000 },
     { id: "plain", file: "/var/lib/example/home.jsonl" }
   ], env);
   assert.deepEqual(plain(got), [
-    { id: "runtime", file: "/run/user/1000/example/home.jsonl", title: "Example Feed", max: 4, priority: 20, trustedActions: true },
+    { id: "runtime", file: "/run/user/1000/example/home.jsonl", title: "Example Feed", icon: "view-list", max: 4, priority: 20, trustedActions: true },
     { id: "home", file: "/home/person/feeds/home.jsonl", title: "home", max: 100, priority: -1000, trustedActions: false },
     { id: "plain", file: "/var/lib/example/home.jsonl", title: "plain", max: 8, priority: 0, trustedActions: false }
   ]);
@@ -108,7 +108,7 @@ test("socket filters expand an explicit absolute path and bound their options", 
   ] }, "", { home: "/home/person", runtimeDir: "/run/user/1000" });
   assert.deepEqual(plain(merged.filters), [
     { keyword: "search", title: "Search", socket: "/run/user/1000/example/search.sock", timeoutMs: 10000, max: 1000 },
-    { keyword: "home", socket: "/home/person/.local/run/home.sock", timeoutMs: 100, max: 1 }
+    { keyword: "home", socket: "/home/person/.local/run/home.sock", timeoutMs: 500, max: 1 }
   ]);
 });
 

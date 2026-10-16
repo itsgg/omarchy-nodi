@@ -235,12 +235,19 @@ BorderSurface {
         clip: true
         interactive: false
         boundsBehavior: Flickable.StopAtBounds
-        contentWidth: Math.max(width, input.contentWidth)
+        contentWidth: Math.max(width,
+          inputMetrics.advanceWidth + Style.spacing.sm)
         contentHeight: height
+
+        TextMetrics {
+          id: inputMetrics
+          font: input.font
+          text: input.text + input.preeditText
+        }
 
         TextEdit {
           id: input
-          width: inputViewport.width
+          width: inputViewport.contentWidth
           y: Math.round((inputViewport.height - height) / 2)
           color: nodi.foreground
           selectionColor: nodi.selectedBackground
@@ -286,7 +293,10 @@ BorderSurface {
               event.accepted = true
               return
             }
-            if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
+            var handled = nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)
+            if (handled || event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+              event.accepted = true
           }
           // While Ctrl is held the first nine rows show the digit that runs them.
           Keys.onReleased: function(event) { if (event.key === Qt.Key_Control) nodi.ctrlHeld = false }
@@ -317,12 +327,19 @@ BorderSurface {
         clip: true
         interactive: false
         boundsBehavior: Flickable.StopAtBounds
-        contentWidth: Math.max(width, paletteInput.contentWidth)
+        contentWidth: Math.max(width,
+          paletteMetrics.advanceWidth + Style.spacing.sm)
         contentHeight: height
+
+        TextMetrics {
+          id: paletteMetrics
+          font: paletteInput.font
+          text: paletteInput.text + paletteInput.preeditText
+        }
 
         TextEdit {
           id: paletteInput
-          width: paletteViewport.width
+          width: paletteViewport.contentWidth
           y: Math.round((paletteViewport.height - height) / 2)
           color: nodi.foreground
           selectionColor: nodi.selectedBackground
@@ -359,7 +376,10 @@ BorderSurface {
               event.accepted = true
               return
             }
-            if (nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)) event.accepted = true
+            var handled = nodi.handleKey(event.key, event.modifiers, event.isAutoRepeat)
+            if (handled || event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                || event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)
+              event.accepted = true
           }
 
           MouseArea {

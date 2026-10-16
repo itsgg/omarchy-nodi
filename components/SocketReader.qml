@@ -113,7 +113,7 @@ Item {
     reader.retryScheduled = false
     if (!reader.active) return
     if (reader.tag) reader.tag.cancelled = true
-    if (wire.connected && reader.queryId) {
+    if (wire && wire.connected && reader.queryId) {
       wire.write(Protocol.cancelFrame(reader.queryId))
       wire.flush()
     }

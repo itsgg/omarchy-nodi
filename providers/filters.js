@@ -532,8 +532,9 @@ var provider = {
         var name = bare.title || bare.keyword
         return [{ key: "filter:" + bare.keyword + ":hint", title: name,
                   subtitle: "Type " + bare.keyword + " and " + (bare.placeholder || "words"),
-                  icon: bare.icon || "󰈲", tier: "exact", kind: "hint", intent: "exactCommand",
+                  icon: bare.icon || "󰈲", tier: "exact", kind: "action", intent: "ordinary",
                   complete: bare.keyword + " ", copy: "", remember: false, group: name }]
+          .concat(rootRows(query, ctx))
       }
       return rootRows(query, ctx)
     }

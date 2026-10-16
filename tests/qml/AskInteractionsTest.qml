@@ -7,6 +7,7 @@ Item {
   property var failures: []
   property int round: 0
   property int commits: 0
+  property var committedKinds: []
   property string fixture: Qt.resolvedUrl("interaction-agent.py").toString().replace(/^file:\/\//, "")
 
   function check(value, message) { if (!value) failures.push(message) }
@@ -14,14 +15,13 @@ Item {
   Ask {
     id: ask
     agent: "plain"
-    program: ["/usr/bin/python", test.fixture]
+    program: ["/usr/bin/python3", test.fixture]
     workDir: "/tmp"
     shown: true
     committer: function(snapshot) {
       test.commits++
-      test.check(snapshot && snapshot.run
-        && snapshot.run.argv.join(" ") === "true",
-        "metadata command changed: " + JSON.stringify(snapshot))
+      test.committedKinds = test.committedKinds.concat([
+        snapshot && snapshot.run ? snapshot.run.kind : ""])
       return { status: "executed", key: snapshot.key, title: snapshot.title }
     }
 
@@ -65,14 +65,16 @@ Item {
         test.check(answer === "done", "elicitation result: " + answer)
         test.check(commands.length === 2 && commands[0].name === "status", "commands: " + JSON.stringify(commands))
         test.check(plans.length === 1 && plans[0].content === "Inspect", "plan: " + JSON.stringify(plans))
-        test.check(resultActions.length === 3 && resultActions[2].title === "Run", "actions: " + JSON.stringify(resultActions))
+        test.check(resultActions.length === 4 && resultActions[2].title === "Run"
+          && resultActions[3].title === "Paste", "actions: " + JSON.stringify(resultActions))
         test.check(remoteSessions.length === 1 && remoteSessions[0].sessionId === "saved-1", "sessions: " + JSON.stringify(remoteSessions))
         test.round = 10
-        test.check(proposeResultAction(2), "metadata executable was not proposed")
+        test.check(proposeResultAction(3), "metadata paste was not proposed")
         return
       }
       if (test.round === 10) {
-        test.check(test.commits === 1, "metadata executable did not commit once")
+        test.check(test.commits === 1 && test.committedKinds[0] === "paste",
+                   "metadata paste did not commit after confirmation")
         test.round = 1
         test.check(openedLink("https://example.test", completedTurn), "answer link was not reported")
         send("linkcheck")
@@ -113,7 +115,9 @@ Item {
   Timer {
     id: deadline
     interval: 10000
-    onTriggered: test.done(false, "interaction test timed out: " + ask.phase + " " + ask.error)
+    onTriggered: test.done(false, "interaction test timed out: round=" + test.round
+      + " phase=" + ask.phase + " commits=" + test.commits
+      + " proposal=" + JSON.stringify(ask.proposal) + " " + ask.error)
   }
 
   function start() {

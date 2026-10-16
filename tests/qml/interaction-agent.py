@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 import json
 import sys
 
@@ -107,6 +107,7 @@ while True:
                         {"title": "Continue", "action": {"prompt": "/status"}},
                         {"title": "Open", "action": {"open": "https://example.test"}},
                         {"title": "Run", "action": {"exec": ["true"]}},
+                        {"title": "Paste", "action": {"paste": "approved text"}},
                     ]}},
                 },
             })

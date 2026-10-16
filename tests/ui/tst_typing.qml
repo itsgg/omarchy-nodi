@@ -43,6 +43,14 @@ Item {
       fake.paletteOpen = false
     }
 
+    function test_control_keys_never_become_query_text() {
+      card.input.text = ""
+      card.input.forceActiveFocus()
+      keyClick(Qt.Key_Return)
+      keyClick(Qt.Key_Tab)
+      compare(card.input.text, "")
+    }
+
     function test_long_query_keeps_the_cursor_in_view() {
       var viewport = findChild(card, "inputViewport")
       verify(viewport !== null)

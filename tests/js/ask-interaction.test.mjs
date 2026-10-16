@@ -137,6 +137,42 @@ test("elicitation forms accept bounded primitive fields and reject secrets", () 
     requestedSchema: { type: "string" }
   });
   assert.equal(scalar.form, null, "a form must use an object schema");
+
+  for (const schema of [
+    { type: "string", title: "Password" },
+    { type: "string", format: "password" },
+    { type: "string", description: "Your API token" }
+  ]) {
+    const hidden = I.elicit(I.create("p", "s", "t"), "p", "s", "t", 47, {
+      sessionId: "s", mode: "form", message: "Secret",
+      requestedSchema: { type: "object", required: ["pw"], properties: { pw: schema } }
+    });
+    assert.equal(hidden.form, null, "secret semantics reject the field: " + JSON.stringify(schema));
+  }
+
+  const properties = {};
+  for (let n = 0; n < I.LIMITS.fields + 1; n++)
+    properties["field" + n] = { type: "string" };
+  const beyond = I.elicit(I.create("p", "s", "t"), "p", "s", "t", 48, {
+    sessionId: "s", mode: "form", message: "Many",
+    requestedSchema: {
+      type: "object", required: ["field" + I.LIMITS.fields], properties
+    }
+  });
+  assert.equal(beyond.form, null, "a required field beyond the display cap cannot be omitted");
+});
+
+test("invalid numeric edits cannot silently submit the prior value", () => {
+  let state = I.elicit(I.create("p", "s", "t"), "p", "s", "t", 49, {
+    sessionId: "s", mode: "form", message: "Count",
+    requestedSchema: {
+      type: "object", required: ["count"],
+      properties: { count: { type: "integer", default: 2 } }
+    }
+  });
+  state = I.setField(state, "count", "not a number");
+  assert.equal(state.form.fields[0].value, "not a number");
+  assert.equal(I.formResult(state, "accept").ok, false);
 });
 
 test("session summaries are bounded and contain no transcript", () => {

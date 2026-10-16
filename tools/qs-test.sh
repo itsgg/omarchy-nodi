@@ -15,8 +15,8 @@ export PATH NODI_TEST_INHERITED
 
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 shell=${OMARCHY_PATH:-/usr/share/omarchy}/shell
-command -v qs >/dev/null || { echo "qs-test: qs not found, skipped"; exit 0; }
-command -v Xvfb >/dev/null || { echo "qs-test: Xvfb not found, skipped"; exit 0; }
+command -v qs >/dev/null || { echo "qs-test: qs not found"; exit 1; }
+command -v Xvfb >/dev/null || { echo "qs-test: Xvfb not found"; exit 1; }
 
 work=$(mktemp -d -p "${XDG_RUNTIME_DIR:-/tmp}" nodi-qstest.XXXXXX)
 pid=""

@@ -7,6 +7,7 @@ import { root } from "./load.mjs";
 const card = readFileSync(join(root, "components/Card.qml"), "utf8");
 const nodi = readFileSync(join(root, "Nodi.qml"), "utf8");
 const homeSources = readFileSync(join(root, "components/HomeSources.qml"), "utf8");
+const ask = readFileSync(join(root, "components/Ask.qml"), "utf8");
 
 test("the card keeps no editable TextInput alive", () => {
   assert.doesNotMatch(card, /\bTextInput\s*\{/);
@@ -46,9 +47,39 @@ test("a window's working directory is read once, bounded, and only as an Ask sta
 });
 
 test("prompt context is built only where a turn is sent, and never logged", () => {
-  const ask = readFileSync(join(root, "components/Ask.qml"), "utf8");
   assert.equal((ask.match(/PromptContext\.build\(/g) || []).length, 1, "built once, at the prompt");
   for (const file of [ask, nodi]) assert.doesNotMatch(file, /console\.\w+\([^)]*(snapshot|PromptContext|promptMeta)/i);
+});
+
+test("explicit paste advances the cursor and agent paste waits for confirmation", () => {
+  const insert = nodi.slice(nodi.indexOf("  function insertPaste("),
+                            nodi.indexOf("\n  function ", nodi.indexOf("  function insertPaste(") + 1));
+  assert.match(insert, /field\.insert\(start,\s*value\)[\s\S]*field\.cursorPosition\s*=\s*start\s*\+\s*value\.length/);
+  const resultStart = nodi.indexOf('row.nodi === "askResult"');
+  const result = nodi.slice(resultStart,
+                            nodi.indexOf('row.nodi === "askWith"', resultStart));
+  assert.match(result, /resultAction\.paste\s*!==\s*undefined[\s\S]*proposeResultAction/);
+  assert.doesNotMatch(result, /Run\.paste|Run\.copy/);
+  assert.match(ask, /ExternalRows\.actionOf\(item\.action,\s*\{[\s\S]*paste:\s*true/);
+});
+
+test("Ask serializes cwd lookup and rebuilds resumed session authority", () => {
+  const start = nodi.slice(nodi.indexOf("  function startAsk("),
+                           nodi.indexOf("\n  function ", nodi.indexOf("  function startAsk(") + 1));
+  assert.match(start, /root\.pendingAsk\s*\|\|\s*askSession\.busy\(\)/);
+  const resume = ask.slice(ask.indexOf("  function beginResume("),
+                           ask.indexOf("\n  function ", ask.indexOf("  function beginResume(") + 1));
+  assert.match(resume, /ask\.clearSessionScope\(\)/);
+  assert.match(resume, /ask\.sessionServers\s*=\s*ask\.makeSessionServers\(\)/);
+  const response = ask.slice(ask.indexOf('kind === "resume"'),
+                             ask.indexOf('kind.indexOf("config:")'));
+  assert.match(response, /ask\.configureSession\(m\.result\)/);
+  const up = ask.slice(ask.indexOf("  function sessionUp("),
+                       ask.indexOf("\n  function ", ask.indexOf("  function sessionUp(") + 1));
+  assert.match(up, /ask\.caps\.list\s*&&\s*ask\.caps\.resume/);
+  const recycle = ask.slice(ask.indexOf("  function recycle("),
+                            ask.indexOf("\n  function ", ask.indexOf("  function recycle(") + 1));
+  assert.match(recycle, /Acp\.cancel\(ask\.sessionId\)[\s\S]*ask\.turn\s*=\s*null/);
 });
 
 test("a window's picture question is snapshotted when chosen, and sent as it was", () => {

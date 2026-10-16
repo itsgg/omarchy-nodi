@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/python3
 """Generic JSONL Unix-socket fixture for Nodi's transport tests."""
 
 import asyncio

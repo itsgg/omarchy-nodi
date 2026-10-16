@@ -51,7 +51,7 @@ Item {
 
   Process {
     id: server
-    command: ["/usr/bin/python", Qt.resolvedUrl("socket-server.py").toString().replace(/^file:\/\//, ""), test.path]
+    command: ["/usr/bin/python3", Qt.resolvedUrl("socket-server.py").toString().replace(/^file:\/\//, ""), test.path]
     stdout: SplitParser {
       onRead: function(data) {
         if (String(data).trim() !== "READY") return

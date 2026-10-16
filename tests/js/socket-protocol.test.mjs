@@ -40,6 +40,15 @@ test("incremental JSONL accepts matching rows and done, discarding stale ids and
   assert.equal(state.done, true);
 });
 
+test("responses use ASCII JSON framing so decoded chunks cannot split UTF-8", () => {
+  let state = P.parser("id");
+  assert.match(P.feed(state, '{"id":"id","row":{"title":"café"}}\n').error,
+               /ASCII JSON/);
+  state = P.parser("id");
+  const got = P.feed(state, '{"id":"id","row":{"title":"caf\\u00e9"}}\n');
+  assert.deepEqual(plain(got.rows), [{ title: "café" }]);
+});
+
 test("incremental JSONL enforces bytes, line, rows, fields, and nesting bounds", () => {
   let state = P.parser("id", { maxBytes: 20 });
   assert.match(P.feed(state, "x".repeat(21)).error, /byte limit/);

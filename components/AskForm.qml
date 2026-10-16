@@ -22,8 +22,15 @@ Column {
       var key = typeof formView.form.id + ":" + JSON.stringify(formView.form.id)
       if (shownFormKey === key) return
       shownFormKey = key
-      shownFields = Array.isArray(formView.form.fields)
+      var fields = Array.isArray(formView.form.fields)
         ? formView.form.fields : []
+      // A new request may have the same field shape. Recreate its delegates
+      // so editor-local text and focus cannot leak from the prior form;
+      // updates within this form keep the stable delegates above.
+      shownFields = []
+      Qt.callLater(function() {
+        if (shownFormKey === key) shownFields = fields
+      })
     }
   }
   onFormChanged: syncForm()
@@ -52,6 +59,7 @@ Column {
         || modelData.type === "enum"
       readonly property bool unsupported: modelData.type === "unsupported"
       property var shownValue: modelData.value
+      onModelDataChanged: shownValue = modelData.value
 
       Text {
         width: parent.width
@@ -96,6 +104,18 @@ Column {
             if (event.matches(StandardKey.Paste)) {
               formView.nodi.pasteInput(
                 editor, fieldView.modelData.type === "multiline")
+              event.accepted = true
+              return
+            }
+            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                && fieldView.modelData.type !== "multiline") {
+              formView.nodi.submitAskForm()
+              event.accepted = true
+              return
+            }
+            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+              var next = editor.nextItemInFocusChain(event.key !== Qt.Key_Backtab)
+              if (next) next.forceActiveFocus()
               event.accepted = true
             }
           }

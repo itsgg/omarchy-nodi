@@ -6,8 +6,10 @@ Item {
   id: root
   width: 600
   height: 400
+  property int formId: 7
+  property int submits: 0
   property var formState: ({
-    id: 7,
+    id: formId,
     message: "Details",
     fields: [{ name: "notes", title: "Notes", type: "string", value: "" }]
   })
@@ -21,9 +23,10 @@ Item {
     property string fontFamily: "sans"
     property real cornerRadius: 8
     function pasteInput() {}
+    function submitAskForm() { root.submits++ }
     function setAskFormField(name, value) {
       root.formState = {
-        id: 7,
+        id: root.formId,
         message: "Details",
         fields: [{ name: "notes", title: "Notes", type: "string", value: value }]
       }
@@ -41,6 +44,17 @@ Item {
     name: "AskForm"
     when: windowShown
 
+    function init() {
+      root.formId++
+      root.submits = 0
+      root.formState = {
+        id: root.formId,
+        message: "Details",
+        fields: [{ name: "notes", title: "Notes", type: "string", value: "" }]
+      }
+      wait(0)
+    }
+
     function test_typing_keeps_the_editor_and_focus() {
       var editor = findChild(form, "askFormEditor")
       verify(editor !== null)
@@ -52,6 +66,18 @@ Item {
       verify(after.activeFocus, "editing one character must keep keyboard focus")
       keyClick(Qt.Key_B)
       compare(root.formState.fields[0].value, "ab")
+    }
+
+    function test_single_line_enter_submits_and_tab_is_not_inserted() {
+      var editor = findChild(form, "askFormEditor")
+      verify(editor !== null)
+      editor.forceActiveFocus()
+      keyClick(Qt.Key_Tab)
+      compare(editor.text, "")
+      keyClick(Qt.Key_A)
+      keyClick(Qt.Key_Return)
+      compare(editor.text, "a")
+      compare(root.submits, 1)
     }
   }
 }

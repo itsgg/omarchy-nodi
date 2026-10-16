@@ -56,11 +56,16 @@ test("a bare filter keyword offers an exact hint above file matches without runn
   const asked = [];
   const rows = Engine.run("due", dueCfg, services({
     asked,
+    apps: [{ id: "due", name: "Due", generic: "", comment: "", keywords: [],
+             icon: "due", wmclass: "", actions: [] }],
     found: { q: "due", list: [{ path: "/home/u/due", name: "due", dir: false }] }
   }));
-  const hint = rows[0];
+  const hint = rows.find(r => r.key === "filter:due:hint");
   assert.deepEqual(plain([hint.key, hint.provider, hint.title, hint.icon, hint.complete, hint.copy, hint.kind, hint.intent]),
-    ["filter:due:hint", "filters", "Tasks due", "󰃭", "due ", "", "hint", "exactCommand"]);
+    ["filter:due:hint", "filters", "Tasks due", "󰃭", "due ", "", "action", "ordinary"]);
+  assert.equal(rows[0].provider, "apps", "an exact app remains above an ambiguous bare keyword");
+  assert.ok(rows.indexOf(hint) < rows.findIndex(r => r.provider === "files"),
+            "the filter hint remains above an exact file match");
   assert.ok(Rows.canComplete(hint), "Tab fills the filter prefix; Enter does the same");
   assert.ok(rows.some(r => r.provider === "files"), "the matching file remains below the filter");
   assert.ok(!asked.some(k => k.startsWith("filter:")), "the bare keyword starts no filter process");

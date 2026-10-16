@@ -6,7 +6,7 @@ import "../../lib/HomeSources.js" as Parser
 
 // A watched JSONL source keeps its last valid snapshot through a partial
 // write and then accepts an atomic replacement. Run only by tools/qs-test.sh
-// in its private headless Sway session.
+// on its private headless X server.
 Item {
   id: test
   signal done(bool ok, string report)

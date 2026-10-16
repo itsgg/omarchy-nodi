@@ -502,6 +502,7 @@ Item {
     var value = String(text || "")
     if (!multiline) value = value.replace(/[\r\n]+/g, " ")
     field.insert(start, value)
+    field.cursorPosition = start + value.length
   }
 
   Reader {
@@ -896,6 +897,10 @@ Item {
 
   function setAskFormField(name, value) {
     askSession.setFormField(name, value)
+  }
+
+  function submitAskForm() {
+    return askSession.submitForm()
   }
 
   // ---------------------------------------------------------------- Ctrl+K
@@ -1421,14 +1426,11 @@ Item {
       var resultItem = askSession.resultAction(row.data.index)
       if (!resultItem) return
       var resultAction = resultItem.action || {}
-      if (resultAction.exec !== undefined) {
+      if (resultAction.exec !== undefined || resultAction.copy !== undefined
+          || resultAction.paste !== undefined) {
         askSession.proposeResultAction(row.data.index)
       } else if (resultAction.open !== undefined) {
         root.openLink(resultAction.open, { ask: true, turn: resultItem.turn })
-      } else if (resultAction.copy !== undefined) {
-        root.execute(Run.copy(resultAction.copy), "", "", null)
-      } else if (resultAction.paste !== undefined) {
-        root.execute(Run.paste(resultAction.paste), "", "", null)
       } else if (resultAction.query !== undefined) {
         input.text = String(resultAction.query)
         input.cursorPosition = input.text.length
@@ -2210,7 +2212,7 @@ Item {
 
   // `captured` (askCapture) is the context of an Ask chosen earlier.
   function startAsk(id, question, message, context, image, purpose, captured) {
-    if (askSession.busy() || windowShot.active) return false
+    if (root.pendingAsk || askSession.busy() || windowShot.active) return false
     var direct = !!id
     var target = direct ? Agents.canonicalId(id) : root.resolvedAgent
     if (direct && (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)

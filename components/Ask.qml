@@ -429,7 +429,7 @@ Item {
     ask.afterTool = false
     ask.cut = false
     var preface = ask.instructed ? "" : Agents.firstPromptInstructions(ask.agent, ask.instructions)
-    ask.instructed = true
+    ask.instructed = !!ask.spec && ask.spec.instructs
     var nodi = p.snapshot ? PromptContext.build(p.snapshot) : undefined
     ask.turn = ask.toAgent("prompt", function(id) { return Acp.prompt(id, ask.sessionId, text, image, preface, nodi) })
   }
@@ -512,10 +512,12 @@ Item {
     if (!item || item.turn !== ask.completedTurn || ask.phase !== "done"
         || !ask.shown || ask.proposal) return false
     var normalized = ExternalRows.actionOf(item.action, {
-      safeOpen: true, paste: false, next: false,
+      safeOpen: true, paste: true, next: false,
       completeMax: AskInteraction.LIMITS.actionText
     })
-    if (!normalized.run || item.action.exec === undefined) return false
+    if (!normalized.run || (item.action.exec === undefined
+        && item.action.copy === undefined && item.action.paste === undefined))
+      return false
     var requestId = "metadata:" + item.turn + ":" + index
     var origin = {
       id: requestId, session: ask.token, turn: item.turn,
@@ -599,28 +601,17 @@ Item {
     ask.context = ""
     ask.image = null
     ask.snapshot = null
-    ask.calls = Object.create(null)
-    ask.actionTurn = ""
-    ask.runBindings = []
-    ask.codexTurns = []
-    ask.claudeTurns = []
     ask.answer = ""
     ask.error = ""
     ask.phase = "idle"
-    ask.proposal = null
+    ask.clearSessionScope()
     ask.token = ask.newToken()
     ask.channel = ask.newToken()
-    ask.toolResponses = ({})
-    ask.toolRequests = ({})
-    ask.toolResponseCount = 0
-    ask.toolRequestCount = 0
-    ask.nextTicket = 0
     ask.sessionId = String(target.sessionId)
     ask.interactionState = AskInteraction.create(
       ask.processBinding, ask.sessionId, "")
-    ask.actionBook = AskActions.create("", "", "")
-    ask.metadataBook = AskActions.create("", "", "")
-    ask.completedTurn = ""
+    ask.instructed = true
+    ask.sessionServers = ask.makeSessionServers()
     ask.stage = "resuming"
     ask.toAgent("resume", function(id) {
       return Acp.resumeSession(
@@ -1174,9 +1165,7 @@ Item {
   // A fresh ACP session on the same warm process. Session-scoped tokens,
   // commands, forms, plans, remote handles and action authority never cross
   // the boundary.
-  function beginFreshSession() {
-    ask.retireToolResponses()
-    ask.sessionId = ""
+  function clearSessionScope() {
     ask.turn = null
     ask.calls = Object.create(null)
     ask.actionTurn = ""
@@ -1185,15 +1174,37 @@ Item {
     ask.runBindings = []
     ask.codexTurns = []
     ask.claudeTurns = []
+    ask.originRejections = ({})
+    ask.originRejectionCount = 0
+    ask.nextProposal = 0
     ask.proposal = null
-    ask.token = ask.newToken()
-    ask.channel = ask.newToken()
     ask.toolResponses = ({})
     ask.toolRequests = ({})
     ask.toolResponseCount = 0
     ask.toolRequestCount = 0
     ask.nextTicket = 0
+    ask.capacityFailure = ""
     ask.completedTurn = ""
+    ask.waits = ({})
+    ask.readActivities = Object.create(null)
+    ask.readActivityCount = 0
+    ask.thoughtActivity = ""
+    ask.activitySeq = 0
+    ask.lastMessage = ""
+    ask.afterTool = false
+    ask.cut = false
+    ask.toolInventory = null
+    ask.toolCatalogs = null
+    ask.configuring = 0
+  }
+
+  function beginFreshSession() {
+    ask.retireToolResponses()
+    ask.sessionId = ""
+    ask.clearSessionScope()
+    ask.token = ask.newToken()
+    ask.channel = ask.newToken()
+    ask.instructed = false
     ask.interactionState = AskInteraction.create(
       ask.processBinding, "", "")
     ask.openSession()
@@ -1223,6 +1234,8 @@ Item {
     if (proc.running && ask.stage === "ready") {
       if (ask.turn !== null && ask.sessionId)
         proc.write(Acp.cancel(ask.sessionId))
+      ask.turn = null
+      ask.actionTurn = ""
       var oldSession = ask.sessionId
       if (oldSession && ask.caps && ask.caps.close) {
         ask.stage = "closing"
@@ -1541,16 +1554,7 @@ Item {
       ask.interactionState = AskInteraction.create(
         ask.processBinding, ask.sessionId, "")
       ask.recordRuntimeMetadata(m.result._meta)
-      // The mode Ask needs, and the model asked for, before any question.
-      var want = Acp.configure(ask.sessionId, m.result, ask.spec ? ask.spec.mode : "",
-                               ask.spec && !ask.spec.modelInMeta ? ask.model : "")
-      if (want.error) { ask.fail(ask.agentName + " could not start as Ask needs: " + want.error); return }
-      ask.stage = "config"
-      ask.configuring = want.requests.length
-      want.requests.forEach(function(q) {
-        ask.toAgent("config:" + q.what, function(id) { return Acp.request(id, q.method, q.params) })
-      })
-      if (!ask.configuring) ask.sessionUp()
+      ask.configureSession(m.result)
     } else if (kind === "sessions") {
       if (why) return
       var listed = AskInteraction.sessionList(m.result)
@@ -1580,12 +1584,7 @@ Item {
       }
       ask.resumeTarget = null
       ask.recordRuntimeMetadata(m.result && m.result._meta)
-      ask.stage = "ready"
-      upGuard.stop()
-      if (ask.caps && ask.caps.list)
-        ask.toAgent("sessions", function(id) {
-          return Acp.listSessions(id, ask.workDir, "")
-        })
+      ask.configureSession(m.result)
     } else if (kind.indexOf("config:") === 0) {
       if (why) { ask.fail(ask.agentName + " could not set its " + kind.slice(7) + ": " + why); return }
       if (--ask.configuring === 0) ask.sessionUp()
@@ -1626,16 +1625,44 @@ Item {
 
   property int configuring: 0
 
+  function configureSession(result) {
+    // The mode Ask needs, and the model asked for, before any question,
+    // including after session/resume.
+    var want = Acp.configure(ask.sessionId, result,
+                             ask.spec ? ask.spec.mode : "",
+                             ask.spec && !ask.spec.modelInMeta ? ask.model : "")
+    if (want.error) {
+      ask.fail(ask.agentName + " could not start as Ask needs: " + want.error)
+      return
+    }
+    ask.stage = "config"
+    ask.configuring = want.requests.length
+    want.requests.forEach(function(q) {
+      ask.toAgent("config:" + q.what, function(id) {
+        return Acp.request(id, q.method, q.params)
+      })
+    })
+    if (!ask.configuring) ask.sessionUp()
+  }
+
+  function makeSessionServers() {
+    var servers = []
+    var env = { NODI_ASK_SESSION: ask.token, NODI_ASK_CHANNEL: ask.channel }
+    for (var k in ask.toolEnv || {}) env[k] = ask.toolEnv[k]
+    if (ask.actionServerAvailable)
+      servers.push(Acp.stdioServer(
+        ask.actionServer, ask.toolServer, ["mcp", "--ask"], env))
+    if (ask.providesActions)
+      servers = servers.concat(Acp.servers(ask.mcp, ask.caps.http))
+    return servers
+  }
+
   function openSession() {
     // A new session knows nothing of the turns before it: a restart (a
     // setting changed, the agent died) must not show or hand on a history
     // the agent has lost (2026-10-11).
     ask.turns = []
-    var servers = []
-    var env = { NODI_ASK_SESSION: ask.token, NODI_ASK_CHANNEL: ask.channel }
-    for (var k in ask.toolEnv || {}) env[k] = ask.toolEnv[k]
-    if (ask.actionServerAvailable) servers.push(Acp.stdioServer(ask.actionServer, ask.toolServer, ["mcp", "--ask"], env))
-    if (ask.providesActions) servers = servers.concat(Acp.servers(ask.mcp, ask.caps.http))
+    var servers = ask.makeSessionServers()
     var meta = ask.spec && ask.spec.meta ? ask.spec.meta(ask.actionServerAvailable, ask.actionServer) : null
     // Instructions that went with the start do not go again with a prompt.
     ask.instructed = !!ask.spec && ask.spec.instructs
@@ -1647,7 +1674,7 @@ Item {
   function sessionUp() {
     ask.stage = "ready"
     upGuard.stop()
-    if (ask.caps && ask.caps.list)
+    if (ask.caps && ask.caps.list && ask.caps.resume)
       ask.toAgent("sessions", function(id) {
         return Acp.listSessions(id, ask.workDir, "")
       })

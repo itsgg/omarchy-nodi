@@ -17,6 +17,7 @@ without being started by Nodi. Name its JSONL file in `nodi.json`:
     "id": "tasks",
     "file": "$XDG_RUNTIME_DIR/example/home.jsonl",
     "title": "Tasks",
+    "icon": "view-list",
     "max": 4,
     "priority": 20
   }
@@ -36,7 +37,8 @@ chmod 600 "$tmp"
 mv -f -- "$tmp" "$XDG_RUNTIME_DIR/example/home.jsonl"
 ```
 
-Each non-empty line is one JSON object. It may have `id`, `title`,
+The source's optional `icon` is the fallback for rows without one. Each
+non-empty line is one JSON object. It may have `id`, `title`,
 `subtitle`, `icon`, an absolute `image`, `badge`, `group`, `priority`,
 `expires` (an ISO 8601 time with a zone), `preview`, `action`, `confirm`,
 `risk` and `actions`. Actions use the same `exec`, `open`, `copy` and
@@ -228,20 +230,20 @@ Set exactly one of `command` and `socket`. Nodi expands a leading
 it reads the config. The result must be an explicitly configured absolute
 path with no `.` or `..` path segment, control character, unexpanded
 variable or trailing slash. A relative path and a path longer than 4096
-characters are left out. `timeoutMs` is held from 100 to 10000 ms; `max`
+characters are left out. `timeoutMs` is held from 500 to 10000 ms; `max`
 is held from 1 to 1000 and defaults to 50. A target that is not a Unix
 socket fails as a source.
 
-Nodi keeps one Quickshell local-socket connection per configured path while
-it is useful. A missing or exited service is reconnected only when a query
-needs it, with at most five attempts. It starts no helper process for a
-query. Query text and window context are in the request body and never in
-process arguments.
+Nodi keeps one Quickshell local-socket connection per configured path and
+filter keyword while it is useful. A missing or exited service is
+reconnected only when a query needs it, with at most five attempts. It
+starts no helper process for a query. Query text and window context are in
+the request body and never in process arguments.
 
 Each request is one JSON line:
 
 ```json
-{"version":1,"id":"h-k83w","q":"words","keyword":"search","window":{"class":"foot","title":"","address":"","pid":"","workspace":""}}
+{"version":1,"id":"h-k83w","q":"words","keyword":"search","window":{"class":"foot"}}
 ```
 
 The ID is opaque. The daemon returns zero or more row lines and one
@@ -259,6 +261,11 @@ per query, 128 KB per line, 12 levels of nesting, 64 members in an object
 or array, and the configured row count. Rows arrive in fixed, bounded
 batches so a line does not cause a layout by itself. The previous complete
 answer stays visible while its replacement is pending.
+
+Response framing is ASCII JSON. Encode non-ASCII row text with JSON
+`\uXXXX` escapes; the JSON parser restores it before Nodi displays the row.
+This keeps bounds exact even when the socket splits a UTF-8 byte sequence
+between reads.
 
 When another keystroke replaces a query, Nodi sends:
 
