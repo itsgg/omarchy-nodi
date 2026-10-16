@@ -34,7 +34,7 @@ async def answer(writer, message):
         await send(writer, {"id": "stale-id", "row": {"title": "Wrong ID"}})
         await send(writer, {"id": request_id, "row": {"title": "Valid"}})
     elif query == "overflow":
-        writer.write((json.dumps({"id": request_id, "row": {"title": "x" * 4096}}) + "\n").encode())
+        writer.write(json.dumps({"id": request_id, "row": {"title": "x" * 4096}}).encode())
         await writer.drain()
         return
     elif query == "exit":

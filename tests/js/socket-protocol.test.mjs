@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { load, plain } from "./load.mjs";
 
 const P = load("lib/SocketProtocol.js");
+const reader = readFileSync(new URL("../../components/SocketReader.qml", import.meta.url), "utf8");
 
 test("query ids are opaque, bounded, and unique for successive requests", () => {
   const a = P.queryId(17, "8fa2");
@@ -75,4 +77,11 @@ test("active query replacement returns the prior id for explicit cancellation", 
   assert.equal(P.isActive(active, "b"), true, "a stale completion cannot clear the current query");
   P.complete(active, "b");
   assert.equal(active.id, "");
+});
+
+test("the socket transport feeds bounded chunks and fails interrupted requests", () => {
+  assert.match(reader, /splitMarker:\s*""/,
+               "newline buffering would bypass the incremental line limit");
+  assert.match(reader, /sentId === reader\.queryId[\s\S]{0,200}reader\.end\(false,\s*"socket disconnected"\)/,
+               "an in-flight disconnect must fail instead of retrying an already-sent ID");
 });

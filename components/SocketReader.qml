@@ -122,14 +122,14 @@ Item {
     reader.responseDone = false
   }
 
-  function acceptLine(line) {
+  function acceptChunk(chunk) {
     if (!reader.active) return
     var began = Date.now()
-    var result = Protocol.feed(reader.protocol, String(line) + "\n")
+    var result = Protocol.feed(reader.protocol, String(chunk))
     reader.lastParseMs += Date.now() - began
     if (result.error) {
-      wire.connected = false
       reader.end(false, result.error)
+      if (wire.connected) wire.connected = false
       return
     }
     if (result.rows.length) {
@@ -155,6 +155,10 @@ Item {
   function disconnected(transport) {
     if (transport && transport !== reader.wire) return
     if (!reader.active || reader.responseDone || reader.retryScheduled) return
+    if (reader.sentId === reader.queryId) {
+      reader.end(false, "socket disconnected")
+      return
+    }
     if (reader.attempts >= reader.maxReconnects) {
       reader.end(false, "socket disconnected")
       return
@@ -172,6 +176,7 @@ Item {
     var endedTag = reader.tag
     var rows = reader.rawRows.slice()
     reader.active = false
+    reader.protocol = null
     reader.pendingRows = []
     reader.responseDone = false
     reader.finished(rows, ok, error, endedTag)
@@ -182,8 +187,10 @@ Item {
     Socket {
       id: transport
       parser: SplitParser {
-        splitMarker: "\n"
-        onRead: function(data) { reader.acceptLine(data) }
+        // Raw transport chunks reach Protocol.feed before SplitParser can
+        // retain an unterminated line beyond the configured byte limits.
+        splitMarker: ""
+        onRead: function(data) { reader.acceptChunk(data) }
       }
       onConnectionStateChanged: {
         if (transport !== reader.wire) return
@@ -226,6 +233,7 @@ Item {
         wire.flush()
       }
       reader.end(false, "socket timed out")
+      if (wire && wire.connected) wire.connected = false
     }
   }
 }

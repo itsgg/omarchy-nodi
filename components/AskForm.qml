@@ -9,8 +9,25 @@ Column {
   id: formView
   property var nodi
   property var form: null
+  property var shownFields: []
+  property string shownFormKey: ""
   width: parent ? parent.width : 0
   spacing: Style.spacing.md
+
+  function syncForm() {
+    if (!formView.form) {
+      shownFormKey = ""
+      shownFields = []
+    } else {
+      var key = typeof formView.form.id + ":" + JSON.stringify(formView.form.id)
+      if (shownFormKey === key) return
+      shownFormKey = key
+      shownFields = Array.isArray(formView.form.fields)
+        ? formView.form.fields : []
+    }
+  }
+  onFormChanged: syncForm()
+  Component.onCompleted: syncForm()
 
   Text {
     width: parent.width
@@ -24,8 +41,7 @@ Column {
   }
 
   Repeater {
-    model: formView.form && Array.isArray(formView.form.fields)
-      ? formView.form.fields : []
+    model: formView.shownFields
 
     Column {
       id: fieldView
@@ -58,6 +74,7 @@ Column {
 
         TextEdit {
           id: editor
+          objectName: "askFormEditor"
           anchors.fill: parent
           anchors.margins: Style.spacing.sm
           visible: !fieldView.choice && !fieldView.unsupported

@@ -182,6 +182,7 @@ Item {
         var exited = requests.request("rows", param("exit"), { fetch: false })
         if (exited.state !== "error" && waited < 150) return
         check(exited.state === "error", "server exit finishes as an error: " + JSON.stringify(exited))
+        check(waited < 50, "an interrupted request fails without waiting for its deadline: " + waited)
         phase = 7; waited = 0
         requests.request("rows", paramAt("file", Qt.resolvedUrl("socket-server.py").toString().replace(/^file:\/\//, "")))
       } else if (phase === 7) {
