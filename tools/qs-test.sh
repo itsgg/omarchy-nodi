@@ -46,29 +46,47 @@ import QtQuick
 
 ShellRoot {
   property var files: [$list]
-  property int left: files.length
-  Component.onCompleted: {
-    for (var i = 0; i < files.length; i++) {
-      var c = Qt.createComponent(files[i], Component.PreferSynchronous)
-      if (c.status !== Component.Ready) { console.warn("NODI-TEST fail " + files[i] + " " + c.errorString().replace(/\n/g, " ")); left--; continue }
-      var t = c.createObject(null)
-      ;(function(name, t) { t.done.connect(function(ok, report) {
-        console.warn("NODI-TEST " + (ok ? "pass " : "fail ") + name + (ok ? "" : " " + report))
-        if (--left === 0) console.warn("NODI-TEST done")
-      }) })(files[i], t)
-      if (typeof t.start === "function") t.start()
-      else { console.warn("NODI-TEST fail " + files[i] + " has no start()"); left-- }
+  property int nextFile: 0
+
+  function startNext() {
+    if (nextFile >= files.length) {
+      console.warn("NODI-TEST done")
+      return
     }
-    if (left === 0) console.warn("NODI-TEST done")
+    var name = files[nextFile++]
+    var c = Qt.createComponent(name, Component.PreferSynchronous)
+    if (c.status !== Component.Ready) {
+      console.warn("NODI-TEST fail " + name + " " + c.errorString().replace(/\n/g, " "))
+      Qt.callLater(startNext)
+      return
+    }
+    var t = c.createObject(null)
+    if (!t) {
+      console.warn("NODI-TEST fail " + name + " could not be created")
+      Qt.callLater(startNext)
+      return
+    }
+    t.done.connect(function(ok, report) {
+      console.warn("NODI-TEST " + (ok ? "pass " : "fail ") + name + (ok ? "" : " " + report))
+      t.destroy()
+      Qt.callLater(startNext)
+    })
+    if (typeof t.start === "function") t.start()
+    else {
+      console.warn("NODI-TEST fail " + name + " has no start()")
+      t.destroy()
+      Qt.callLater(startNext)
+    }
   }
+  Component.onCompleted: startNext()
 }
 QML
 
 "$root/tools/private-wayland.sh" qs --no-color -p "$work/shell.qml" >"$work/out" 2>&1 &
 pid=$!
-# A minute, or five when real agents are asked (tests/qml/AgentsLiveTest.qml).
-limit=600
-[[ -z ${NODI_TEST_AGENTS:-} ]] || limit=3000
+# Three minutes, or ten when real agents are asked (tests/qml/AgentsLiveTest.qml).
+limit=1800
+[[ -z ${NODI_TEST_AGENTS:-} ]] || limit=6000
 for _ in $(seq 1 "$limit"); do
   grep -q "NODI-TEST done" "$work/out" 2>/dev/null && break
   kill -0 "$pid" 2>/dev/null || break
