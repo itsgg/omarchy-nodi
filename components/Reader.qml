@@ -21,6 +21,10 @@ Item {
   property int timeoutMs: 5000
   property int maxBytes: 1048576
   property var extraEnvironment: ({})
+  // Line-oriented sources historically receive a final newline even when
+  // their program omitted one. Exact text reads such as an explicit paste
+  // opt out, so Reader does not invent a character in the user's input.
+  property bool terminateLines: true
   // A read that can be cancelled (a script filter's run that a newer
   // keystroke replaced) is ended with the program and all it started.
   property bool cancelable: false
@@ -192,7 +196,9 @@ Item {
     if (!reader.active) return
     deadline.stop()
     cancelling.stop()
-    var text = reader.streaming ? reader.pieces.join("") : reader.lines(gathered || "", reader.overflowed)
+    var text = reader.streaming ? reader.pieces.join("")
+      : reader.terminateLines ? reader.lines(gathered || "", reader.overflowed)
+      : String(gathered || "")
     reader.pieces = []
     reader.finished(text, ok, reader.tag)
     reader.active = false

@@ -213,6 +213,19 @@ test("Ctrl+K typed into: words that start the label or group's, each group under
   assert.ok(!("section" in acts[3]), "the list actionsFor gave is left as it was");
 });
 
+test("Ctrl+K filtering ranks the label match, then availability, then original order", () => {
+  const actions = [
+    { label: "Other", detail: "Copy", group: "Manage" },
+    { label: "Copy title", group: "Copy" },
+    { label: "Copy", group: "Copy", disabled: true },
+    { label: "Copy", group: "Copy" }
+  ];
+  assert.deepEqual(plain(Rows.filterActions(actions, "copy").map(a => [a.label, !!a.disabled])),
+    [["Copy", false], ["Copy", true], ["Copy title", false], ["Other", false]]);
+  assert.deepEqual(plain(Rows.filterActions(actions, "").map(a => a.label)),
+    ["Other", "Copy title", "Copy", "Copy"], "an empty palette keeps its deliberate category order");
+});
+
 test("a plugin opened: said as the shell command it is, and Enter says Open", () => {
   const R = load("lib/Run.js");
   assert.equal(R.describe(R.summon("omarchy.emojis")), "omarchy-shell shell summon omarchy.emojis '{}'");

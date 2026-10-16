@@ -1,13 +1,29 @@
 {
  "summary": {
   "intended": {
-   "queries": 121,
-   "first": 114,
-   "topThree": 118,
+   "queries": 132,
+   "first": 125,
+   "topThree": 129,
    "notShown": 0,
-   "mrr": 0.964
+   "mrr": 0.967
   },
   "classes": {
+   "agent": {
+    "queries": 4,
+    "first": 4
+   },
+   "agent-mode": {
+    "queries": 4,
+    "first": 4
+   },
+   "semantic": {
+    "queries": 1,
+    "first": 1
+   },
+   "unavailable-agent": {
+    "queries": 2,
+    "first": 2
+   },
    "name": {
     "queries": 31,
     "first": 30
@@ -68,7 +84,7 @@
     "targets": 95,
     "neverFirst": 3,
     "median": 3,
-    "mean": 3.43
+    "mean": 3.42
    }
   },
   "learning": {
@@ -82,6 +98,17 @@
   "noise": 14
  },
  "intended": {
+  "claude": 1,
+  "claude ": 1,
+  "agy": 1,
+  "agy ": 1,
+  "pi": 1,
+  "pi ": 1,
+  "pi * 2": 1,
+  "codex": 1,
+  "codex ": 1,
+  "opencode": 1,
+  "opencode ": 1,
   "spotify": 1,
   "sp": 1,
   "chrom": 1,
@@ -320,7 +347,7 @@
    "Edit Text": 2,
    "Set From Image": 5,
    "Restore Default": 4,
-   "Monitors": 4,
+   "Monitors": 3,
    "Input": 3,
    "Enable Plugin": 2,
    "Disable Plugin": 4,

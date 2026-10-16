@@ -49,6 +49,20 @@ Everything Nodi reads, writes, starts and sends, and when.
   A script of Nodi's says one by writing its words to a file in a folder
   of `$XDG_RUNTIME_DIR` only you can read, and naming the file to the
   bar (`omarchy-shell shell call io.github.itsgg.nodi toast @file:...`).
+- Files named under `"home"` are watched continuously in the shell
+  process and parsed as bounded JSONL snapshots; opening the bar starts no
+  source program. Reads are capped before bytes reach the shell. Nodi may
+  keep stale display data through a missing, partial or invalid replacement,
+  but removes its executable capabilities immediately. A source is
+  display-only unless its config explicitly says `"trustedActions": true`.
+  On each read of such a source, Nodi checks the same opened descriptor and
+  its path before and after the read, requiring the same regular non-symlink
+  file owned by the current user and writable by neither group nor world
+  before accepting an executable action.
+  Executable rows always show the exact command, ask before running and
+  are not saved for replay. File ownership and mode do not stop another
+  process running as the same user from changing the file; use a sandbox
+  or policy fence around a trusted producer. Nodi cannot verify one.
 - A command a row runs that fails is reported in that toast, "<row>
   failed": a command of Nodi's own rows or a script filter's with the last
   line of errors it wrote (one that fails without a word, or a program
@@ -102,6 +116,13 @@ Everything Nodi reads, writes, starts and sends, and when.
   window" sends the agent a picture of the window you came from (`grim
   -T`, by its own buffer, so the bar is not in it), which stays in the
   conversation, and its cost in every question, until it starts afresh.
+  An agent that advertises saved sessions may give Nodi up to 50 session
+  IDs, titles, folders and update times; Nodi holds those summaries only
+  in memory. Interactive form values go only back to that agent request,
+  are bounded, and are not put in preferences or history. Opening an
+  HTTP, HTTPS or mail link from an Ask answer reports that URL and whether
+  it was dispatched to the same agent session and turn; local and file
+  links are not reported.
 - Codex under Ask uses a private profile at
   `~/.local/share/nodi/profiles/codex`, with its own sign-in. Nodi never
   copies the normal profile's rotating ChatGPT refresh token.
@@ -119,6 +140,17 @@ Everything Nodi reads, writes, starts and sends, and when.
   manager's), keeps them until it next opens, and sends one to the agent
   only when you pick one of the agent's rows on it, or to a streamed-answer
   fallback when you choose that row.
+- When you choose an Ask, the agent is sent, beside the question, a note
+  (`_meta.nodi`, [Ask](ask.md) shows it): what the row is for, the window
+  you came from (class, title, workspace, process id, and the directory
+  `/proc/<pid>/cwd` links to, read once as you choose, for a second at
+  most, passed to the reader in its environment, not its command line,
+  and left out if it fails or the window is no longer the one that process
+  id was seen with), and, for an action on the selected or
+  copied text, that text, how old it is, and whether it was the selection
+  or the clipboard. Nothing is read before you choose, nothing goes in a
+  command line, a log or a row's key, and the note is not kept with the
+  conversation's summaries.
 - Its folders, `~/.cache/nodi/`, `~/.local/state/nodi/` and
   `~/.local/share/nodi/`, are yours alone (0700), made so at each start
   and each open; a file it replaces is written beside it under a name of

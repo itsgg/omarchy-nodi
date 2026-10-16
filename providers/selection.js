@@ -59,16 +59,16 @@ function about(sel) {
 function claudeActions(lang, ab) {
   return [
     { id: "fix", title: "Fix spelling and grammar", keywords: "fix spelling grammar typo typos correct proofread",
-      question: "Fix the spelling and grammar of " + ab.noun, context: ab.context,
+      question: "Fix the spelling and grammar of " + ab.noun, context: ab.context, purpose: "fix",
       ask: "Fix the spelling and grammar of the text below. Keep its meaning, tone, language, line breaks and formatting." },
     { id: "translate", title: "Translate to " + lang, keywords: "translate translation language",
-      question: "Translate " + ab.noun + " to " + lang, context: ab.context,
+      question: "Translate " + ab.noun + " to " + lang, context: ab.context, purpose: "translate",
       ask: "Translate the text below to " + lang + "." },
     { id: "summarize", title: "Summarize", keywords: "summarize summarise summary tldr shorten",
-      question: "Summarize " + ab.noun, context: ab.context,
+      question: "Summarize " + ab.noun, context: ab.context, purpose: "summarize",
       ask: "Summarize the text below in a few sentences." },
     { id: "explain", title: "Explain", keywords: "explain meaning what does it mean",
-      question: "Explain " + ab.noun, context: ab.context,
+      question: "Explain " + ab.noun, context: ab.context, purpose: "explain",
       ask: "Explain the text below briefly." }
   ]
 }
@@ -138,7 +138,7 @@ function searchFor(ctx) {
 
 function claudeRow(a, text, extra) {
   var row = { key: "selection:" + a.id, title: a.title, subtitle: shown(text), icon: ICON, copy: "", remember: false,
-              nodi: "askWith", actionLabel: "Ask", ask: { question: a.question, message: message(a.ask, text), context: a.context || "selection" } }
+              nodi: "askWith", actionLabel: "Ask", ask: { question: a.question, message: message(a.ask, text), context: a.context || "selection", purpose: a.purpose } }
   for (var k in extra) row[k] = extra[k]
   return row
 }
@@ -225,7 +225,7 @@ var PRESETS = [
 ]
 
 function rewriteRow(title, how, text, score, ab) {
-  return claudeRow({ id: "rewrite", title: title, question: "Rewrite " + ab.noun + ": " + how, context: ab.context,
+  return claudeRow({ id: "rewrite", title: title, question: "Rewrite " + ab.noun + ": " + how, context: ab.context, purpose: "rewrite",
                      ask: "Rewrite the text below as asked: " + how + "." }, text, { score: score })
 }
 

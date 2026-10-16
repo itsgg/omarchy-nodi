@@ -32,7 +32,8 @@ const QUERIES = [
   ":fire", ":", "emoji party", "kill", "kill chrome", "kill -9 node", "cb", "cb hello", "cb clear", "f ", "f a", "recent", "~/", "~/Do", "/",
   "uuid", "b64 hello", "b64 aGVsbG8=", "epoch", "epoch 1790000000", "#abc", "rgb(1,2,3)", "2+2", "15% of 200", "100 usd to eur", "$5",
   "5 km to mi", "72f", "time", "time in tokyo", "3pm to tokyo", "days until dec 25", "next friday", "g cats", "g", "yt x", "?", "?units", "?money",
-  "w ", "w git", "netflix", "restart shell", "default browser firefox", "toggle", "trigger", "capture", "monitors", "hibernate"
+  "w ", "w git", "netflix", "restart shell", "default browser firefox", "toggle", "trigger", "capture", "monitors", "hibernate",
+  "claude", "claude ", "agy", "agy ", "pi", "pi ", "pi * 2", "codex", "codex ", "opencode", "opencode "
 ];
 
 test("every row from every query is well formed", () => {
@@ -56,4 +57,23 @@ test("every row from every query is well formed", () => {
   }
   assert.deepEqual(warnings.slice(), [], "no provider failed and no run was dropped");
   assert.ok(rows > 200 && runs > 150 && actions > 400, `${rows} rows, ${runs} runs, ${actions} actions`);
+});
+
+test("agent names and modes obey the same intent invariants", () => {
+  const agents = [
+    { id: "claude", name: "Claude", available: true, missing: "", reason: "", current: true },
+    { id: "codex", name: "Codex", available: true, missing: "", reason: "", current: false },
+    { id: "agy", name: "Agy", available: true, missing: "", reason: "", current: false },
+    { id: "pi", name: "Pi", available: true, missing: "", reason: "", current: false },
+    { id: "opencode", name: "OpenCode", available: false, missing: "opencode", reason: "", current: false }
+  ];
+  const svc = services({ ask: { phase: "idle", question: "", answer: "", agent: "Claude", agentId: "claude", agents } });
+  for (const id of ["claude", "codex", "agy", "pi"]) {
+    assert.equal(Engine.run(id, config, svc)[0].key, "ask:direct:" + id, id);
+    const modeRows = Engine.run(id + " ", config, svc);
+    assert.ok(modeRows.length > 0 && modeRows.every(r => r.provider === "ask"), id + " mode");
+  }
+  assert.equal(Engine.run("pi * 2", config, svc)[0].provider, "math");
+  for (const q of ["opencode", "opencode "])
+    assert.ok(!Engine.run(q, config, svc).some(r => r.provider === "ask"), q + " stays unclaimed");
 });

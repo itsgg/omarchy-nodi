@@ -99,6 +99,24 @@ test("kind decides between rows named equally well", () => {
   assert.ok(Score.score("prefix", "hint") < Score.score("keyword", "app"), "a hint never beats an app it names");
 });
 
+test("structured rank keeps explicit intent above the old score, which still orders one intent", () => {
+  const r = (intent, extra = {}) => Score.rank(Object.assign({
+    intent, tier: "exact", pick: 0, kind: "item", habit: 0,
+    fit: 0, local: 0, score: 0, order: 0, seq: 0
+  }, extra));
+  const intents = ["userAlias", "alias", "mode", "exactCommand", "semantic", "commandArgs", "ordinary", "hint", "status"];
+  for (let i = 1; i < intents.length; i++)
+    assert.ok(Score.compare(r(intents[i - 1], { score: -1000 }),
+                            r(intents[i], { score: 1000 })) < 0,
+      intents[i - 1] + " stays above " + intents[i]);
+  assert.ok(Score.compare(r("ordinary", { score: 11 }), r("ordinary", { score: 10 })) < 0,
+    "the established tier, kind, learning, fit and provider score remains one numeric order");
+  assert.ok(Score.compare(r("ordinary", { order: 1 }), r("ordinary", { order: 2 })) < 0, "provider order breaks ties");
+  assert.ok(Score.compare(r("ordinary", { seq: 1 }), r("ordinary", { seq: 2 })) < 0, "stable sequence last");
+  assert.equal(Score.rank({ intent: "made-up", score: Infinity }).intent, "ordinary");
+  assert.equal(Score.rank({ score: Infinity }).score, 0);
+});
+
 test("habit: a use that halves every 30 days, growing with its log up to HABIT_MAX (ROADMAP 38)", () => {
   const now = Date.UTC(2026, 9, 2);
   const day = 86400000;
@@ -205,6 +223,25 @@ test("snapshots: what an empty bar needs to run a row again", () => {
   const h = History.record({}, "menu:x", 5, s);
   assert.equal(History.record(h, "menu:x", 6)["menu:x"].s.title, "Screenshot", "a later run without a snapshot keeps the old one");
   assert.equal(History.load(History.serialize(h, {})).rows["menu:x"].s.title, "Screenshot");
+});
+
+test("normalized rows keep query recall separate from general habit in their rank tuple", () => {
+  const Rows = load("lib/Rows.js");
+  const now = Date.UTC(2026, 9, 15);
+  const row = Rows.normalize({ key: "ask:pi", title: "Ask Pi", intent: "exactCommand", tier: "exact", kind: "action", score: 90 },
+    { id: "ask", name: "Ask" }, 3, 7,
+    { history: { "ask:pi": { n: 4, t: now } }, picks: { pi: { "ask:pi": { n: 2, t: now } } }, query: "pi", now });
+  assert.equal(row.rank.intent, "exactCommand");
+  assert.equal(row.rank.tier, 0);
+  assert.ok(row.rank.pick > 0);
+  assert.ok(row.rank.habit > 0);
+  assert.equal(row.rank.local, 90);
+  assert.deepEqual([row.rank.order, row.rank.seq], [3, 7]);
+  assert.equal(Rows.normalize({ title: "Unknown", intent: "other" }, { id: "x", name: "X" }, 0, 0).rank.intent, "ordinary");
+  const live = Rows.normalize({ title: "Volume", score: 98 }, { id: "system", name: "System" }, 0, 0);
+  assert.deepEqual([live.tier, live.kind, live.rank.tier], ["exact", "mode", 0], "a provider's direct result is an exact mode row");
+  const status = Rows.normalize({ title: "Reading...", score: 40 }, { id: "system", name: "System" }, 0, 0);
+  assert.deepEqual([status.kind, status.intent], ["status", "status"], "a low fixed score is status, never an actionable mode");
 });
 
 test("a query or key named like a prototype is stored like any other", () => {

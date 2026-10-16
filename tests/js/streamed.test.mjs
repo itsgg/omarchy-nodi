@@ -84,14 +84,16 @@ test("the pane shows the answer only while the query is its question", () => {
   // what it waits on, then its words, then why it failed if it did.
   const asked = { question: "q", agent: "Claude", model: "haiku", text: "", busy: true, status: "Searching the bar for lock" };
   assert.deepEqual(plain(Pane.choose({ ask: asked, row: null })),
-    { title: "q", subtitle: "Claude, haiku", text: "", follow: true, busy: true, status: "Searching the bar for lock..." });
+    { title: "q", subtitle: "Claude, haiku", markdown: "", follow: true,
+      plans: [], form: null, answerLink: true, answerTurn: "",
+      busy: true, status: "Searching the bar for lock..." });
   const words = plain(Pane.choose({ ask: Object.assign({}, asked, { text: "Ran" }), row: null }));
-  assert.deepEqual([words.text, words.busy, words.status], ["Ran", true, ""], "its words in place of the status, the spinner on");
+  assert.deepEqual([words.markdown, words.busy, words.status], ["Ran", true, ""], "its words in place of the status, the spinner on");
   const done = plain(Pane.choose({ ask: Object.assign({}, asked, { text: "Ran Lock.", busy: false }), row: null }));
   assert.deepEqual([done.busy, done.status], [false, ""]);
   const failed = plain(Pane.choose({ ask: Object.assign({}, asked, { busy: false, error: "Claude stopped: exit 1" }), row: null }));
-  assert.deepEqual([failed.text, failed.busy], ["Could not ask: Claude stopped: exit 1", false], "the pane stays open with why");
-  assert.equal(plain(Pane.choose({ ask: Object.assign({}, asked, { text: "Half", busy: false, error: "cut" }), row: null })).text, "Half\n\nCould not ask: cut");
+  assert.deepEqual([failed.markdown, failed.busy], ["Could not ask: Claude stopped: exit 1", false], "the pane stays open with why");
+  assert.equal(plain(Pane.choose({ ask: Object.assign({}, asked, { text: "Half", busy: false, error: "cut" }), row: null })).markdown, "Half\n\nCould not ask: cut");
   const row = { title: "r", subtitle: "s", preview: { title: "own" } };
   assert.equal(Pane.choose({ row }).title, "own");
   assert.deepEqual(plain(Pane.choose({ row: { title: "r", subtitle: "s" }, anyPreview: true })), { title: "r", subtitle: "s" });
@@ -207,7 +209,7 @@ test("the pane draws a conversation: each question set apart, the newest last, i
   assert.equal(asking.status, "", "the thread is there to read while it asks: no status in its place");
   assert.ok(asking.busy);
   const ask = plain(Pane.choose({ ask: { question: "q2", agent: "Claude", text: "Two.", busy: false, turns: [{ question: "q1", answer: "One." }] }, row: null }));
-  assert.equal(ask.text, "› q1\n\nOne.\n\n──────\n\n› q2\n\nTwo.");
+  assert.equal(ask.markdown, "> **q1**\n\nOne.\n\n---\n\n> **q2**\n\nTwo.");
   assert.equal(ask.subtitle, "Claude, 2 questions");
 });
 
@@ -228,7 +230,7 @@ test("a long thread keeps its newest turn whole, the oldest going first", () => 
   assert.ok(p.markdown.startsWith("*Earlier turns are not shown.*"), "says what it left out");
   assert.ok(p.markdown.includes("> **middle**") && !p.markdown.includes("> **oldest**"), "the oldest goes first");
   const ask = plain(Pane.choose({ ask: { question: "now", agent: "Claude", text: "Answer.", busy: false, turns: [{ question: "old", answer: big }, { question: "older", answer: big }] }, row: null }));
-  assert.ok(ask.text.length <= 60000 && ask.text.endsWith("\u203a now\n\nAnswer.") && ask.text.startsWith("(Earlier turns are not shown.)"));
+  assert.ok(ask.markdown.length <= 60000 && ask.markdown.endsWith("> **now**\n\nAnswer.") && ask.markdown.startsWith("*Earlier turns are not shown.*"));
 });
 
 

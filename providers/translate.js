@@ -55,7 +55,7 @@ function askRow(lang, text, context, extra) {
   var row = { key: "translate:" + lang, title: "Translate to " + lang, subtitle: Selection.shown(text), icon: ICON, copy: "",
               remember: false, nodi: "askWith", actionLabel: "Translate",
               ask: { question: "Translate to " + lang + ": " + (context === "selection" ? "the selection" : context === "copied" ? "the copied text" : Selection.shown(text)),
-                     message: Selection.message("Translate the text below to " + lang + ".", text), context: context } }
+                     message: Selection.message("Translate the text below to " + lang + ".", text), context: context, purpose: "translate" } }
   for (var k in extra) row[k] = extra[k]
   return row
 }

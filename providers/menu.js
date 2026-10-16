@@ -179,6 +179,10 @@ function rowFor(hit, ctx, chords) {
     iconFont: item.iconFont,
     tier: hit.tier,
     kind: hit.kind,
+    // A setting submenu only leads to the actual choices below it. In root
+    // search it is a completion, not the setting or app the query names.
+    intent: item.kind !== "action" && hit.kind === "setting"
+              && (hit.tier !== "exact" || /^setup\.default\./.test(item.id)) ? "hint" : "ordinary",
     offset: hit.offset,
     copy: "",
     group: "Omarchy"

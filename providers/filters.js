@@ -1,5 +1,6 @@
 .pragma library
 .import "../lib/Run.js" as Run
+.import "../lib/ExternalRows.js" as External
 .import "../lib/Score.js" as Score
 .import "../lib/Match.js" as Match
 
@@ -74,9 +75,9 @@
 var LIMIT = 50
 // A list is read once and searched here, so it may hold more.
 var LIST_LIMIT = 1000
-var MAX = { title: 200, subtitle: 300, badge: 24, markdown: 65536, id: 200, risk: 500 }
+var MAX = External.MAX
 
-function text(v, max) { return typeof v === "string" ? v.slice(0, max) : "" }
+function text(v, max) { return External.text(v, max) }
 
 // "10m", "30s", "2h", "500ms" in milliseconds, held between `min` and
 // `max`; `fallback` for anything else.
@@ -92,16 +93,26 @@ function refreshOf(f) { return duration(f.refresh, REFRESH, 10000, 24 * 3600000)
 function rerunOf(f) { return duration(f.rerun, 0, 500, 60000) }
 function timeoutOf(f) { return Math.min(10000, Math.max(500, Number(f.timeoutMs) || 3000)) }
 
-// The filters set in nodi.json that can run: a keyword without a space,
-// and a command of strings.
+function commandFilter(f) {
+  return Array.isArray(f.command) && f.command.length > 0
+    && f.command.every(function(a) { return typeof a === "string" }) && f.command[0] !== ""
+    && f.command[0].charAt(0) !== "-"
+}
+
+function socketFilter(f) {
+  return typeof f.socket === "string" && f.socket.charAt(0) === "/" && f.socket.length <= 4096
+    && !/(?:^|\/)\.{1,2}(?:\/|$)/.test(f.socket) && f.socket.charAt(f.socket.length - 1) !== "/"
+}
+
+// The filters set in nodi.json: a keyword without a space, and exactly one
+// external transport. Socket sources are query sources, not command lists
+// or command-driven steps.
 function list(settings) {
   if (!Array.isArray(settings)) return []
   return settings.filter(function(f) {
-    // The program is the first word as it is: timeout(1), which starts
-    // it, would read one starting with "-" as an option of its own.
-    return f && typeof f.keyword === "string" && /^\S+$/.test(f.keyword) && Array.isArray(f.command) && f.command.length > 0
-      && f.command.every(function(a) { return typeof a === "string" }) && f.command[0] !== ""
-      && f.command[0].charAt(0) !== "-"
+    if (!f || typeof f.keyword !== "string" || !/^\S+$/.test(f.keyword)) return false
+    var command = commandFilter(f), socket = socketFilter(f)
+    return (command ? 1 : 0) + (socket ? 1 : 0) === 1 && !(socket && (f.list === true || f.format === "rofi"))
   })
 }
 
@@ -136,23 +147,26 @@ function filterFor(query, settings) {
   return null
 }
 
+// A keyword with no space after it names the filter but does not run it.
+// The hint it makes fills the separating space on Enter or Tab.
+function bareFilterFor(query, settings) {
+  var m = String(query).match(/^\s*(\S+)$/)
+  if (!m) return null
+  var all = list(settings)
+  for (var i = 0; i < all.length; i++)
+    if (all[i].keyword.toLowerCase() === m[1].toLowerCase()) return all[i]
+  return null
+}
+
 // What Enter does, from the line's "action", through lib/Run.js like every
 // other row's; anything else is no action.
 function actionOf(a) {
-  if (!a || typeof a !== "object") return {}
-  if (Array.isArray(a.exec)) return { run: Run.exec(a.exec) }
-  if (typeof a.open === "string") return { run: Run.open(a.open) }
-  if (typeof a.copy === "string" && a.copy) return { run: Run.copy(a.copy), copy: a.copy }
-  if (typeof a.paste === "string" && a.paste) return { run: Run.paste(a.paste), copy: a.paste }
-  if (typeof a.query === "string") return { complete: a.query }
-  if (typeof a.next === "string") return { next: a.next.slice(0, 4096) }
-  return {}
+  return External.actionOf(a)
 }
 
 // A theme's icon by name, or an absolute path; anything else is none.
 function iconOf(v) {
-  var s = typeof v === "string" ? v : ""
-  return s.charAt(0) === "/" || /^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(s) ? s.slice(0, 200) : ""
+  return External.iconOf(v)
 }
 
 // A step on: what Enter hands the program's next run.
@@ -163,17 +177,11 @@ function nextOf(f, pick, info, retv) {
 // How a line asks before it runs: { confirm, confirmWord }. true is a
 // second Enter; a word is that word, typed (lib/Rows.js checks its shape).
 function confirmOf(c) {
-  if (c === true) return { confirm: true, confirmWord: "" }
-  if (typeof c === "string" && c) return { confirm: true, confirmWord: c }
-  return { confirm: false, confirmWord: "" }
+  return External.confirmOf(c)
 }
 
 function previewOf(p) {
-  if (typeof p === "string") return p ? { markdown: p.slice(0, MAX.markdown) } : null
-  if (!p || typeof p !== "object") return null
-  var out = { title: text(p.title, MAX.title), subtitle: text(p.subtitle, MAX.subtitle) }
-  if (typeof p.markdown === "string") out.markdown = p.markdown.slice(0, MAX.markdown)
-  return out.title || out.subtitle || out.markdown ? out : null
+  return External.previewOf(p)
 }
 
 // The program's output as rows for the filter `f`; null when nothing in it
@@ -183,58 +191,12 @@ function parse(textOut, f) { return parseLines(textOut, f).rows }
 // Nodi's lines as { rows, data }: data from a line { "data": "..." }, for
 // the next step's NODI_DATA.
 function parseLines(textOut, f) {
-  var lines = String(textOut || "").split("\n")
-  var rows = []
-  var data = ""
-  var read = 0
   var limit = f.list ? LIST_LIMIT : LIMIT
-  for (var i = 0; i < lines.length && rows.length < limit; i++) {
-    var line = lines[i].trim()
-    if (!line) continue
-    var o
-    try { o = JSON.parse(line) } catch (e) { continue }
-    if (o && typeof o === "object" && !Array.isArray(o) && typeof o.data === "string" && o.title === undefined) { data = o.data.slice(0, 4096); continue }
-    if (!o || typeof o !== "object" || Array.isArray(o) || typeof o.title !== "string" || !o.title) continue
-    read++
-    var act = actionOf(o.action)
-    var id = text(o.id, MAX.id)
-    var row = {
-      // An id names the row; without one, its place keeps two rows of the
-      // same title apart (the ranking and a second Enter go by key).
-      key: "filter:" + f.keyword + ":" + (id ? "id:" + id : "#" + rows.length + ":" + o.title),
-      title: text(o.title, MAX.title),
-      subtitle: text(o.subtitle, MAX.subtitle),
-      icon: text(o.icon, 8) || f.icon || "",
-      image: typeof o.image === "string" && o.image.charAt(0) === "/" ? o.image : "",
-      badge: text(o.badge, MAX.badge),
-      score: 97 - rows.length * 0.01,
-      copy: act.copy || "",
-      run: act.run || null,
-      complete: typeof o.complete === "string" && o.complete ? o.complete.slice(0, MAX.title) : (act.complete || ""),
-      match: text(o.match, MAX.subtitle),
-      // Read again at the filter's pace while it shows ("rerun").
-      liveMs: f.rerunMs || 0,
-      confirm: confirmOf(o.confirm).confirm,
-      confirmWord: confirmOf(o.confirm).confirmWord,
-      risk: text(o.risk, MAX.risk),
-      // What a program's row runs is shown before it runs, once it asks.
-      showsCommand: true,
-      undoable: o.undoable === true,
-      remember: !!id,
-      preview: previewOf(o.preview),
-      group: f.title || f.keyword,
-      next: act.next !== undefined ? nextOf(f, act.next, o.info, 1) : null,
-      actions: Array.isArray(o.actions) ? o.actions.slice(0, 12).map(function(a) {
-        var x = actionOf(a && a.action)
-        var c = confirmOf(a && a.confirm)
-        return x.run ? { label: text(a.title, MAX.title), icon: "", run: x.run, confirm: c.confirm, confirmWord: c.confirmWord, risk: text(a && a.risk, MAX.risk),
-                         undoable: !!a && a.undoable === true } : null
-      }).filter(function(a) { return a && a.label }) : []
-    }
-    rows.push(row)
-  }
-  for (var r = 0; r < rows.length; r++) if (rows[r].next) rows[r].next.data = data
-  return { rows: rows, data: data }
+  return External.parseLines(textOut, f, { limit: limit, nextOf: nextOf })
+}
+
+function socketRows(raw, f) {
+  return External.objects(raw, f, { limit: Math.max(1, Math.min(1000, Number(f.max) || LIMIT)) })
 }
 
 // A rofi script's output as { rows, data, message, noCustom }.
@@ -300,14 +262,22 @@ function parseOf(textOut, ok, param) {
   return parse(textOut, { keyword: p.keyword, title: p.title, icon: p.icon, rerunMs: p.rerunMs || 0, list: !!p.list })
 }
 
-function sourceOf(f) { return f.list === true ? "filter-list" : "filter" }
+function sourceOf(f) { return socketFilter(f) ? "filter-socket" : f.list === true ? "filter-list" : "filter" }
 
 // What a run of `f` is keyed by and runs with. The window is in the key
 // too: what a program says of one window is not its answer for another. A
 // list's run has neither query nor window: one list serves every query.
 function paramOf(f, query, ctx) {
   // A list follows its refresh; rerun is for a run on each query.
-  var p = { keyword: f.keyword, title: f.title || f.keyword, icon: f.icon || "", command: f.command, timeoutMs: timeoutOf(f) }
+  var p = { keyword: f.keyword, title: f.title || f.keyword, icon: f.icon || "", timeoutMs: timeoutOf(f) }
+  if (socketFilter(f)) {
+    p.socket = f.socket
+    p.query = query
+    p.window = ctx.window || null
+    p.max = Math.max(1, Math.min(1000, Number(f.max) || LIMIT))
+    return JSON.stringify(p)
+  }
+  p.command = f.command
   if (f.list === true) { p.list = true; p.refreshMs = refreshOf(f) }
   else { p.query = query; p.window = ctx.window || null; p.rerunMs = rerunOf(f); if (f.argument === true) p.argument = true }
   return JSON.stringify(p)
@@ -472,6 +442,22 @@ var provider = {
       supersede: true,
       sessionPath: true
     },
+    "filter-socket": {
+      socket: true,
+      parse: function(raw, ok, param) {
+        if (!ok) throw "socket source could not answer"
+        var p = JSON.parse(param)
+        return socketRows(Array.isArray(raw) ? raw : [], p)
+      },
+      maxAgeMs: 3000,
+      retryMs: 1000,
+      timeoutMs: 10000,
+      maxBytes: 1048576,
+      maxLineBytes: 131072,
+      batchMs: 16,
+      supersede: true,
+      transient: true
+    },
     // A list's read, on a reader of its own and never ended by another
     // read: on the one filter reader, two root lists ended each other's
     // run at every keystroke, and a slow one never landed (Sonnet
@@ -540,7 +526,18 @@ var provider = {
   ],
   match: function(query, ctx) {
     var hit = filterFor(query, ctx.settings)
-    if (!hit) return rootRows(query, ctx)
+    if (!hit) {
+      var bare = bareFilterFor(query, ctx.settings)
+      if (bare) {
+        var name = bare.title || bare.keyword
+        return [{ key: "filter:" + bare.keyword + ":hint", title: name,
+                  subtitle: "Type " + bare.keyword + " and " + (bare.placeholder || "words"),
+                  icon: bare.icon || "󰈲", tier: "exact", kind: "action", intent: "ordinary",
+                  complete: bare.keyword + " ", copy: "", remember: false, group: name }]
+          .concat(rootRows(query, ctx))
+      }
+      return rootRows(query, ctx)
+    }
     var f = hit.filter
     var step = stepOf(f, ctx)
     if (step) return stepRows(f, hit.query, step, ctx)
@@ -548,7 +545,7 @@ var provider = {
     var got = ctx.request ? ctx.request(sourceOf(f), paramOf(f, hit.query, ctx)) : { state: "pending" }
     // A read that failed keeps the rows it had, which stay on show
     // (lib/Requests.js settled; Sonnet 2026-10-06).
-    if (got.state === "ready" || (got.state === "error" && Array.isArray(got.value))) {
+    if (got.state === "ready" || ((got.state === "error" || got.state === "pending") && Array.isArray(got.value))) {
       var rows = f.list === true ? named(f, got.value, hit.query).map(function(n, i) { return stepping(withScore(n.row, 97 - i * 0.01)) })
         : got.value.map(stepping)
       if (f.list !== true) shown[f.keyword] = got.value

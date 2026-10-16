@@ -58,7 +58,7 @@ function fieldsOf(list) {
 }
 
 // `listed`: the whole list with nothing typed, kept in Omarchy's order.
-function rowFor(b, tier, listed) {
+function rowFor(b, tier, listed, discover) {
   var run = runOf(b)
   var row = {
     key: "keys:" + b.chord,
@@ -74,6 +74,9 @@ function rowFor(b, tier, listed) {
     icon: "󰌌",
     tier: tier,
     kind: "command",
+    // Outside `keys ` these advertise a shortcut Nodi can also run. They
+    // must not displace the app or action the same words name.
+    intent: discover ? "hint" : "ordinary",
     // The closer name first: "Close window" before "Close all windows".
     offset: listed ? 0 : -Math.min(0.5, b.description.length * 0.01) - (run ? 0 : 4),
     copy: b.chord,
@@ -130,7 +133,7 @@ var provider = {
     }
     // With nothing typed after "keys ", Omarchy's own order, which groups them.
     if (q) hits.sort(function(a, b) { return b.s - a.s || a.b.description.length - b.b.description.length })
-    return (whole ? hits : hits.slice(0, LIMIT)).map(function(h) { return rowFor(h.b, h.t, whole && !q) })
+    return (whole ? hits : hits.slice(0, LIMIT)).map(function(h) { return rowFor(h.b, h.t, whole && !q, !whole) })
   },
   // A saved row as the records have it now: "keys:<chord>", while the chord
   // still runs what was saved; a chord bound to something else since keeps
@@ -144,7 +147,7 @@ var provider = {
     var list = got && Array.isArray(got.value) ? got.value : []
     for (var i = 0; i < list.length; i++) {
       if ("keys:" + list[i].chord !== key) continue
-      var row = rowFor(list[i], "exact", false)
+      var row = rowFor(list[i], "exact", false, false)
       return saved && JSON.stringify(row.run) === JSON.stringify(saved.run) ? row : null
     }
     return null

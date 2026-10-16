@@ -21,6 +21,12 @@
 #   plain question             an agent with no _meta: the instructions
 #                              come with the first prompt only, and a
 #                              picture it does not take does not come
+#   echo prompt context ...    answers with the prompt's _meta as JSON, null
+#                              when it had none, for a test to read
+#   with prompt context        the text and picture blocks as they were, and
+#                              _meta.nodi beside them: whole the first time,
+#                              asked again with the window's new and the
+#                              first turn's selection and purpose
 #   sign in first              session/new needs a sign-in, which he gives
 #   say a lot                  streams 100-byte chunks until it is told
 #                              session/cancel (at most 200), then ends the
@@ -190,6 +196,7 @@ while True:
     prompts += 1
     pid = m["id"]
     blocks = m["params"]["prompt"]
+    pmeta = m["params"].get("_meta")
     texts = [b["text"] for b in blocks if b.get("type") == "text"]
     question = texts[-1] if texts else ""
     bad = []
@@ -347,6 +354,25 @@ while True:
         want("\n<text>\nteh\n</text>" in question, "the selection sent with the question: %r" % (question,))
         end(); continue
 
+    if question.startswith("echo prompt context"):
+        end(json.dumps(pmeta, sort_keys=True)); continue
+
+    if question == "with prompt context":
+        want([b.get("type") for b in blocks] == ["image", "text"] and blocks[0]["data"] == "AAAA", "the picture and the text, as they were: %r" % (blocks,))
+        want(blocks[1] == {"type": "text", "text": "with prompt context"}, "the text unchanged: %r" % (blocks[1],))
+        if prompts == 1:
+            want(pmeta == {"nodi": {"version": 1, "purpose": "fix", "window": {"class": "foot", "title": "project", "workspace": 3, "pid": 4211, "cwd": "/home/user/project"},
+                                    "selection": {"text": "teh", "source": "primary", "ageMs": 4000}}}, "the whole context: %r" % (pmeta,))
+        else:
+            want(pmeta == {"nodi": {"version": 1, "purpose": "fix", "window": {"class": "foot2"},
+                                    "selection": {"text": "teh", "source": "primary", "ageMs": 4000}}},
+                 "asked again: the new window, the first selection and purpose: %r" % (pmeta,))
+        end(); continue
+
+    if question == "without prompt context":
+        want("_meta" not in m["params"], "no snapshot, no _meta: %r" % (m["params"],))
+        end(); continue
+
     if question == "What is in the picture?":
         want(blocks[0] == {"type": "image", "mimeType": "image/jpeg", "data": "AAAA"} and blocks[1]["type"] == "text", "the picture first: %r" % (blocks,))
         end(); continue
@@ -366,8 +392,10 @@ while True:
     if question.startswith("plain question"):
         if prompts == 1:
             want(len(texts) == 2 and "desktop command bar" in texts[0], "the instructions first, the first time: %r" % (texts,))
+            want(pmeta == {"nodi": {"version": 1, "purpose": "ask", "window": {"class": "foot"}}}, "a plain agent is sent the metadata too: %r" % (pmeta,))
         else:
             want(len(texts) == 1, "the instructions once only: %r" % (texts,))
+            want(pmeta is None, "no snapshot, no metadata: %r" % (pmeta,))
         want(not any(b.get("type") == "image" for b in blocks), "no picture to an agent that takes none")
         want(prompts > 1 or "takes none" in question, "the picture said not to have gone: %r" % (question,))
         end(); continue

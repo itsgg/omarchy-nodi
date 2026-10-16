@@ -26,3 +26,9 @@ test("<text> in <language> at root, by name only", () => {
   for (const q of ["zoom in", "log in google", "5 km in mi", "100 usd in inr", "3pm in tokyo", "hello in ta"])
     assert.ok(!run(q).some(x => x.provider === "translate"), q);
 });
+
+test("a translation's purpose is translate, typed text or the selection", () => {
+  assert.equal(top("tr ta good morning").ask.purpose, "translate");
+  assert.equal(top("tr tamil", stale("good night")).ask.purpose, "translate");
+  assert.equal(top("good morning in tamil").ask.purpose, "translate");
+});

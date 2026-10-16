@@ -75,7 +75,8 @@ function profileRows(q, ctx, asked) {
   if (!asked && !namesProfile(q, held && held.value ? held.value.list : [])) return []
   var got = ctx.request ? ctx.request("power-profiles") : { state: "pending" }
   var data = got.value
-  if (!data) return [{ title: got.state === "error" ? "Could not read power profiles" : "Reading power profiles...", subtitle: "Power profile", score: 40, copy: "" }]
+  if (!data) return [{ title: got.state === "error" ? "Could not read power profiles" : "Reading power profiles...", subtitle: "Power profile",
+                       score: 40, intent: asked ? "mode" : "ordinary", copy: "" }]
   var out = []
   for (var i = 0; i < data.list.length; i++) {
     var id = data.list[i]

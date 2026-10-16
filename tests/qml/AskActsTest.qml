@@ -22,7 +22,7 @@ Item {
   property var ran: []
   property var failures: []
   property int proposals: 0
-  property int remaining: 30
+  property int remaining: 32
   property int carriedCalls: 0
   property int rawCalls: 0
   Carried { id: carried }
@@ -31,7 +31,7 @@ Item {
   readonly property string dir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
   // bin/nodi's omarchy-shell, a stand-in that reaches this instance.
   readonly property var toolEnv: ({ OMARCHY_PATH: String(Qt.resolvedUrl("fake-omarchy")).replace(/^file:\/\//, ""), NODI_TEST_SHELL: Quickshell.shellDir, NODI_TEST_TARGET: "nodiAskTest" })
-  readonly property var sessions: [ask, identityActivity, searchPath, closeBeforeEnter, closeBeforeDelivery, mailboxLost, outcomes, oldTurn, dying, recycled, closing, selected, picture, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed, consent, own75, readyThenFails, flood, switcher, switchPending, closed, named2]
+  readonly property var sessions: [ask, identityActivity, searchPath, closeBeforeEnter, closeBeforeDelivery, mailboxLost, outcomes, oldTurn, dying, recycled, closing, selected, picture, promptContext, noContext, closedBar, forgetful, lateAgain, named, plain, signIn, signHang, signWarm, installed, consent, own75, readyThenFails, flood, switcher, switchPending, closed, named2]
 
   function finished() {
     if (test.remaining <= 0) return
@@ -603,6 +603,43 @@ Item {
     }
   }
 
+  // What Ask tells an agent beside the question (lib/PromptContext.js):
+  // _meta.nodi beside the blocks, which are as they were; asked again, the
+  // window is the new one's and the selection the first turn's.
+  Ask {
+    id: promptContext
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    property int round: 0
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || promptContext.answer !== "ok") test.failures.push("with prompt context, round " + promptContext.round + ": " + phase + " " + promptContext.error + promptContext.answer)
+      if (++promptContext.round === 1) {
+        Qt.callLater(function() { promptContext.send("with prompt context", undefined, undefined, undefined, { purpose: "ask", window: { "class": "foot2" } }) })
+        return
+      }
+      test.finished()
+    }
+  }
+
+  // No snapshot, no _meta: the asks that never had one.
+  Ask {
+    id: noContext
+    acts: true
+    program: [test.fake, "claude"]
+    workDir: test.dir
+    toolServer: test.nodi
+    toolEnv: test.toolEnv
+    onPhaseChanged: {
+      if (phase !== "error" && phase !== "done") return
+      if (phase !== "done" || noContext.answer !== "ok") test.failures.push("without prompt context: " + phase + " " + noContext.error + noContext.answer)
+      test.finished()
+    }
+  }
+
   // The bar closed: a run the agent asks for is refused, never left waiting.
   Ask {
     id: closedBar
@@ -709,7 +746,7 @@ Item {
           test.failures.push("the first answer is a turn by the second: " + JSON.stringify(plain.turns))
         // A new session's first question, as the first round's was: with a
         // picture this agent takes none of, so it says so.
-        Qt.callLater(function() { plain.restart(); plain.send("plain question after a restart", undefined, undefined, { mediaType: "image/jpeg", data: "AAAA" }) })
+        Qt.callLater(function() { plain.restart(); plain.send("plain question after a restart", undefined, undefined, { mediaType: "image/jpeg", data: "AAAA" }, { purpose: "ask", window: { "class": "foot" } }) })
         return
       }
       if (plain.turns.length !== 0) test.failures.push("a restarted session shows no turns from before it: " + JSON.stringify(plain.turns))
@@ -1007,6 +1044,10 @@ Item {
     signWarm.warm()
     named.send("use the shouter")
     picture.send("What is in the picture?", "What is in the picture?", "window", { mediaType: "image/jpeg", data: "AAAA" })
+    promptContext.send("with prompt context", "with prompt context", "selection", { mediaType: "image/jpeg", data: "AAAA" },
+                       { purpose: "fix", window: { "class": "foot", title: "project", workspace: 3, pid: 4211, cwd: "/home/user/project", address: "0x1" },
+                         selection: { text: "teh", source: "primary", ageMs: 4000 } })
+    noContext.send("without prompt context")
     closedBar.send("while the bar is closed")
     forgetful.send("say ok")
     lateAgain.send("Fix the spelling and grammar of the selection",
@@ -1024,7 +1065,7 @@ Item {
     oldTurn.send("old turn replay")
     dying.send("exit while proposing")
     recycled.send("recycle while proposing")
-    plain.send("plain question", "plain question", "window", { mediaType: "image/jpeg", data: "AAAA" })
+    plain.send("plain question", "plain question", "window", { mediaType: "image/jpeg", data: "AAAA" }, { purpose: "ask", window: { "class": "foot" } })
     signIn.send("sign in first")
     deadline.start()
   }

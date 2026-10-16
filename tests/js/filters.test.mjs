@@ -48,7 +48,27 @@ test("a keyword and a space hand the rest to the program, which answers in rows"
   assert.equal(Engine.mode("n meet", cfg).label, "Notes");
   assert.equal(Engine.mode("n meet", cfg).hint, "n <words>");
   assert.deepEqual(plain(run("n ").map(r => r.title)), ["Meeting notes", "Weekly report", "Reading list"], "the empty query too");
-  assert.ok(!run("n").some(r => r.provider === "filters"), "the keyword alone is not the filter");
+});
+
+test("a bare filter keyword offers an exact hint above file matches without running the filter", () => {
+  const due = { keyword: "due", title: "Tasks due", icon: "󰃭", command: [SCRIPT] };
+  const dueCfg = Object.assign({}, config, { filters: [due] });
+  const asked = [];
+  const rows = Engine.run("due", dueCfg, services({
+    asked,
+    apps: [{ id: "due", name: "Due", generic: "", comment: "", keywords: [],
+             icon: "due", wmclass: "", actions: [] }],
+    found: { q: "due", list: [{ path: "/home/u/due", name: "due", dir: false }] }
+  }));
+  const hint = rows.find(r => r.key === "filter:due:hint");
+  assert.deepEqual(plain([hint.key, hint.provider, hint.title, hint.icon, hint.complete, hint.copy, hint.kind, hint.intent]),
+    ["filter:due:hint", "filters", "Tasks due", "󰃭", "due ", "", "action", "ordinary"]);
+  assert.equal(rows[0].provider, "apps", "an exact app remains above an ambiguous bare keyword");
+  assert.ok(rows.indexOf(hint) < rows.findIndex(r => r.provider === "files"),
+            "the filter hint remains above an exact file match");
+  assert.ok(Rows.canComplete(hint), "Tab fills the filter prefix; Enter does the same");
+  assert.ok(rows.some(r => r.provider === "files"), "the matching file remains below the filter");
+  assert.ok(!asked.some(k => k.startsWith("filter:")), "the bare keyword starts no filter process");
 });
 
 test("what it may print: lines that are not rows are skipped; actions map to Nodi's own", () => {
@@ -77,6 +97,13 @@ test("what it may print: lines that are not rows are skipped; actions map to Nod
   assert.equal(rows[0].remember, false, "no id, not remembered");
   assert.equal(F.parse(Array.from({ length: 80 }, (_, i) => '{"title": "r' + i + '"}').join("\n"), f).length, F.LIMIT);
   assert.equal(F.parse('{"title": "' + "t".repeat(500) + '"}', f)[0].title.length, F.MAX.title);
+});
+
+test("a script filter query action keeps its full completion text", () => {
+  const query = "x " + "word ".repeat(100);
+  const [row] = F.parse(JSON.stringify({ title: "Long query", action: { query } }), { keyword: "x", title: "X" });
+  assert.equal(row.complete, query);
+  assert.ok(row.complete.length > 200);
 });
 
 test("a run that goes wrong says so; a bad action is no action", () => {
@@ -331,4 +358,43 @@ test("an action of a kind it does not know is no action", () => {
   const rows = F.parse(JSON.stringify({ title: "Odd", action: { teleport: "mars" } }), { keyword: "k" });
   assert.ok(!rows[0].run);
   assert.deepEqual(plain(F.actionOf("open")), {}, "nor one that is no object");
+});
+
+test("socket filters use a transient superseding request with query and window only in its body parameter", () => {
+  const socket = { keyword: "s", title: "Socket search", socket: "/run/user/1000/example/search.sock", timeoutMs: 900, max: 7 };
+  const asked = [];
+  F.shown.s = undefined;
+  const window = { class: "foot", title: "private", address: "0x1", pid: "42", workspace: "2" };
+  const rows = Engine.run("s words", Object.assign({}, config, { filters: [socket] }), services({ asked, window }));
+  assert.equal(rows[0].title, "Asking Socket search...");
+  const key = asked.find(k => k.startsWith("filter-socket:"));
+  assert.ok(key);
+  const param = JSON.parse(key.slice("filter-socket:".length));
+  assert.deepEqual(plain(param), {
+    keyword: "s", title: "Socket search", icon: "", socket: socket.socket,
+    query: "words", window, timeoutMs: 900, max: 7
+  });
+  assert.equal(JSON.stringify(F.provider.sources["filter-socket"]).includes("argv"), false);
+  assert.equal(F.provider.sources["filter-socket"].socket, true);
+  assert.equal(F.provider.sources["filter-socket"].supersede, true);
+  assert.equal(F.provider.sources["filter-socket"].transient, true);
+});
+
+test("socket rows use the shared bounded external row normalizer", () => {
+  const f = { keyword: "s", title: "Socket", socket: "/run/user/1000/example.sock", max: 1 };
+  const got = F.socketRows([
+    { id: "one", title: "One", action: { open: "https://example.test" } },
+    { id: "two", title: "Two", action: { exec: ["program", "--flag"] } }
+  ], f);
+  assert.equal(got.length, 1);
+  assert.equal(got[0].key, "filter:s:id:one");
+  assert.deepEqual(plain(got[0].run), { kind: "open", target: "https://example.test" });
+  assert.equal(got[0].showsCommand, true);
+});
+
+test("a pending socket query shows its first bounded batch", () => {
+  const socket = { keyword: "s", title: "Socket", socket: "/run/user/1000/example.sock" };
+  const rows = F.socketRows([{ title: "Early" }], socket);
+  const got = F.provider.match("s query", { settings: [socket], window: null, request: () => ({ state: "pending", value: rows }) });
+  assert.deepEqual(plain(got.map(r => r.title)), ["Early"]);
 });

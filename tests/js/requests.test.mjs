@@ -93,3 +93,18 @@ test("a read that lands with what the entry held is the same, and the bar is not
   assert.equal(R.same({ state: "error", error: "x", value: [1] }, ready([1])), false, "an error mended shows");
   assert.equal(R.same(ready([1]), { state: "error", error: "x", value: [1] }), false, "a failure shows");
 });
+
+test("batched socket progress is visible for a first read and preserves a prior successful value", () => {
+  const first = R.progress(R.begun(null, 10), ["a"]);
+  assert.deepEqual(plain(R.view(first)), { state: "pending", value: ["a"], error: "", at: 0 });
+  assert.equal(first.pending, true);
+  const ready = { state: "ready", value: ["old"], at: 1 };
+  const held = R.progress(R.begun(ready, 10), ["partial"]);
+  assert.deepEqual(plain(R.view(held).value), ["old"], "a replacement cannot flash an incomplete result over the last success");
+});
+
+test("a socket transport failure keeps the last value with its precise error", () => {
+  const failed = R.failed(R.begun({ state: "ready", value: ["old"], at: 1 }, 10), "socket disconnected", 20);
+  assert.deepEqual(plain(R.view(failed)), { state: "error", value: ["old"], error: "socket disconnected", at: 20 });
+  assert.equal(failed.pending, false);
+});

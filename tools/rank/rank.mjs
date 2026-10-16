@@ -38,8 +38,16 @@ function corpus() {
 }
 
 const c = corpus();
+const agents = [
+  { id: "claude", name: "Claude", available: true, missing: "", reason: "", current: true },
+  { id: "codex", name: "Codex", available: true, missing: "", reason: "", current: false },
+  { id: "agy", name: "Agy", available: true, missing: "", reason: "", current: false },
+  { id: "pi", name: "Pi", available: true, missing: "", reason: "", current: false },
+  { id: "opencode", name: "OpenCode", available: false, missing: "opencode", reason: "", current: false }
+];
 const svc = services({ apps: c.apps, history: {}, picks: {}, omarchyCommands: c.omarchyCommands, keybindings: c.keybindings,
                        menu: Object.assign({ when: {}, checked: {} }, c.menu), toggleStates: {}, windows: c.windows, files: [], clipboard: [],
+                       ask: { phase: "idle", question: "", answer: "", agent: "Claude", agentId: "claude", model: "", agents },
                        // One emoji, so the picker's row is there with Omarchy's list or without it (CI).
                        emojis: [{ e: "🔥", k: "fire burn hot flame" }] });
 const rows = q => Engine.run(q, config, svc);

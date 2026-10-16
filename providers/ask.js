@@ -163,9 +163,107 @@ function directAgent(query, ctx) {
     var name = String(a.name || "").toLowerCase()
     if (token !== String(a.id || "").toLowerCase() && token !== name) continue
     return { id: String(a.id), name: String(a.name || a.id), model: String(a.model || ""),
-             question: String(m[2] || "").trim(), prefix: m[1].toLowerCase() }
+             question: String(m[2] || "").trim(), prefix: m[1].toLowerCase(), spaced: m[2] !== undefined }
   }
   return null
+}
+
+function commandRows(query, ask) {
+  var m = String(query || "").match(/^\/([A-Za-z0-9._-]*)(?:\s+(.*))?$/)
+  if (!m) return null
+  var wanted = m[1].toLowerCase()
+  var input = m[2]
+  return (Array.isArray(ask.commands) ? ask.commands : []).filter(function(c) {
+    return !wanted || String(c.name || "").toLowerCase().indexOf(wanted) >= 0
+  }).map(function(c, i) {
+    var name = String(c.name || "")
+    var needsInput = !!c.input && input === undefined
+    return {
+      key: "ask:command:" + name,
+      title: "/" + name,
+      subtitle: c.description || (c.input && c.input.hint) || "Agent command",
+      icon: "󰘳", score: 110 - i, copy: "", remember: false,
+      complete: needsInput ? "ask /" + name + " " : "",
+      nodi: needsInput ? "" : "askCommand",
+      data: needsInput ? null : { name: name, input: input },
+      actionLabel: needsInput ? "Complete" : "Run",
+      intent: wanted === name.toLowerCase() ? "exactCommand" : "mode"
+    }
+  })
+}
+
+function resultRows(ask) {
+  return (Array.isArray(ask.resultActions) ? ask.resultActions : []).map(function(item, i) {
+    var action = item && item.action || {}
+    var kind = Object.keys(action)[0] || "action"
+    return {
+      key: "ask:result:" + i,
+      title: String(item.title || "Agent action"),
+      subtitle: kind === "exec" ? "Runs after confirmation"
+        : kind === "open" ? "Open link"
+        : kind === "copy" ? "Copy"
+        : kind === "paste" ? "Paste"
+        : kind === "prompt" ? "Continue this conversation"
+        : "Agent suggestion",
+      icon: kind === "exec" ? "󰆍" : kind === "open" ? "󰖟" : "󰚩",
+      score: 95.9 - i / 100, copy: "", remember: false,
+      nodi: "askResult", data: { index: i },
+      actionLabel: kind === "exec" ? "Review" : "Run"
+    }
+  })
+}
+
+function completedCommandRows(ask) {
+  return (Array.isArray(ask.commands) ? ask.commands : []).map(function(c, i) {
+    return {
+      key: "ask:answer-command:" + String(c.name || ""),
+      title: "/" + String(c.name || ""),
+      subtitle: c.description || (c.input && c.input.hint) || "Agent command",
+      icon: "󰘳", score: 95.7 - i / 100, copy: "", remember: false,
+      nodi: "askCommand", data: { name: String(c.name || "") },
+      actionLabel: c.input ? "Fill in" : "Run"
+    }
+  })
+}
+
+function sessionRows(ask) {
+  var sessions = Array.isArray(ask.remoteSessions) ? ask.remoteSessions : []
+  var out = []
+  for (var i = 0; i < sessions.length; i++) {
+    var s = sessions[i]
+    if (!s || !s.sessionId || s.sessionId === ask.sessionId) continue
+    out.push({
+      key: "ask:session:" + String(s.sessionId),
+      title: "Resume " + (s.title || "agent session"),
+      subtitle: [s.cwd, s.updatedAt].filter(function(x) { return x }).join(" | "),
+      icon: "󰑐", score: 90 - out.length / 100, copy: "", remember: false,
+      nodi: "askResume", data: { index: i }, actionLabel: "Resume"
+    })
+  }
+  return out
+}
+
+function escaped(word) { return String(word || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&") }
+
+// A bare agent followed only by whitespace is a mode of its own. Once a
+// question starts, the whole query remains available to semantic providers:
+// `pi ` is Ask Pi, while `pi * 2` is still a calculation.
+function modes(local) {
+  var out = [{ pattern: /^\s*ask\s/i, label: "Ask", icon: "󰚩", exclusive: true, hint: "ask <question>" }]
+  var list = Agents.registry(local)
+  var seen = Object.create(null)
+  for (var i = 0; i < list.length; i++) {
+    var a = list[i]
+    var names = [a.id, a.name]
+    for (var n = 0; n < names.length; n++) {
+      var token = String(names[n] || "").trim().toLowerCase()
+      if (!token || /\s/.test(token) || seen[token]) continue
+      seen[token] = true
+      out.push({ pattern: new RegExp("^\\s*" + escaped(token) + "\\s+$", "i"), label: "Ask " + a.name,
+                 icon: "󰚩", exclusive: true, hint: token + " <question>" })
+    }
+  }
+  return out
 }
 
 var CONTINUE = 't=${NODI_TEXT-}; unset NODI_TEXT'
@@ -176,7 +274,7 @@ var provider = {
   id: "ask",
   name: "Ask",
   icon: "󰚩",
-  modes: [{ pattern: /^\s*ask\s/i, label: "Ask", icon: "󰚩", exclusive: true, hint: "ask <question>" }],
+  modes: modes,
   commands: [
     { title: "Ask your agent", keywords: "ask ai agent question chat llm answer", text: "A quick answer, streamed into the bar", complete: "ask " }
   ],
@@ -208,6 +306,14 @@ var provider = {
     if (a.phase === "proposing" && a.proposal) {
       var p = a.proposal
       var other = a.question !== q
+      if (p.form) {
+        return decorate([
+          { key: "ask:form:submit", title: "Submit", subtitle: p.title || "Send the form to " + who,
+            icon: "󰄬", score: other ? 98 : 99, copy: "", nodi: "askAllow", actionLabel: "Submit", remember: false },
+          { key: "ask:form:cancel", title: "Cancel", subtitle: who + " is told no",
+            icon: "󰜺", score: other ? 99 : 98, copy: "", nodi: "askDeny", actionLabel: "Cancel", remember: false }
+        ])
+      }
       // A tool is allowed, a row run (ROADMAP 49, 84).
       var verb = p.auth ? "you to sign in" : p.tool ? "to use it" : "to run it"
       var allowRow = { key: "ask:allow", title: p.auth ? p.title : (p.tool ? "Allow " : "Run ") + p.title,
@@ -220,7 +326,8 @@ var provider = {
     if (direct && !q)
       return [{ key: "ask:direct:" + direct.id, title: "Ask " + direct.name,
                 subtitle: direct.model || "Question", icon: "󰚩", score: 40,
-                copy: "", complete: direct.prefix + " ", remember: false }]
+                copy: "", complete: direct.prefix + " ", remember: false,
+                intent: direct.spaced ? "mode" : "exactCommand" }]
     // A one-shot prefix cannot bypass the operation already owned by the
     // active session. Preserve its capture and busy rows before offering
     // another agent.
@@ -232,9 +339,14 @@ var provider = {
       return decorate([{ key: "ask:direct:" + direct.id, title: "Ask " + direct.name + ": " + q,
                          subtitle: direct.model ? direct.name + " " + direct.model : direct.name,
                          icon: "󰚩", score: 90, copy: q, nodi: "askAs", actionLabel: "Ask",
-                         remember: false, data: { id: direct.id, question: q } }])
+                         remember: false, intent: "commandArgs", data: { id: direct.id, question: q } }])
     if (!q) return decorate([{ title: "Ask " + name, subtitle: a.missing ? a.missing + " is not on your login PATH: install it, or name another agent in nodi.json" : "Question",
                            score: 40, copy: "", remember: false, hint: "ask <question>" }])
+    var commands = commandRows(q, a)
+    if (commands) return decorate(commands.length ? commands : [{
+      key: "ask:commands:none", title: "No agent command matches",
+      subtitle: q, icon: "󰘳", score: 40, copy: "", remember: false
+    }])
     // Nothing would happen on Enter: say why (Fable 2026-10-06).
     if (a.question !== q || a.phase === "idle") {
       // The first question installs the agent's adapter: say so before
@@ -243,18 +355,19 @@ var provider = {
                     subtitle: a.missing ? a.missing + " is not on your login PATH: install it, or name another agent in nodi.json"
                             : a.install ? "Enter installs " + a.install + " from npm first, once" : name, icon: "󰚩", score: 98,
                     copy: q, nodi: direct ? "askAs" : "ask", actionLabel: "Ask", remember: false,
+                    intent: direct ? "commandArgs" : "mode",
                     data: direct ? { id: direct.id, question: q } : null }]
       if (direct) return decorate(rows)
       var sel = ctx.selection || {}
       var ab = Selection.about(sel)
       if (sel.text) rows.push({ key: "ask:selection", title: "Ask about " + ab.noun + ": " + q, subtitle: Selection.shown(sel.text), icon: "󰗧",
                                 score: 97, copy: q, nodi: "askWith", actionLabel: "Ask", remember: false,
-                                ask: { question: q, message: aboutText(q, sel.text), context: ab.context } })
+                                ask: { question: q, message: aboutText(q, sel.text), context: ab.context, purpose: "ask" } })
       var w = ctx.window || {}
       if (w.stableId) rows.push({ key: "ask:window", title: "Ask about this window: " + q, subtitle: w.title || w["class"] || "The window you came from",
                                   icon: "󰹑", score: 96, copy: q, nodi: "askWindow", actionLabel: "Ask", remember: false,
                                   ask: { question: q, message: q + "\n\nThe picture is the window the question is about"
-                                         + (w.title ? ", titled " + JSON.stringify(String(w.title)) : "") + ".", context: "window" } })
+                                         + (w.title ? ", titled " + JSON.stringify(String(w.title)) : "") + ".", context: "window", purpose: "ask" } })
       return decorate(rows)
     }
     if (a.phase === "waiting" || a.phase === "streaming") {
@@ -290,7 +403,7 @@ var provider = {
       return decorate(failed)
     }
     var answer = String(a.answer || "")
-    return decorate([
+    var rows = [
       // The answer itself shows in the pane beside the list.
       // About the selection, the paste goes over it: the window still holds it (providers/selection.js).
       { key: "ask:paste", title: a.context === "selection" ? "Paste over the selection" : "Paste the answer", subtitle: answer.length + " characters",
@@ -300,11 +413,13 @@ var provider = {
         run: Run.copy(answer) },
       { key: "ask:agent", title: "Continue in your agent", subtitle: "Opens it, the conversation copied to paste", icon: "󰆍", score: 96, copy: transcript(a),
         remember: false, run: Run.shell(CONTINUE, undefined, transcript(a)) },
+    ].concat(resultRows(a), completedCommandRows(a), sessionRows(a), [
       { key: "ask:again", title: "Ask again", subtitle: a.context === "window" ? q + ", with the same picture" : q, icon: "󰚩", score: 95, copy: q,
         nodi: direct ? "askAs" : "ask", data: direct ? { id: direct.id, question: q } : null, remember: false, actionLabel: "Ask" },
       // A follow-up is a question typed after `ask `; this one forgets.
       { key: "ask:fresh", title: "New question", subtitle: who + " forgets this conversation", icon: "󰚩", score: 94, copy: "",
         nodi: "askNew", data: direct ? { prefix: direct.prefix } : null, remember: false, actionLabel: "Start" }
     ])
+    return decorate(rows)
   }
 }

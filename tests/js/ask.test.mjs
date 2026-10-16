@@ -12,6 +12,7 @@ const run_launch = args => spawnSync("/usr/bin/bash", ["-c", load("lib/Agents.js
 const A = load("lib/AskTools.js");
 const G = load("lib/Agents.js");
 const Rows = load("lib/Rows.js");
+const Engine = load("lib/Engine.js");
 
 test("the bar's server answers initialize, ping, tools/list and tools/call; a notification gets nothing", () => {
   const calls = [];
@@ -1109,6 +1110,65 @@ test("Ask continues: about the selection, about the window, a new question (ROAD
   assert.equal(plain(run("ask what is this", pic)).find(r => r.key === "ask:again").subtitle, "what is this, with the same picture");
 });
 
+test("ACP commands, result actions, forms, plans, and saved sessions are visible", () => {
+  const commands = [
+    { name: "status", description: "Show status", input: null },
+    { name: "review", description: "Review", input: { hint: "scope", required: true } }
+  ];
+  let rows = plain(run("ask /", {
+    ask: { phase: "done", question: "x", answer: "done", commands }
+  }));
+  assert.deepEqual(rows.map(r => [r.key, r.nodi, r.complete]), [
+    ["ask:command:status", "askCommand", ""],
+    ["ask:command:review", "", "ask /review "]
+  ]);
+
+  const done = {
+    ask: {
+      phase: "done", question: "x", answer: "done",
+      sessionId: "current",
+      commands,
+      resultActions: [
+        { title: "Continue", action: { prompt: "/status" } },
+        { title: "Run", action: { exec: ["true"] } }
+      ],
+      remoteSessions: [
+        { sessionId: "current", title: "Current", cwd: "/tmp" },
+        { sessionId: "saved-1", title: "Saved", cwd: "/tmp" }
+      ]
+    }
+  };
+  rows = plain(run("ask x", done));
+  assert.deepEqual(rows.slice(0, 7).map(r => r.key), [
+    "ask:paste", "ask:copy", "ask:agent",
+    "ask:result:0", "ask:result:1",
+    "ask:answer-command:status", "ask:answer-command:review"
+  ], "agent additions follow the fixed answer actions");
+  assert.equal(rows.find(r => r.key === "ask:session:saved-1").data.index, 1,
+            "saved sessions are offered");
+
+  const form = { message: "Choose", fields: [{ name: "strategy", type: "enum", enum: ["safe", "fast"], value: "safe" }] };
+  rows = plain(run("ask x", {
+    ask: { phase: "proposing", question: "x", answer: "", form,
+           proposal: { form: true, title: "Choose" } }
+  }));
+  assert.deepEqual(rows.map(r => [r.title, r.nodi]), [
+    ["Submit", "askAllow"], ["Cancel", "askDeny"]
+  ]);
+
+  const Pane = load("lib/Pane.js");
+  assert.equal(plain(Pane.choose({
+    proposal: { title: "Choose", subtitle: "", form }
+  })).form.message, "Choose", "the form remains visible if the query changes");
+  const pane = plain(Pane.choose({
+    ask: { question: "x", agent: "Claude", text: "", plans: [
+      { content: "Inspect", status: "in_progress", priority: "high" }
+    ], form, answerTurn: "turn-1" }
+  }));
+  assert.deepEqual([pane.plans[0].content, pane.form.message, pane.answerLink, pane.answerTurn],
+                   ["Inspect", "Choose", true, "turn-1"]);
+});
+
 test("MCP servers he names, for Ask: given to the session, each tool call his to allow (ROADMAP 49)", () => {
   const s = A.servers({ github: { command: "gh-mcp" }, nodi: { command: "x" }, "bad name": { command: "y" }, web: { url: "https://x" }, junk: { foo: 1 },
                         "a__b": { command: "z" } });
@@ -1246,7 +1306,7 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   // every other does, with all its arguments ({ fetch: false } among them).
   const calls = [];
   const req = A.forAgent(function() { calls.push([...arguments]); return { state: "ready", value: [] }; });
-  for (const name of ["filter", "filter-list", "filter-step", "script-output"]) assert.equal(req(name, "p").state, "error", name);
+  for (const name of ["filter", "filter-list", "filter-step", "filter-socket", "script-output"]) assert.equal(req(name, "p").state, "error", name);
   assert.deepEqual(calls, [], "none of his programs asked for");
   req("rates", "USD", { fetch: false });
   assert.deepEqual(calls, [["rates", "USD", { fetch: false }]]);
@@ -1254,10 +1314,12 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   // Engine.agentRows, which Nodi.qml's is (tools/hygiene.mjs): a filter
   // that runs its query is never asked; his own search asks it.
   const cfg = Object.assign({}, config, { filters: [{ keyword: "x", title: "X", command: ["bash", "-c"] },
-                                                  { keyword: "l", title: "L", command: ["bash", "-c"], list: true, root: true }] });
+                                                  { keyword: "l", title: "L", command: ["bash", "-c"], list: true, root: true },
+                                                  { keyword: "s", title: "S", socket: "/run/user/1000/s.sock" }] });
   const asked = [];
   const rows = plain(Engine.agentRows("x touch /tmp/pwn", cfg, services({ asked, filter: () => { throw new Error("started") } })));
   Engine.agentRows("l touch", cfg, services({ asked, filter: () => { throw new Error("started") } }));
+  Engine.agentRows("s secret", cfg, services({ asked, filter: () => { throw new Error("started") } }));
   assert.ok(!asked.some(k => /^filter/.test(k)), "the filters were not asked: " + asked.join(" "));
   assert.ok(!rows.some(r => r.provider === "filters"), "and offer nothing");
   assert.ok(rows.length <= 8 && rows.every(r => r.run && !r.help && !r.nodi));
@@ -1462,11 +1524,15 @@ test("available ACP agents are direct one-shot Ask prefixes, including custom ag
     assert.equal(row.title, "Ask " + name + ": " + question);
   }
 
-  const complete = plain(run("codex", { ask: idle }, cfg)).find(r => r.provider === "ask" && r.complete === "codex ");
-  assert.deepEqual([complete.title, complete.nodi], ["Ask Codex", ""]);
-  assert.ok(complete.score < 50, "a bare agent name is a completion, not the leading result");
-  assert.notEqual(run("pi * 2", { ask: idle }, cfg)[0].provider, "ask",
-    "an agent name does not steal a calculation");
+  for (const [id, name] of [["claude", "Claude"], ["codex", "Codex"], ["pi", "Pi"], ["agy", "Agy"], ["work", "Work"]]) {
+    const bare = plain(run(id, { ask: idle }, cfg));
+    assert.deepEqual([bare[0].key, bare[0].title], ["ask:direct:" + id, "Ask " + name], id + " is the exact command");
+    const modeRows = plain(run(id + " ", { ask: idle }, cfg));
+    assert.ok(modeRows.length > 0 && modeRows.every(r => r.provider === "ask"), id + " space is exclusive");
+    assert.equal(Engine.mode(id + " ", cfg, modeRows).label, "Ask " + name);
+  }
+  assert.equal(run("pi * 2", { ask: idle }, cfg)[0].provider, "math",
+    "a whole-query calculation beats an agent with arguments");
   assert.ok(!plain(run("opencode review", { ask: idle }, cfg)).some(r => r.provider === "ask" && r.nodi === "askAs"),
     "an unavailable agent does not claim a direct prefix");
   assert.ok(!plain(run("gemini review", { ask: idle }, cfg)).some(r => r.provider === "ask" && r.nodi === "askAs"),
@@ -1552,4 +1618,14 @@ test("disabled Nodi-owned actions survive normalization and cannot be activated"
   const action = plain(Rows.actionsFor(row, {}))[0];
   assert.deepEqual([action.nodi, action.disabled, action.reason], ["askAgent", true, "codex is missing"]);
   assert.equal(Rows.activatable(action), false);
+});
+
+test("the rows that ask about the selection or the window say their purpose is ask", () => {
+  const idle = { ask: { phase: "idle", question: "", answer: "", model: "haiku" } };
+  const rows = plain(run("ask what is this", {
+    ...idle, selection: { text: "x", fresh: true, source: "selection" }, window: { stableId: "ab12", title: "Docs", class: "firefox" }
+  }));
+  const about = rows.filter(r => r.key === "ask:selection" || r.key === "ask:window");
+  assert.deepEqual(about.map(r => r.key), ["ask:selection", "ask:window"]);
+  assert.deepEqual(about.map(r => r.ask.purpose), ["ask", "ask"]);
 });

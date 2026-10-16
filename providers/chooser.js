@@ -138,7 +138,7 @@ function typed(r, d, home) {
   c.run = typeRun(d, r.folder)
   c.actionLabel = "Type in"
   c.actions = [{ label: "Open the folder", icon: ICON, run: r.run }].concat(r.actions || [])
-  if (r.tier) c.kind = "mode"
+  if (r.tier) { c.kind = "mode"; c.intent = "mode" }
   if (r.folderSelf) c.title = tilde(r.folder, home)
   c.remember = false
   return c
@@ -170,6 +170,7 @@ function over(d, query, rows, ctx) {
     var row = rowOf(p, d, home)
     row.tier = tier
     row.kind = "mode"
+    row.intent = "mode"
     have[p] = true
     lead.push(row)
   }

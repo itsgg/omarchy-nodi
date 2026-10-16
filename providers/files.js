@@ -546,6 +546,8 @@ var provider = {
   ],
   match: function(query, ctx) {
     var rows = filesFor(query, ctx)
+    var explicit = /^\s*((f|file)\s|recent(\s|$)|find\s|in\s+(?=\S)(?![\d+\-]|\.\d)|~\/|~$|\/)/i.test(String(query))
+    if (!explicit) for (var i = 0; i < rows.length; i++) rows[i].intent = "hint"
     // Over a file dialog, a folder types itself in (ROADMAP 66).
     var d = Chooser.dialogOf(ctx.window)
     return d ? Chooser.over(d, query, rows, ctx) : rows

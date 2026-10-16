@@ -6,6 +6,73 @@ Nodi, off until you name them. `nodi` works the bar from a terminal or a
 script, and `nodi mcp` lets a coding agent use it. Keywords and snippets,
 which need no program, are in [Settings](settings.md#keywords-and-snippets).
 
+## Watched home sources
+
+A program that already writes state can place rows on Nodi's empty home
+without being started by Nodi. Name its JSONL file in `nodi.json`:
+
+```jsonc
+"home": [
+  {
+    "id": "tasks",
+    "file": "$XDG_RUNTIME_DIR/example/home.jsonl",
+    "title": "Tasks",
+    "icon": "view-list",
+    "max": 4,
+    "priority": 20
+  }
+]
+```
+
+`file` must expand to an absolute path. Nodi expands `~`, `$HOME`,
+`${HOME}`, `$XDG_RUNTIME_DIR` and `${XDG_RUNTIME_DIR}` at the start of
+the path. It watches the file in the shell process; opening the bar starts
+no source program. Replace the file atomically so Nodi never has to see a
+partial write:
+
+```sh
+tmp="$XDG_RUNTIME_DIR/example/home.jsonl.new"
+printf '%s\n' '{"id":"renew","title":"Renew passport","group":"Due","priority":20}' > "$tmp"
+chmod 600 "$tmp"
+mv -f -- "$tmp" "$XDG_RUNTIME_DIR/example/home.jsonl"
+```
+
+The source's optional `icon` is the fallback for rows without one. Each
+non-empty line is one JSON object. It may have `id`, `title`,
+`subtitle`, `icon`, an absolute `image`, `badge`, `group`, `priority`,
+`expires` (an ISO 8601 time with a zone), `preview`, `action`, `confirm`,
+`risk` and `actions`. Actions use the same `exec`, `open`, `copy` and
+`query` forms as script-filter rows. Source priority is considered first,
+then row priority and file order. Watched rows come after immediate rows
+such as an undo, fresh selection or meeting, and before favourites. An
+expired row disappears at its expiry time.
+
+An `id` is stable within its source, and the stored key combines both.
+A row without one can be shown and used but is never remembered, hidden
+or replayed. Duplicate IDs after the first are treated the same way.
+Nodi keeps the display data from the last valid snapshot if a replacement
+is incomplete or invalid and reports the file diagnostic in its log.
+Executable capabilities are removed as soon as a file changes or a read or
+trust check fails. Reads are capped at 256 KB plus one byte before their
+contents reach Nodi; a line is limited to 128 KB, a source to 100 accepted
+rows, all sources to 500 rows and the config to 16 sources. Text, previews,
+nesting, action counts and command arguments have their own bounds too.
+
+A source is display-only by default. Copy, query and safe web, mail or
+absolute-path opens still work; executable and paste actions are removed.
+To allow `exec`, set `"trustedActions": true` on the source. Nodi opens the
+path once and accepts one only when that descriptor and the path before and
+after the bounded read identify the same regular non-symlink file, owned by
+the current user with no group or world write bit. Every executable row or
+secondary action still requires confirmation, shows its exact command and
+is never saved as replayable history or a favourite. Source data cannot
+turn those rules off.
+
+Those checks do not prove that another process running as the same user
+cannot replace or rewrite the file. Keep a trusted producer in a sandbox
+or other policy fence that permits it to write only its own source file;
+Nodi cannot verify that external policy.
+
 ## Script commands
 
 Script commands are executable files in `~/.config/omarchy/nodi/scripts`
@@ -141,6 +208,113 @@ environment, not your session's whole one (no `DISPLAY`, `EDITOR` or
 open a window. If it fails, Nodi's toast says why, and no undo is
 offered, whatever it printed. The undo itself runs as any action does, in
 your session. The offer lasts while the shell runs, not across a restart.
+
+## Unix-socket filters
+
+A filter can use a persistent Unix socket in place of a command:
+
+```jsonc
+"filters": [
+  {
+    "keyword": "search",
+    "title": "Search",
+    "socket": "$XDG_RUNTIME_DIR/example-row-source/search.sock",
+    "timeoutMs": 1000,
+    "max": 50
+  }
+]
+```
+
+Set exactly one of `command` and `socket`. Nodi expands a leading
+`$XDG_RUNTIME_DIR`, `${XDG_RUNTIME_DIR}`, `$HOME`, `${HOME}` or `~/` when
+it reads the config. The result must be an explicitly configured absolute
+path with no `.` or `..` path segment, control character, unexpanded
+variable or trailing slash. A relative path and a path longer than 4096
+characters are left out. `timeoutMs` is held from 500 to 10000 ms; `max`
+is held from 1 to 1000 and defaults to 50. A target that is not a Unix
+socket fails as a source.
+
+Nodi keeps one Quickshell local-socket connection per configured path and
+filter keyword while it is useful. A missing or exited service is
+reconnected only when a query needs it, with at most five attempts. It
+starts no helper process for a query. Query text and window context are in
+the request body and never in process arguments.
+
+Each request is one JSON line:
+
+```json
+{"version":1,"id":"h-k83w","q":"words","keyword":"search","window":{"class":"foot"}}
+```
+
+The ID is opaque. The daemon returns zero or more row lines and one
+completion line, all with that exact ID:
+
+```json
+{"id":"h-k83w","row":{"id":"result:1","title":"Result","action":{"open":"https://example.test"}}}
+{"id":"h-k83w","done":true}
+```
+
+Rows use the same fields, action checks, confirmation display and field
+limits as script-filter rows. A response with another ID, malformed JSON,
+or an unsafe over-nested row is discarded. Responses are limited to 1 MB
+per query, 128 KB per line, 12 levels of nesting, 64 members in an object
+or array, and the configured row count. Rows arrive in fixed, bounded
+batches so a line does not cause a layout by itself. The previous complete
+answer stays visible while its replacement is pending.
+
+Response framing is ASCII JSON. Encode non-ASCII row text with JSON
+`\uXXXX` escapes; the JSON parser restores it before Nodi displays the row.
+This keeps bounds exact even when the socket splits a UTF-8 byte sequence
+between reads.
+
+When another keystroke replaces a query, Nodi sends:
+
+```json
+{"version":1,"cancel":"h-k83w"}
+```
+
+The daemon should stop work for that ID. Nodi also rejects any later rows
+with the old ID, so a daemon that finishes late cannot replace current
+results. Socket filters are not called by an agent's command-bar search.
+
+The installed Quickshell 0.3.1 API metadata exposes
+`Quickshell.Io.Socket` path, connection state, write, flush and error
+members. It exposes no peer PID, UID, credentials or native socket
+descriptor, so Nodi cannot verify peer credentials. Same UID would not by
+itself make row actions trusted. Put the socket in a user-owned mode-0700
+directory, create the socket mode 0600, and configure its path explicitly.
+Rows remain untrusted data until activation; executable actions still use
+Nodi's existing confirmation and risk display.
+
+systemd user socket activation can own that directory and socket:
+
+```ini
+# ~/.config/systemd/user/example-row-source.socket
+[Unit]
+Description=Example row source socket
+
+[Socket]
+ListenStream=%t/example-row-source/search.sock
+DirectoryMode=0700
+SocketMode=0600
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
+```
+
+```ini
+# ~/.config/systemd/user/example-row-source.service
+[Unit]
+Description=Example row source
+
+[Service]
+ExecStart=/usr/local/bin/example-row-source
+```
+
+The daemon reads the inherited listening socket supplied by systemd. Enable
+it with `systemctl --user enable --now example-row-source.socket`; Nodi's
+first connection then activates the service.
 
 ## Answers
 

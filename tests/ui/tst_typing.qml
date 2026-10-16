@@ -19,6 +19,7 @@ Item {
     when: windowShown
 
     function test_each_key_reads_its_own_query() {
+      verify(String(card.input).indexOf("QQuickTextEdit") !== -1, "the query is a clipboard-safe TextEdit")
       fake.probe = function() { return card.composedNow() }
       fake.calls = []
       card.input.forceActiveFocus()
@@ -30,6 +31,37 @@ Item {
       keyClick(Qt.Key_C)
       seen = fake.calls.filter(function(c) { return c[0] === "queryChanged" }).map(function(c) { return c[1] })
       compare(seen[seen.length - 1], "acb", "typed in the middle, read in the middle")
+    }
+
+    function test_palette_uses_the_same_safe_editor() {
+      verify(String(card.paletteInput).indexOf("QQuickTextEdit") !== -1, "the action filter is a clipboard-safe TextEdit")
+      fake.paletteOpen = true
+      card.paletteInput.forceActiveFocus()
+      keyClick(Qt.Key_F)
+      compare(card.paletteInput.text, "f")
+      card.paletteInput.text = ""
+      fake.paletteOpen = false
+    }
+
+    function test_control_keys_never_become_query_text() {
+      card.input.text = ""
+      card.input.forceActiveFocus()
+      keyClick(Qt.Key_Return)
+      keyClick(Qt.Key_Tab)
+      compare(card.input.text, "")
+    }
+
+    function test_long_query_keeps_the_cursor_in_view() {
+      var viewport = findChild(card, "inputViewport")
+      verify(viewport !== null)
+      card.input.text = Array(120).join("x")
+      card.input.cursorPosition = card.input.length
+      tryVerify(function() { return viewport.contentX > 0 }, 1000, "the field scrolls to its end")
+      verify(card.input.cursorRectangle.x >= viewport.contentX)
+      verify(card.input.cursorRectangle.x + card.input.cursorRectangle.width <= viewport.contentX + viewport.width + 1)
+      card.input.cursorPosition = 0
+      tryCompare(viewport, "contentX", 0, 1000)
+      card.input.text = ""
     }
 
     // Naming an alias, the empty field asks for a word, not a search

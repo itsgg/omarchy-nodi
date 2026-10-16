@@ -56,3 +56,74 @@ test("a comment never closed is an error, and a comment separates what it sits b
   assert.equal(Config.read('{ "a": 1/* note */2 }').config, null, "1/* */2 is not 12");
   assert.deepEqual(plain(Config.read('{ "a": 1 /* x\n y */, "b": 2 }').config), { a: 1, b: 2 });
 });
+
+test("home sources expand approved paths and normalize bounded settings", () => {
+  const env = { home: "/home/person", runtimeDir: "/run/user/1000" };
+  const got = Config.homeSources([
+    { id: "runtime", file: "$XDG_RUNTIME_DIR/example/home.jsonl", title: "Example\nFeed\u0000", icon: "view-list", max: 4, priority: 20, trustedActions: true },
+    { id: "home", file: "~/feeds/home.jsonl", max: 10000, priority: -10000 },
+    { id: "plain", file: "/var/lib/example/home.jsonl" }
+  ], env);
+  assert.deepEqual(plain(got), [
+    { id: "runtime", file: "/run/user/1000/example/home.jsonl", title: "Example Feed", icon: "view-list", max: 4, priority: 20, trustedActions: true },
+    { id: "home", file: "/home/person/feeds/home.jsonl", title: "home", max: 100, priority: -1000, trustedActions: false },
+    { id: "plain", file: "/var/lib/example/home.jsonl", title: "plain", max: 8, priority: 0, trustedActions: false }
+  ]);
+});
+
+test("home source config rejects relative, unexpanded, duplicate and malformed entries and caps source count", () => {
+  const env = { home: "/home/person", runtimeDir: "/run/user/1000" };
+  const valid = Array.from({ length: Config.MAX_HOME_SOURCES + 4 }, (_, i) => ({ id: "s" + i, file: "/tmp/s" + i + ".jsonl" }));
+  const got = Config.homeSources([
+    null,
+    { id: "", file: "/tmp/a" },
+    { id: "bad/id", file: "/tmp/b" },
+    { id: "relative", file: "tmp/c" },
+    { id: "unknown", file: "$OTHER/c" },
+    { id: "missing-runtime", file: "$XDG_RUNTIME_DIR/c" },
+    { id: "same", file: "/tmp/one" },
+    { id: "same", file: "/tmp/two" },
+    ...valid
+  ], { home: env.home, runtimeDir: "" });
+  assert.equal(got[0].id, "same");
+  assert.equal(got.filter(s => s.id === "same").length, 1);
+  assert.equal(got.length, Config.MAX_HOME_SOURCES);
+  assert.ok(got.every(s => s.file.startsWith("/")));
+});
+
+test("merged config always carries normalized home sources and defaults to none", () => {
+  assert.deepEqual(plain(defaults.home), []);
+  const merged = Config.merge(defaults, {
+    home: [{ id: "feed", file: "${HOME}/feed.jsonl", trustedActions: "yes" }]
+  }, "", { home: "/home/person", runtimeDir: "/run/user/1000" });
+  assert.deepEqual(plain(merged.home), [{
+    id: "feed", file: "/home/person/feed.jsonl", title: "feed", max: 8, priority: 0, trustedActions: false
+  }]);
+});
+
+test("socket filters expand an explicit absolute path and bound their options", () => {
+  const merged = Config.merge(defaults, { filters: [
+    { keyword: "search", title: "Search", socket: "$XDG_RUNTIME_DIR/example/search.sock", timeoutMs: 99999, max: 5000 },
+    { keyword: "home", socket: "${HOME}/.local/run/home.sock", timeoutMs: 1, max: 0 }
+  ] }, "", { home: "/home/person", runtimeDir: "/run/user/1000" });
+  assert.deepEqual(plain(merged.filters), [
+    { keyword: "search", title: "Search", socket: "/run/user/1000/example/search.sock", timeoutMs: 10000, max: 1000 },
+    { keyword: "home", socket: "/home/person/.local/run/home.sock", timeoutMs: 500, max: 1 }
+  ]);
+});
+
+test("filters require exactly one valid command or socket and reject unsafe socket paths", () => {
+  const filters = Config.filters([
+    { keyword: "command", command: ["program"] },
+    { keyword: "both", command: ["program"], socket: "/run/user/1000/both.sock" },
+    { keyword: "neither" },
+    { keyword: "relative", socket: "relative.sock" },
+    { keyword: "traversal", socket: "$XDG_RUNTIME_DIR/example/../other.sock" },
+    { keyword: "unknown", socket: "$OTHER/example.sock" },
+    { keyword: "control", socket: "/run/user/1000/a\u0000b" },
+    { keyword: "missing", socket: "$XDG_RUNTIME_DIR/example.sock" },
+    { keyword: "valid", socket: "/run/user/1000/valid.sock" }
+  ], { home: "/home/person", runtimeDir: "" });
+  assert.deepEqual(plain(filters.map(f => f.keyword)), ["command", "valid"]);
+  assert.deepEqual(plain(filters[0]), { keyword: "command", command: ["program"] }, "command filters retain their existing shape");
+});

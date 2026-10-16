@@ -36,6 +36,7 @@ import "lib/Appearance.js" as Appearance
 import "lib/Ansi.js" as Ansi
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
+import "lib/HomeSources.js" as HomeParser
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -78,6 +79,7 @@ Item {
   readonly property bool captures: true
   readonly property string home: Quickshell.env("HOME")
   readonly property string user: Quickshell.env("USER")
+  readonly property string runtimeDir: Quickshell.env("XDG_RUNTIME_DIR")
   // The shell assigns this on load (shell.qml's plugin loader); readonly
   // would make that assignment throw and stop the shell wiring Nodi in.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy"
@@ -97,7 +99,8 @@ Item {
   property bool userConfigGood: false   // a nodi.json has parsed since load
   property string configWarned: ""      // the error last notified, so each is said once
   property string hotkeyWarned: ""
-  readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir)
+  readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir,
+                                              { home: root.home, runtimeDir: root.runtimeDir })
 
   property var zones: ({})          // { "Asia/Tokyo": { offset: 540, abbr: "JST" } }
   property real zonesFetchedAt: 0
@@ -481,6 +484,47 @@ Item {
     }
   }
 
+  // Qt 6.11's editable TextInput reads every foreign clipboard offer when
+  // it changes. Card uses TextEdit instead and sends its explicit paste keys
+  // here, where the shared Reader enforces both a deadline and a byte cap.
+  function pasteInput(target, multiline) {
+    if (!pasteReader.busy)
+      pasteReader.run(Sources.pasteArgv(), {
+        target: target, direct: typeof target !== "string",
+        multiline: multiline === true
+      })
+  }
+
+  function insertPaste(field, text, multiline) {
+    var start = field.selectionStart
+    var end = field.selectionEnd
+    if (end > start) field.remove(start, end)
+    var value = String(text || "")
+    if (!multiline) value = value.replace(/[\r\n]+/g, " ")
+    field.insert(start, value)
+    field.cursorPosition = start + value.length
+  }
+
+  Reader {
+    id: pasteReader
+    timeoutMs: 2000
+    maxBytes: 65536
+    terminateLines: false
+    onFinished: function(text, ok, tag) {
+      if (!ok) {
+        root.toast(pasteReader.overflowed ? "Paste is larger than 64 KiB" : "Could not read the clipboard", "")
+        return
+      }
+      if (!root.opened || !tag || (tag.target === "palette" && !root.paletteOpen)) return
+      var target
+      if (tag.direct === true) {
+        if (!tag.target || typeof tag.target.insert !== "function") return
+        target = tag.target
+      } else target = tag.target === "palette" ? card.paletteInput : input
+      root.insertPaste(target, text, tag.multiline === true)
+    }
+  }
+
   readonly property int keepQueryMs: 120000
   property real closedAt: 0
 
@@ -649,11 +693,15 @@ Item {
       filterStep: root.filterStep,
       session: root.closedAt,
       prefs: root.prefs,
+      homeSources: watchedHome.snapshots,
       ask: { phase: askSession.phase, question: askSession.question, message: askSession.message, answer: askSession.answer, error: askSession.error,
              agentId: typeof askSession.agent === "string" ? askSession.agent : "",
              agent: askSession.agentName, model: askSession.modelName, status: root.askStatus, activity: askSession.activity,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active, install: askSession.install,
-             missing: root.agentMissing ? root.agentProgram : "", turns: askSession.turns, agents: root.askAgents },
+             missing: root.agentMissing ? root.agentProgram : "", turns: askSession.turns, agents: root.askAgents,
+             sessionId: askSession.sessionId, commands: askSession.commands, plans: askSession.plans,
+             resultActions: askSession.resultActions, remoteSessions: askSession.remoteSessions,
+             form: askSession.form },
       conversations: root.conversations,
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error, running: answerSession.running, conversation: answerSession.conversation,
@@ -758,7 +806,8 @@ Item {
       }
       root.armedKey = ""
       // A run that did not start teaches nothing.
-      if (root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable)) root.teach(row)
+      if (root.execute(row.run, row.toggle, row.remember ? row.key : "", History.snapshot(row), row.title, row.undoable,
+                       row.provider === "home" ? row.key : "", row.homeExecution)) root.teach(row)
       return
     }
     if (row.complete && !row.copy) { root.complete(row); return }
@@ -800,7 +849,17 @@ Item {
   // The one place a row's run starts a program. `key` is the row's, so what
   // was run is remembered for ranking (lib/History.js). An undoable one is
   // run where what it prints is read (components/Undoer.qml).
-  function execute(run, toggleId, key, snap, name, undoable) {
+  function currentHomeExecutable(run, key, token) {
+    if (!run || run.kind !== "exec" || !key) return true
+    return HomeParser.currentExecutable(watchedHome.snapshots, key, token, run, Date.now())
+  }
+
+  function execute(run, toggleId, key, snap, name, undoable, homeKey, homeExecution) {
+    if (!root.currentHomeExecutable(run, homeKey, homeExecution)) {
+      root.armedKey = ""
+      if (root.paletteOpen) root.closePalette()
+      return false
+    }
     // Watched for failing, by the row's name (lib/Run.js watched), unless
     // the Undoer runs it and says so itself.
     // A paste goes to the window the bar opened over, focused first.
@@ -824,13 +883,24 @@ Item {
     return true
   }
 
-  function openLink(url) {
+  function openLink(url, source) {
     var run = Run.link(url)
     if (!run) {
       root.toast("Link not opened", "Only http, https and mail links can open from a preview.")
       return false
     }
-    return root.execute(run, "", "", null)
+    var opened = root.execute(run, "", "", null)
+    if (opened && source && source.ask === true)
+      askSession.openedLink(url, source.turn)
+    return opened
+  }
+
+  function setAskFormField(name, value) {
+    askSession.setFormField(name, value)
+  }
+
+  function submitAskForm() {
+    return askSession.submitForm()
   }
 
   // ---------------------------------------------------------------- Ctrl+K
@@ -955,7 +1025,8 @@ Item {
     if (a.nodi) { root.setPref(a, row); return }
     var own = !!a.own
     var remembered = own && row.remember
-    root.execute(a.run, own ? row.toggle : "", remembered ? row.key : "", remembered ? History.snapshot(row) : null, own ? row.title : a.label, a.undoable)
+    root.execute(a.run, own ? row.toggle : "", remembered ? row.key : "", remembered ? History.snapshot(row) : null,
+                 own ? row.title : a.label, a.undoable, row.provider === "home" ? row.key : "", a.homeExecution)
   }
 
   function helpBack() {
@@ -1301,6 +1372,8 @@ Item {
     // (AskTools.refusedAtOnce); any other it proposes.
     var refused = agent === true && !proposed && s ? AskTools.refusedAtOnce(k, s.provider) : ""
     if (refused) return refused
+    if (s && s.provider === "home" && !root.currentHomeExecutable(s.run, k, s.homeExecution))
+      return "watched row is no longer current"
     // Watched by its title unless the Undoer runs it and says so itself,
     // as execute() has it: the Undoer takes an argv, and a watched run is
     // a command and its environment since its title left the arguments
@@ -1342,12 +1415,36 @@ Item {
       askSession.allow()
     } else if (row.nodi === "askDeny") {
       askSession.deny()
+    } else if (row.nodi === "askCommand" && row.data) {
+      askSession.runCommand(row.data.name, row.data.input)
+    } else if (row.nodi === "askResume" && row.data) {
+      if (askSession.resumeRemote(row.data.index)) {
+        input.text = "ask "
+        input.cursorPosition = input.text.length
+      }
+    } else if (row.nodi === "askResult" && row.data) {
+      var resultItem = askSession.resultAction(row.data.index)
+      if (!resultItem) return
+      var resultAction = resultItem.action || {}
+      if (resultAction.exec !== undefined || resultAction.copy !== undefined
+          || resultAction.paste !== undefined) {
+        askSession.proposeResultAction(row.data.index)
+      } else if (resultAction.open !== undefined) {
+        root.openLink(resultAction.open, { ask: true, turn: resultItem.turn })
+      } else if (resultAction.query !== undefined) {
+        input.text = String(resultAction.query)
+        input.cursorPosition = input.text.length
+      } else if (resultAction.prompt !== undefined) {
+        input.text = "ask " + String(resultAction.prompt)
+        input.cursorPosition = input.text.length
+        askSession.send(String(resultAction.prompt))
+      }
     } else if (row.nodi === "askWith" && row.ask) {
       // Claude on a text (the selection, a translation): asked as Ask asks,
       // the field showing the question, so the answer and its paste are Ask's.
       if (askSession.busy() || windowShot.active) return
       root.askRows = ({ turn: "", rows: ({}) })
-      root.startAsk("", row.ask.question, row.ask.message, row.ask.context)
+      root.startAsk("", row.ask.question, row.ask.message, row.ask.context, undefined, row.ask.purpose)
       input.text = "ask " + row.ask.question
       input.cursorPosition = input.text.length
     } else if (row.nodi === "askNew") {
@@ -1366,7 +1463,7 @@ Item {
       var w = root.cameFrom
       if (askSession.busy() || windowShot.active || !w.stableId) return
       root.askRows = ({ turn: "", rows: ({}) })
-      root.shotAsk = row.ask
+      root.shotAsk = Object.assign({}, row.ask, { captured: root.askCapture(row.ask.message, row.ask.context, row.ask.purpose) })
       // grim scales the window's buffer, which is its layout width times
       // its own monitor's scale (Fable 2026-10-06), else the focused one's.
       var mon = Hyprland.focusedMonitor
@@ -1873,6 +1970,20 @@ Item {
 
   // ---------------------------------------------------------------- config
 
+  // External JSONL rows are watched continuously by FileView delegates. They
+  // are snapshots only: opening the bar starts no source program and does not
+  // wait for a source read.
+  HomeSources {
+    id: watchedHome
+    sources: root.config.home || []
+    onUpdated: {
+      if (root.paletteOpen && root.paletteRow && root.paletteRow.provider === "home") root.closePalette()
+      for (var i = 0; i < diagnostics.length; i++)
+        console.warn("nodi: home source " + diagnostics[i].id + " (" + diagnostics[i].file + "): " + diagnostics[i].error)
+      if (root.opened && !root.homeHeld && root.queryNow().trim() === "") root.recompute()
+    }
+  }
+
   // The theme's sixteen colours, which a file's coloured lines are drawn
   // in (lib/Ansi.js, ROADMAP 82): read where the shell reads its theme,
   // and again at each open, so a theme switched to is the next open's.
@@ -2076,32 +2187,92 @@ Item {
              current: a.id === root.resolvedAgentId }
   })
 
-  function startAsk(id, question, message, context, image) {
-    if (askSession.busy() || windowShot.active) return false
+  // What the agent is told of the Ask beside its question
+  // (lib/PromptContext.js), seen now, as the Ask is chosen and never before:
+  // the window the bar came from, and the selection only when the action is
+  // about it (`context`) and the message holds its text, so the structured
+  // copy never carries what the textual prompt does not.
+  function askContext(message, context, purpose) {
+    var snap = { purpose: purpose || "", window: Sources.windowSnapshot(root.cameFrom, root.windows) }
+    var source = context === "copied" ? "clipboard" : context === "selection" ? "selection" : ""
+    if (source && root.selectionSource === source && root.selection !== "" && String(message || "").indexOf(root.selection) !== -1) {
+      var seen = source === "clipboard" ? root.copiedSeenAt : root.selectionSeenAt
+      snap.selection = { text: root.selection, source: source === "clipboard" ? "clipboard" : "primary", ageMs: Math.max(0, Date.now() - seen) }
+    }
+    return snap
+  }
+
+  // What askContext saw, with the window's own address, which stays here:
+  // taken when the Ask is chosen and carried by an Ask that waits for a
+  // picture (askWindow), so that what is sent is of the window the question
+  // was asked about, not of the one the bar knows when the picture is done.
+  function askCapture(message, context, purpose) {
+    return { snapshot: root.askContext(message, context, purpose), address: String(root.cameFrom.address || "") }
+  }
+
+  // `captured` (askCapture) is the context of an Ask chosen earlier.
+  function startAsk(id, question, message, context, image, purpose, captured) {
+    if (root.pendingAsk || askSession.busy() || windowShot.active) return false
     var direct = !!id
     var target = direct ? Agents.canonicalId(id) : root.resolvedAgent
     if (direct && (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)
         || root.agentAvailability[target] !== true)) return false
+    var made = captured && captured.snapshot ? captured : root.askCapture(message, context, purpose)
+    var snapshot = made.snapshot
     root.pendingAsk = { direct: direct, target: target, question: String(question || ""),
-                        message: message, context: context, image: image }
+                        message: message, context: context, image: image, snapshot: snapshot, cwdWait: false }
     root.directAskAgent = direct ? target : ""
     root.askStatus = askSession.status
+    // The window's working directory, one bounded read now; the Ask waits
+    // for it, and goes without it when the read fails (windowCwdReader). The
+    // pid goes in the reader's environment, never its argv, and only while
+    // the window list still holds this window's address with that pid: a pid
+    // is a number another program may take. The address stays here, out of
+    // what the agent is told.
+    var pid = snapshot.window.pid || 0
+    var address = made.address
+    var env = Sources.cwdEnv(pid)
+    if (env && Sources.sameWindow(root.windows, address, pid)) {
+      root.pendingAsk.cwdWait = true
+      windowCwdReader.run(Sources.cwdArgv(), { pending: root.pendingAsk, pid: pid, address: address, env: env })
+      return true
+    }
     if (direct ? askSession.agent === target : askSession.agent === root.resolvedAgent)
       root.flushAsk()
     else Qt.callLater(root.flushAsk)
     return true
   }
 
+  // The read of the window's working directory (Sources.cwdArgv), started
+  // only by startAsk: a second at most, and 8 KB. Its answer is the
+  // pending Ask's if that is still the one waiting and the window list still
+  // holds the same window (address and pid) as it did at the start; failing,
+  // timing out, another pid's answer, a vanished process or a replaced
+  // window leave the directory out, and the Ask goes on.
+  Reader {
+    id: windowCwdReader
+    timeoutMs: 1000
+    maxBytes: 8192
+    onFinished: function(text, ok, tag) {
+      var pending = tag ? tag.pending : null
+      if (!pending || root.pendingAsk !== pending) return
+      var cwd = ok && Sources.sameWindow(root.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
+      if (cwd) pending.snapshot.window.cwd = cwd
+      pending.cwdWait = false
+      root.flushAsk()
+    }
+  }
+
   function flushAsk() {
     var pending = root.pendingAsk
-    if (!pending) return
+    if (!pending || pending.cwdWait) return
     if (pending.direct ? askSession.agent !== pending.target : askSession.agent !== root.resolvedAgent) {
       Qt.callLater(root.flushAsk)
       return
     }
     root.pendingAsk = null
     if (pending.prepare) askSession.prepare(pending.question, pending.message, pending.context)
-    else askSession.send(pending.question, pending.message, pending.context, pending.image)
+    else askSession.send(pending.question, pending.message, pending.context, pending.image, pending.snapshot)
   }
 
   function prepareDirectAsk(id, question, message, context) {
@@ -2230,6 +2401,7 @@ Item {
     onActionTurnChanged: root.askRows = ({ turn: actionTurn, rows: ({}) })
     onPhaseChanged: Qt.callLater(root.syncAskPhase)
     onActivityChanged: if (root.opened) root.recompute()
+    onInteractionRevisionChanged: if (root.opened && !askSession.form) root.recompute()
     // A status can change inside Ask's exit/reset handlers. Recomputing
     // there can select the Ask fallback and warm a new session before the
     // old handler has finished clearing it.
@@ -2254,8 +2426,12 @@ Item {
       var data = ok ? String(text).replace(/\s+/g, "") : ""
       // No picture (the window gone, grim failing): the question goes as
       // text, and says so.
-      if (data) root.startAsk("", a.question, a.message, a.context, { mediaType: "image/jpeg", data: data })
-      else root.startAsk("", a.question, a.question + "\n\n(The window could not be captured.)", "")
+      // Once this read has ended: the reader is still active while it
+      // reports, which startAsk refuses.
+      var image = data ? { mediaType: "image/jpeg", data: data } : undefined
+      var message = data ? a.message : a.question + "\n\n(The window could not be captured.)"
+      var context = data ? a.context : ""
+      Qt.callLater(function() { root.startAsk("", a.question, message, context, image, a.purpose, a.captured) })
     }
   }
 
@@ -2313,6 +2489,8 @@ Item {
       rememberKey: row.remember ? String(row.key || "") : "",
       history: History.snapshot(row),
       undoable: !!row.undoable,
+      provider: String(row.provider || ""),
+      homeExecution: typeof row.homeExecution === "string" ? row.homeExecution : "",
       turn: String(turnId)
     })
   }
@@ -2337,7 +2515,8 @@ Item {
   function askCommit(snapshot) {
     input.text = ""
     var executed = root.execute(snapshot.run, snapshot.toggle, snapshot.rememberKey,
-                                snapshot.history, snapshot.title, snapshot.undoable)
+                                snapshot.history, snapshot.title, snapshot.undoable,
+                                snapshot.provider === "home" ? snapshot.key : "", snapshot.homeExecution)
     return executed
       ? { status: "executed", key: snapshot.key, title: snapshot.title }
       : { status: "failed", key: snapshot.key, title: snapshot.title,
@@ -2357,6 +2536,11 @@ Item {
       return { key: "tool:" + p.title, title: p.title, subtitle: Acp.inputLine(p.input), run: null, risk: "",
                confirmWord: "", tool: true, input: p.input }
     if (p.kind === "action" && p.snapshot) return p.snapshot
+    if (p.kind === "metadataAction" && p.snapshot) return p.snapshot
+    if ((p.kind === "elicitation" || p.kind === "command") && askSession.form)
+      return { key: "form:" + p.kind, title: p.title || "Answer " + askSession.agentName,
+               subtitle: p.subtitle || "", run: null, risk: "", confirmWord: "",
+               form: askSession.form, input: {} }
     return null
   }
 
@@ -2424,7 +2608,10 @@ Item {
       paletteOpen: root.paletteOpen,
       ask: root.askOn ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: askSession.answer,
                           busy: askSession.phase === "waiting" || askSession.phase === "streaming", status: root.askStatus,
-                          error: askSession.phase === "error" ? askSession.error : "", turns: askSession.turns } : null,
+                          error: askSession.phase === "error" ? askSession.error : "", turns: askSession.turns,
+                          plans: askSession.plans, form: askSession.form,
+                          answerTurn: askSession.turn !== null
+                            ? askSession.actionTurn : askSession.completedTurn } : null,
       proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
       agent: askSession.agentName,
       answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq,

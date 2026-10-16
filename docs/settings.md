@@ -58,6 +58,7 @@ started).
 | `"scripts"` | `"dirs"`: the folders [script commands](extend.md#script-commands) are read from, in place of `~/.config/omarchy/nodi/scripts`; `"arguments"`: `true` gives a script what you type as `$1`, `$2` ... too, as Raycast's scripts read it (always `NODI_ARGUMENT1`, ...) |
 | `"filters"` | [Script filters](extend.md#script-filters), and the ones that [come with Nodi](extend.md#extensions-that-come-with-nodi); on an entry, `"argument": true` makes what you type its last argument too (always `NODI_QUERY`) |
 | `"answers"` | [Answers](extend.md#answers): a program's answer, streamed beside the list; `"argument": true` as a filter's |
+| `"home"` | [Watched home sources](extend.md#watched-home-sources): bounded JSONL files shown after immediate context and before favourites, without starting a source program |
 | `"ask"` | [Ask](ask.md): `"agent"` (`"claude"`, `"codex"`, `"opencode"`, `"pi"`, `"agy"` or a custom agent ID; Omarchy's default unless set; unavailable agents are hidden from the selector; legacy `"gemini"` resolves to `"agy"`), `"agents"` (additional ACP agents, each with `id`, `name`, `command` argv and optional string `env`), `"model"` (legacy model for the configured default), `"models"` (model by agent ID; `"agy"` takes precedence over the legacy `"gemini"` model fallback), `"actions"` (`false` keeps capable agents from the bar's rows; Pi and Agy are always answer-only), `"mcpServers"` (servers capable agents may use, each call on your Enter), `"environment"` (names of variables of yours the agent is given, past those Ask passes), `"fallbackAgent"` (an available agent offered after failure, before sending; legacy `"gemini"` resolves to `"agy"`), `"fallback"` (the keyword of one of your `"answers"` offered when there is no valid agent fallback, first on limits) |
 | `"apps"` | `"describe"`: a few words from Claude for an app with no description of its own |
 | `"math"` | `"precision"`: significant digits in an answer (10) |
@@ -122,5 +123,6 @@ What `config.default.json` holds, as it holds it:
 | `"scripts"` | `{"dirs":["~/.config/omarchy/nodi/scripts"]}` |
 | `"filters"` | `[]` |
 | `"answers"` | `[]` |
+| `"home"` | `[]` |
 | `"keywords"` | `[{"keyword":"g","title":"Search Google","open":"https://www.google.com/search?q={q}","suggest":true},{"keyword":"yt","title":"Search YouTube","open":"https://www.youtube.com/results?search_query={q}","suggest":true},{"keyword":"gh","title":"Search GitHub","open":"https://github.com/search?q={q}"},{"keyword":"wiki","title":"Wikipedia","open":"https://en.wikipedia.org/w/index.php?search={q}","suggest":true}]` |
 <!-- /nodi:generated -->

@@ -4,4 +4,4 @@
 {"text":"","preedit":"U+0b8","query":"U+0b8","told":4,"seen":"U+0b8","placeholder":false,"help":false}
 {"text":"","preedit":"U+0b85","query":"U+0b85","told":5,"seen":"U+0b85","placeholder":false,"help":false}
 {"text":"அ","preedit":"","query":"அ","told":6,"seen":"அ","placeholder":false,"help":false}
-{"text":"அx","preedit":"","query":"அx","told":8,"seen":"அx","placeholder":false,"help":false}
+{"text":"அx","preedit":"","query":"அx","told":7,"seen":"அx","placeholder":false,"help":false}

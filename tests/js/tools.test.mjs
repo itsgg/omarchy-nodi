@@ -12,6 +12,14 @@ import { tmpdir } from "node:os";
 const Hotkey = load("lib/Hotkey.js");
 const Jsonc = load("lib/Jsonc.js");
 
+test("Quickshell tests stay off the live desktop", () => {
+  const script = readFileSync(new URL("../../tools/qs-test.sh", import.meta.url), "utf8");
+  assert.match(script, /Xvfb -displayfd/);
+  assert.match(script, /QT_QPA_PLATFORM=xcb/);
+  assert.match(script, /env -u WAYLAND_DISPLAY/);
+  assert.doesNotMatch(script, /\b(?:sway|private-wayland)\b/);
+});
+
 const clipboard = [
   { type: "text", text: "omarchy plugin add https://github.com/itsgg/omarchy-nodi --enable" },
   { type: "text", text: "--copy-only $(rm -rf ~)" },
