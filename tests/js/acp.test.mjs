@@ -27,7 +27,11 @@ test("what Nodi sends is one line each, JSON-RPC 2.0", () => {
     assert.equal(JSON.parse(l).jsonrpc, "2.0");
   }
   const init = JSON.parse(A.initialize(0, "0.3.0"));
-  assert.deepEqual(init.params.clientCapabilities, { fs: { readTextFile: false, writeTextFile: false }, terminal: false }, "no files, no terminal");
+  assert.deepEqual(init.params.clientCapabilities, {
+    fs: { readTextFile: false, writeTextFile: false },
+    terminal: false,
+    elicitation: { form: {} }
+  }, "no files or terminal; bounded non-secret forms are supported");
   assert.equal(init.params.protocolVersion, 1);
   assert.deepEqual(JSON.parse(A.cancel("s")), { jsonrpc: "2.0", method: "session/cancel", params: { sessionId: "s" } }, "a notification has no id");
   assert.deepEqual(JSON.parse(A.failure(7, A.NOT_FOUND, "no")).error, { code: -32601, message: "no" });
@@ -35,9 +39,9 @@ test("what Nodi sends is one line each, JSON-RPC 2.0", () => {
 
 test("what the agent can do: what it leaves out, it cannot", () => {
   const c = plain(A.capabilities({ protocolVersion: 1, agentInfo: { name: "claude-agent-acp", title: "Claude Agent", version: "0.86.0" },
-    agentCapabilities: { promptCapabilities: { image: true }, sessionCapabilities: { close: {} } },
+    agentCapabilities: { promptCapabilities: { image: true }, sessionCapabilities: { close: {}, list: {}, resume: {} } },
     authMethods: [{ id: "login", name: "Log in" }, { name: "no id" }] }));
-  assert.deepEqual(c, { version: 1, image: true, embedded: false, close: true, http: false, name: "Claude Agent",
+  assert.deepEqual(c, { version: 1, image: true, embedded: false, close: true, list: true, resume: true, http: false, name: "Claude Agent",
     auth: [{ id: "login", name: "Log in", description: "", type: "agent" }] });
   const none = plain(A.capabilities({}));
   assert.equal(none.image, false);
@@ -80,9 +84,27 @@ test("an update: the answer's text, a tool call, the context used, or nothing As
   assert.equal(up({ sessionUpdate: "tool_call", toolCallId: "t1", title: "Read" }).kind, "tool");
   assert.equal(up({ sessionUpdate: "tool_call_update", status: "completed" }).kind, "other", "no id, nothing to update");
   assert.deepEqual(up({ sessionUpdate: "usage_update", used: 1364, size: 200000, cost: { amount: 0.001, currency: "USD" } }), { kind: "usage", used: 1364, size: 200000 });
-  for (const k of ["plan", "available_commands_update", "current_mode_update", "config_option_update", "session_info_update", "notice", "compaction_update", "a_kind_from_the_future"])
+  for (const k of ["plan", "available_commands_update", "session_info_update"])
+    assert.deepEqual(up({ sessionUpdate: k }), { kind: "interaction", interaction: k, update: { sessionUpdate: k } }, k);
+  for (const k of ["current_mode_update", "config_option_update", "notice", "compaction_update", "a_kind_from_the_future"])
     assert.deepEqual(up({ sessionUpdate: k }), { kind: "other" }, k);
   assert.deepEqual(plain(A.update({})), { kind: "other" });
+});
+
+test("optional session and opened-link methods are exact bounded ACP messages", () => {
+  assert.deepEqual(plain(JSON.parse(A.listSessions(1, "/work", "next"))), {
+    jsonrpc: "2.0", id: 1, method: "session/list",
+    params: { cwd: "/work", cursor: "next" }
+  });
+  assert.deepEqual(plain(JSON.parse(A.resumeSession(2, "s-old", "/work", []))), {
+    jsonrpc: "2.0", id: 2, method: "session/resume",
+    params: { sessionId: "s-old", cwd: "/work", mcpServers: [] }
+  });
+  assert.deepEqual(plain(JSON.parse(A.openedLink("s", "turn", "https://example.test/a", true))), {
+    jsonrpc: "2.0", method: "_nodi/opened_link",
+    params: { sessionId: "s", turnId: "turn", url: "https://example.test/a", success: true }
+  });
+  assert.equal(A.openedLink("s", "turn", "file:///tmp/x", true), "");
 });
 
 test("a tool call kept across its updates: null leaves a field, content replaces", () => {

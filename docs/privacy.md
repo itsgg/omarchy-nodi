@@ -116,6 +116,13 @@ Everything Nodi reads, writes, starts and sends, and when.
   window" sends the agent a picture of the window you came from (`grim
   -T`, by its own buffer, so the bar is not in it), which stays in the
   conversation, and its cost in every question, until it starts afresh.
+  An agent that advertises saved sessions may give Nodi up to 50 session
+  IDs, titles, folders and update times; Nodi holds those summaries only
+  in memory. Interactive form values go only back to that agent request,
+  are bounded, and are not put in preferences or history. Opening an
+  HTTP, HTTPS or mail link from an Ask answer reports that URL and whether
+  it was dispatched to the same agent session and turn; local and file
+  links are not reported.
 - Codex under Ask uses a private profile at
   `~/.local/share/nodi/profiles/codex`, with its own sign-in. Nodi never
   copies the normal profile's rotating ChatGPT refresh token.

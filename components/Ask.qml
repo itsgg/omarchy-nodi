@@ -6,6 +6,8 @@ import "../lib/AskTools.js" as AskTools
 import "../lib/AskActions.js" as AskActions
 import "../lib/Agents.js" as Agents
 import "../lib/PromptContext.js" as PromptContext
+import "../lib/AskInteraction.js" as AskInteraction
+import "../lib/ExternalRows.js" as ExternalRows
 
 // A quick answer from a coding agent, held open over ACP (ROADMAP 84,
 // lib/Acp.js), so that asking costs the model's time and not the agent's
@@ -214,6 +216,18 @@ Item {
   property string stage: "off"
   property string sessionId: ""
   property var caps: null
+  property string processBinding: ""
+  property var interactionState: AskInteraction.create("", "", "")
+  property int interactionRevision: 0
+  readonly property var commands: interactionState.commands || []
+  readonly property var plans: interactionState.plans || []
+  readonly property var resultActions: interactionState.actions || []
+  readonly property var remoteSessions: interactionState.sessions || []
+  readonly property var form: interactionState.form || null
+  property string completedTurn: ""
+  property var metadataBook: AskActions.create("", "", "")
+  property var sessionServers: []
+  property var resumeTarget: null
   property var toolInventory: null    // Claude's trusted strict inventory, separate from calls
   property var toolCatalogs: null     // Codex MCP/app diagnostics, never its final tool inventory
   property int nextId: 0
@@ -270,6 +284,8 @@ Item {
       var argv = ask.program || (ask.spec && ask.spec.argv)
       if (!argv) { if (ask.busy()) ask.fail("Ask cannot hold the agent " + JSON.stringify(ask.agent) + ": it knows " + Agents.known().join(", ") + ", or one given by its command"); return }
       ask.resetSession()
+      ask.processBinding = ask.newToken()
+      ask.interactionState = AskInteraction.create(ask.processBinding, "", "")
       ask.token = ask.newToken()
       ask.channel = ask.newToken()
       ask.stage = "init"
@@ -299,6 +315,12 @@ Item {
     ask.stage = "off"
     ask.sessionId = ""
     ask.caps = null
+    ask.processBinding = ""
+    ask.interactionState = AskInteraction.create("", "", "")
+    ask.completedTurn = ""
+    ask.metadataBook = AskActions.create("", "", "")
+    ask.sessionServers = []
+    ask.resumeTarget = null
     ask.toolInventory = null
     ask.toolCatalogs = null
     ask.waits = ({})
@@ -344,8 +366,8 @@ Item {
   // `snapshot` is what Nodi saw as the Ask was chosen: asked again with a
   // new one, the window is the new one's and the selection and purpose the
   // first turn's, which the message still holds.
-  function send(q, message, context, image, snapshot) {
-    if (ask.busy()) return false
+  function send(q, message, context, image, snapshot, fromCompletedProposal) {
+    if (ask.busy() && fromCompletedProposal !== true) return false
     // Asked again, a question goes with what it was sent with before, read
     // before a fresh start forgets it (Fable 2026-10-06).
     var again = message === undefined && String(q) === ask.question
@@ -355,7 +377,8 @@ Item {
     // draw above the next (as Raycast's Quick AI shows one), but not one
     // asked again, nor one that failed.
     if (ask.stale()) ask.recycle()
-    else if (!again && ask.question !== "" && ask.answer.trim() !== "" && ask.phase === "done")
+    else if (!again && ask.question !== "" && ask.answer.trim() !== ""
+             && (ask.phase === "done" || fromCompletedProposal === true))
       ask.turns = ask.turns.concat([{ question: ask.question, message: ask.message, answer: ask.answer }])
     ask.message = message !== undefined ? String(message) : kept ? kept.message : String(q)
     ask.context = context !== undefined ? String(context) : kept ? kept.context : ""
@@ -391,6 +414,10 @@ Item {
     var text = p.text + (p.image && !image ? "\n\n(The picture could not be sent: " + ask.agentName + " takes none.)" : "")
     ask.calls = Object.create(null)
     ask.actionTurn = ask.newToken()
+    ask.interactionState = AskInteraction.bind(
+      ask.interactionState, ask.processBinding, ask.sessionId, ask.actionTurn)
+    ask.metadataBook = AskActions.create(ask.token, ask.actionTurn, ask.channel)
+    ask.completedTurn = ""
     var keptRequests = ask.actionBook && ask.actionBook.session === ask.token
       && ask.actionBook.channel === ask.channel ? ask.actionBook.requests : ({})
     var keptRequestCount = ask.actionBook && ask.actionBook.session === ask.token
@@ -405,6 +432,200 @@ Item {
     ask.instructed = true
     var nodi = p.snapshot ? PromptContext.build(p.snapshot) : undefined
     ask.turn = ask.toAgent("prompt", function(id) { return Acp.prompt(id, ask.sessionId, text, image, preface, nodi) })
+  }
+
+  function commandNamed(name) {
+    for (var i = 0; i < ask.commands.length; i++)
+      if (ask.commands[i].name === name) return ask.commands[i]
+    return null
+  }
+
+  function runCommand(name, input) {
+    if (ask.busy() || ask.stage !== "ready") return false
+    var command = ask.commandNamed(String(name || ""))
+    if (!command) return false
+    if (command.input && input === undefined) {
+      ask.interactionState = AskInteraction.elicit(
+        ask.interactionState, ask.processBinding, ask.sessionId,
+        ask.actionTurn, "command:" + command.name, {
+          sessionId: ask.sessionId,
+          mode: "form",
+          message: command.description || command.name,
+          requestedSchema: {
+            type: "object",
+            required: command.input.required ? ["input"] : [],
+            properties: {
+              input: {
+                type: "string",
+                title: command.input.hint || "Input",
+                maxLength: AskInteraction.LIMITS.actionText
+              }
+            }
+          }
+        })
+      if (!ask.form) return false
+      ask.proposal = {
+        kind: "command", command: command, title: "/" + command.name,
+        subtitle: command.description, at: Date.now()
+      }
+      ask.phase = "proposing"
+      return true
+    }
+    return ask.send(AskInteraction.commandPrompt(command, input))
+  }
+
+  function setFormField(name, value) {
+    ask.interactionState = AskInteraction.setField(
+      ask.interactionState, String(name || ""), value)
+  }
+
+  function submitForm() {
+    var p = ask.proposal
+    if (!p || (p.kind !== "elicitation" && p.kind !== "command")) return false
+    var result = AskInteraction.formResult(ask.interactionState, "accept")
+    if (!result.ok) return false
+    ask.interactionState = result.state
+    ask.proposal = null
+    if (p.kind === "elicitation") {
+      proc.write(Acp.result(p.id, result.response))
+      ask.settle()
+      return true
+    }
+    return ask.send(AskInteraction.commandPrompt(
+      p.command, result.response.content.input),
+      undefined, undefined, undefined, undefined, true)
+  }
+
+  function cancelForm() {
+    var p = ask.proposal
+    if (!p || (p.kind !== "elicitation" && p.kind !== "command")) return false
+    var result = AskInteraction.formResult(ask.interactionState, "cancel")
+    ask.interactionState = result.state
+    ask.proposal = null
+    if (p.kind === "elicitation") proc.write(Acp.result(p.id, result.response))
+    ask.settle()
+    return true
+  }
+
+  function proposeResultAction(index) {
+    var item = ask.resultActions[index]
+    if (!item || item.turn !== ask.completedTurn || ask.phase !== "done"
+        || !ask.shown || ask.proposal) return false
+    var normalized = ExternalRows.actionOf(item.action, {
+      safeOpen: true, paste: false, next: false,
+      completeMax: AskInteraction.LIMITS.actionText
+    })
+    if (!normalized.run || item.action.exec === undefined) return false
+    var requestId = "metadata:" + item.turn + ":" + index
+    var origin = {
+      id: requestId, session: ask.token, turn: item.turn,
+      channel: ask.channel, callId: requestId, providerTurn: "",
+      adapterKey: "prompt-result", inputKey: JSON.stringify(item.action),
+      operation: requestId, server: "prompt-result",
+      kind: "metadata", value: index
+    }
+    var begun = AskActions.begin(ask.metadataBook, origin)
+    ask.metadataBook = begun.book
+    if (!begun.effect || begun.effect.type !== "resolve") return false
+    var proposalId = requestId + ":" + ask.newToken()
+    var snapshot = {
+      key: "ask:metadata:" + item.turn + ":" + index,
+      title: item.title, subtitle: "", risk: "",
+      confirmWord: "", run: normalized.run, toggle: "",
+      rememberKey: "", history: null, undoable: false,
+      provider: "ask", turn: item.turn
+    }
+    var proposed = AskActions.resolve(
+      ask.metadataBook, requestId, snapshot, proposalId)
+    ask.metadataBook = proposed.book
+    if (!proposed.effect || proposed.effect.type !== "confirm") return false
+    ask.proposal = {
+      kind: "metadataAction", id: proposalId,
+      requestId: requestId, snapshot: proposed.effect.snapshot,
+      at: Date.now()
+    }
+    ask.phase = "proposing"
+    return true
+  }
+
+  function resultAction(index) {
+    var item = ask.resultActions[index]
+    if (!item || item.turn !== ask.completedTurn || ask.turn !== null
+        || ask.phase !== "done") return null
+    return item
+  }
+
+  function openedLink(url, turnId) {
+    var owner = ask.turn !== null ? ask.actionTurn : ask.completedTurn
+    if (!proc.running || ask.stage !== "ready" || !owner
+        || String(turnId || "") !== owner) return false
+    var message = Acp.openedLink(
+      ask.sessionId, owner, url, true)
+    if (!message) return false
+    proc.write(message)
+    return true
+  }
+
+  function resumeRemote(index) {
+    if (!ask.caps || !ask.caps.resume || ask.busy() || ask.proposal
+        || ask.stage !== "ready") return false
+    var target = ask.remoteSessions[index]
+    if (!target || !target.sessionId || target.sessionId === ask.sessionId)
+      return false
+    ask.resumeTarget = Object.assign({}, target)
+    ask.stage = "closing"
+    upGuard.since = Date.now()
+    upGuard.restart()
+    if (ask.sessionId && ask.caps.close) {
+      var oldSession = ask.sessionId
+      ask.toAgent("close:resume", function(id) {
+        return Acp.close(id, oldSession)
+      })
+    } else ask.beginResume()
+    return true
+  }
+
+  function beginResume() {
+    var target = ask.resumeTarget
+    if (!target) { ask.beginFreshSession(); return }
+    ask.retireToolResponses()
+    ask.used = false
+    ask.lastAt = 0
+    ask.turns = []
+    ask.pending = null
+    ask.turn = null
+    ask.question = ""
+    ask.message = ""
+    ask.context = ""
+    ask.image = null
+    ask.snapshot = null
+    ask.calls = Object.create(null)
+    ask.actionTurn = ""
+    ask.runBindings = []
+    ask.codexTurns = []
+    ask.claudeTurns = []
+    ask.answer = ""
+    ask.error = ""
+    ask.phase = "idle"
+    ask.proposal = null
+    ask.token = ask.newToken()
+    ask.channel = ask.newToken()
+    ask.toolResponses = ({})
+    ask.toolRequests = ({})
+    ask.toolResponseCount = 0
+    ask.toolRequestCount = 0
+    ask.nextTicket = 0
+    ask.sessionId = String(target.sessionId)
+    ask.interactionState = AskInteraction.create(
+      ask.processBinding, ask.sessionId, "")
+    ask.actionBook = AskActions.create("", "", "")
+    ask.metadataBook = AskActions.create("", "", "")
+    ask.completedTurn = ""
+    ask.stage = "resuming"
+    ask.toAgent("resume", function(id) {
+      return Acp.resumeSession(
+        id, ask.sessionId, ask.workDir, ask.sessionServers)
+    })
   }
 
   function stableActionInput(value) {
@@ -950,8 +1171,36 @@ Item {
     return true
   }
 
+  // A fresh ACP session on the same warm process. Session-scoped tokens,
+  // commands, forms, plans, remote handles and action authority never cross
+  // the boundary.
+  function beginFreshSession() {
+    ask.retireToolResponses()
+    ask.sessionId = ""
+    ask.turn = null
+    ask.calls = Object.create(null)
+    ask.actionTurn = ""
+    ask.actionBook = AskActions.create("", "", "")
+    ask.metadataBook = AskActions.create("", "", "")
+    ask.runBindings = []
+    ask.codexTurns = []
+    ask.claudeTurns = []
+    ask.proposal = null
+    ask.token = ask.newToken()
+    ask.channel = ask.newToken()
+    ask.toolResponses = ({})
+    ask.toolRequests = ({})
+    ask.toolResponseCount = 0
+    ask.toolRequestCount = 0
+    ask.nextTicket = 0
+    ask.completedTurn = ""
+    ask.interactionState = AskInteraction.create(
+      ask.processBinding, "", "")
+    ask.openSession()
+  }
+
   // A fresh session for the next question: "New question", or long after
-  // the last answer.
+  // the last answer. The agent process stays warm.
   function recycle() {
     if (!ask.used) return
     ask.used = false
@@ -971,7 +1220,19 @@ Item {
     // A request he never answered is refused, so the agent is not left asking.
     if (ask.proposal) ask.deny()
     ask.phase = "idle"
-    if (proc.running) ask.restart()
+    if (proc.running && ask.stage === "ready") {
+      if (ask.turn !== null && ask.sessionId)
+        proc.write(Acp.cancel(ask.sessionId))
+      var oldSession = ask.sessionId
+      if (oldSession && ask.caps && ask.caps.close) {
+        ask.stage = "closing"
+        upGuard.since = Date.now()
+        upGuard.restart()
+        ask.toAgent("close:new", function(id) {
+          return Acp.close(id, oldSession)
+        })
+      } else ask.restart()
+    } else if (proc.running) ask.restart()
   }
 
   // A palette agent change is stronger than a fresh question: cancel the
@@ -1049,6 +1310,35 @@ Item {
   function allow() {
     var p = ask.proposal
     if (!p) return
+    if (p.kind === "elicitation" || p.kind === "command") {
+      ask.submitForm()
+      return
+    }
+    if (p.kind === "metadataAction") {
+      var ownsMetadata = ask.shown && ask.turn === null
+        && ask.completedTurn && ask.completedTurn === ask.metadataBook.turn
+        && ask.metadataBook.session === ask.token
+        && ask.metadataBook.channel === ask.channel
+      var accepted = ownsMetadata
+        ? AskActions.commit(ask.metadataBook, p.id)
+        : { book: ask.metadataBook, committed: false }
+      ask.metadataBook = accepted.book
+      ask.proposal = null
+      if (!accepted.committed) { ask.phase = "done"; return }
+      var result
+      try {
+        result = ask.committer ? ask.committer(accepted.snapshot)
+          : { status: "failed", message: "The bar cannot run rows here." }
+      } catch (e) {
+        result = { status: "unknown", message: String(e) }
+      }
+      result = result && typeof result === "object" ? result
+        : { status: "unknown", message: "The bar returned no action outcome." }
+      ask.metadataBook = AskActions.finish(
+        ask.metadataBook, p.requestId, result).book
+      ask.phase = "done"
+      return
+    }
     if (p.kind === "action") {
       var owns = ask.shown && ask.turn !== null && p.snapshot
         && p.snapshot.session === ask.token
@@ -1119,6 +1409,17 @@ Item {
   function deny() {
     var p = ask.proposal
     if (!p) return
+    if (p.kind === "elicitation" || p.kind === "command") {
+      ask.cancelForm()
+      return
+    }
+    if (p.kind === "metadataAction") {
+      ask.metadataBook = AskActions.finish(
+        ask.metadataBook, p.requestId, { status: "refused" }).book
+      ask.proposal = null
+      ask.phase = "done"
+      return
+    }
     if (p.kind === "action") {
       ask.cancelAction("The action was refused.", false)
       return
@@ -1237,6 +1538,8 @@ Item {
       if (m.error && m.error.code === Acp.AUTH_REQUIRED) { ask.signIn(why); return }
       if (why || !m.result || typeof m.result.sessionId !== "string") { ask.fail(ask.agentName + " could not start a session: " + (why || "no session")); return }
       ask.sessionId = m.result.sessionId
+      ask.interactionState = AskInteraction.create(
+        ask.processBinding, ask.sessionId, "")
       ask.recordRuntimeMetadata(m.result._meta)
       // The mode Ask needs, and the model asked for, before any question.
       var want = Acp.configure(ask.sessionId, m.result, ask.spec ? ask.spec.mode : "",
@@ -1248,6 +1551,41 @@ Item {
         ask.toAgent("config:" + q.what, function(id) { return Acp.request(id, q.method, q.params) })
       })
       if (!ask.configuring) ask.sessionUp()
+    } else if (kind === "sessions") {
+      if (why) return
+      var listed = AskInteraction.sessionList(m.result)
+      var next = ask.interactionState
+      if (next && next.process === ask.processBinding
+          && next.session === ask.sessionId) {
+        next = Object.assign({}, next, {
+          sessions: listed.sessions,
+          nextCursor: listed.nextCursor
+        })
+        ask.interactionState = next
+        ask.interactionRevision++
+      }
+    } else if (kind === "close:new") {
+      if (why) ask.restart()
+      else ask.beginFreshSession()
+    } else if (kind === "close:resume") {
+      if (why) {
+        ask.resumeTarget = null
+        ask.fail(ask.agentName + " could not close the current session: " + why)
+      } else ask.beginResume()
+    } else if (kind === "resume") {
+      if (why) {
+        ask.resumeTarget = null
+        ask.fail(ask.agentName + " could not resume the session: " + why)
+        return
+      }
+      ask.resumeTarget = null
+      ask.recordRuntimeMetadata(m.result && m.result._meta)
+      ask.stage = "ready"
+      upGuard.stop()
+      if (ask.caps && ask.caps.list)
+        ask.toAgent("sessions", function(id) {
+          return Acp.listSessions(id, ask.workDir, "")
+        })
     } else if (kind.indexOf("config:") === 0) {
       if (why) { ask.fail(ask.agentName + " could not set its " + kind.slice(7) + ": " + why); return }
       if (--ask.configuring === 0) ask.sessionUp()
@@ -1262,6 +1600,14 @@ Item {
       // The agent echoes the id it was given; a string for a number is
       // still this turn's answer.
       if (String(m.id) !== String(ask.turn)) return
+      var finishedTurn = ask.actionTurn
+      ask.interactionState = AskInteraction.finish(
+        ask.interactionState, ask.processBinding, ask.sessionId,
+        finishedTurn, m.result)
+      ask.interactionRevision++
+      ask.completedTurn = finishedTurn
+      ask.metadataBook = AskActions.create(
+        ask.token, finishedTurn, ask.channel)
       ask.turn = null
       ask.terminalizeReadActivities(why ? "failed" : "completed")
       ask.lastAt = Date.now()
@@ -1293,6 +1639,7 @@ Item {
     var meta = ask.spec && ask.spec.meta ? ask.spec.meta(ask.actionServerAvailable, ask.actionServer) : null
     // Instructions that went with the start do not go again with a prompt.
     ask.instructed = !!ask.spec && ask.spec.instructs
+    ask.sessionServers = servers
     ask.stage = "session"
     ask.toAgent("session", function(id) { return Acp.newSession(id, ask.workDir, servers, meta) })
   }
@@ -1300,6 +1647,10 @@ Item {
   function sessionUp() {
     ask.stage = "ready"
     upGuard.stop()
+    if (ask.caps && ask.caps.list)
+      ask.toAgent("sessions", function(id) {
+        return Acp.listSessions(id, ask.workDir, "")
+      })
     ask.flush()
   }
 
@@ -1329,6 +1680,26 @@ Item {
   // (files, a terminal, anything else), which it should not have asked.
   function agentAsks(m) {
     if (m.method === "session/request_permission") { ask.permission(m); return }
+    if (m.method === "elicitation/create") {
+      var p = m.params || {}
+      var state = AskInteraction.elicit(
+        ask.interactionState, ask.processBinding, ask.sessionId,
+        ask.actionTurn, m.id, p)
+      if (!ask.shown || ask.recycling || ask.turn === null || ask.proposal
+          || state === ask.interactionState || !state.form) {
+        proc.write(Acp.result(m.id, { action: "cancel" }))
+        return
+      }
+      ask.interactionState = state
+      ask.interactionRevision++
+      ask.proposal = {
+        kind: "elicitation", id: m.id,
+        title: state.form.message || "Answer " + ask.agentName,
+        subtitle: "", at: Date.now()
+      }
+      ask.phase = "proposing"
+      return
+    }
     proc.write(Acp.failure(m.id, Acp.NOT_FOUND, "Nodi does not offer " + m.method))
   }
 
@@ -1374,11 +1745,20 @@ Item {
   // ran, or in a new message, starts a paragraph of its own.
   property string lastMessage: ""
   function agentSays(params) {
-    if (ask.recycling || !params || params.sessionId !== ask.sessionId || ask.turn === null) return
+    if (ask.recycling || !params || params.sessionId !== ask.sessionId) return
     ask.recordRuntimeMetadata(params.update && params.update._meta)
     ask.bindCodexProviderTurn(params.update)
     ask.bindClaudeProviderTurn(params.update)
     var u = Acp.update(params)
+    if (u.kind === "interaction") {
+      if (u.interaction === "plan" && ask.turn === null) return
+      ask.interactionState = AskInteraction.update(
+        ask.interactionState, ask.processBinding, ask.sessionId,
+        ask.interactionState.turn, u.update)
+      ask.interactionRevision++
+      return
+    }
+    if (ask.turn === null) return
     if (u.kind === "text") {
       var answerText = Agents.answerText(ask.agent, u.text)
       if (!answerText || ask.cut) return
@@ -1864,7 +2244,8 @@ Item {
       if (ask.stage === "ready" || ask.stage === "off") { stop(); return }
       if (Date.now() - since < (ask.setup || ask.signingIn ? ask.longMs : ask.startMs)) return
       stop()
-      if (ask.busy()) ask.fail(ask.signingIn ? "Signing in to " + ask.agentName + " did not finish"
+      if (ask.resumeTarget) ask.fail(ask.agentName + " did not resume the saved session")
+      else if (ask.busy()) ask.fail(ask.signingIn ? "Signing in to " + ask.agentName + " did not finish"
                                : ask.agentName + " did not answer" + (ask.setup ? " while installing" : ""))
       else if (proc.running && !ask.recycling) ask.restart()
     }

@@ -84,6 +84,34 @@ question and answer, to paste. The session starts as you type
 `ask `, so it is warm by the time you press Enter, and ends after thirty
 minutes with no question.
 
+### Agent interactions
+
+When an ACP agent advertises them, Ask also supports its interactive
+features:
+
+- `ask /` lists the agent's current commands. Commands offered after an
+  answer follow Paste, Copy, and Continue; a command that needs input opens
+  bounded fields before it is sent.
+- Plans appear as status-marked, non-executable blocks in the answer pane.
+- A form request supports bounded text, multiline text, boolean, number,
+  integer, and enum fields. Submit sends their structured values; Cancel,
+  Esc, or closing the bar refuses the request. Clipboard input uses the
+  same 64 KiB, two-second read as the main field.
+- Actions attached to the final answer are bound to that answer. Commands
+  run directly only when safe; executable actions show their immutable
+  command and wait for confirmation.
+- Saved sessions are listed and resumed only when the agent advertises
+  `session/list` and `session/resume`. "New question" closes the old ACP
+  session and opens another on the warm agent process when `session/close`
+  is available; older agents use the existing process restart fallback.
+- Opening an HTTP, HTTPS, or mail link from an Ask answer reports success
+  to that same agent session and turn. Local and file links are neither
+  opened nor reported.
+
+Unknown interaction types are ignored or cancelled, and commands, plans,
+actions, fields, session summaries, and metadata all have fixed limits.
+They are cleared when their process, session, or turn changes.
+
 ### When it fails
 
 A question that fails says why. Without a configured fallback, Enter asks

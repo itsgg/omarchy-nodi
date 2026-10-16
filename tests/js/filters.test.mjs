@@ -51,7 +51,7 @@ test("a keyword and a space hand the rest to the program, which answers in rows"
 });
 
 test("a bare filter keyword offers an exact hint above file matches without running the filter", () => {
-  const due = { keyword: "due", title: "Arivu: what comes due", icon: "󰃭", command: [SCRIPT] };
+  const due = { keyword: "due", title: "Tasks due", icon: "󰃭", command: [SCRIPT] };
   const dueCfg = Object.assign({}, config, { filters: [due] });
   const asked = [];
   const rows = Engine.run("due", dueCfg, services({
@@ -60,7 +60,7 @@ test("a bare filter keyword offers an exact hint above file matches without runn
   }));
   const hint = rows[0];
   assert.deepEqual(plain([hint.key, hint.provider, hint.title, hint.icon, hint.complete, hint.copy, hint.kind, hint.intent]),
-    ["filter:due:hint", "filters", "Arivu: what comes due", "󰃭", "due ", "", "hint", "exactCommand"]);
+    ["filter:due:hint", "filters", "Tasks due", "󰃭", "due ", "", "hint", "exactCommand"]);
   assert.ok(Rows.canComplete(hint), "Tab fills the filter prefix; Enter does the same");
   assert.ok(rows.some(r => r.provider === "files"), "the matching file remains below the filter");
   assert.ok(!asked.some(k => k.startsWith("filter:")), "the bare keyword starts no filter process");

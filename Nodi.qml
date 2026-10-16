@@ -487,15 +487,21 @@ Item {
   // Qt 6.11's editable TextInput reads every foreign clipboard offer when
   // it changes. Card uses TextEdit instead and sends its explicit paste keys
   // here, where the shared Reader enforces both a deadline and a byte cap.
-  function pasteInput(target) {
-    if (!pasteReader.busy) pasteReader.run(Sources.pasteArgv(), { target: target })
+  function pasteInput(target, multiline) {
+    if (!pasteReader.busy)
+      pasteReader.run(Sources.pasteArgv(), {
+        target: target, direct: typeof target !== "string",
+        multiline: multiline === true
+      })
   }
 
-  function insertPaste(field, text) {
+  function insertPaste(field, text, multiline) {
     var start = field.selectionStart
     var end = field.selectionEnd
     if (end > start) field.remove(start, end)
-    field.insert(start, String(text || "").replace(/[\r\n]+/g, " "))
+    var value = String(text || "")
+    if (!multiline) value = value.replace(/[\r\n]+/g, " ")
+    field.insert(start, value)
   }
 
   Reader {
@@ -509,7 +515,12 @@ Item {
         return
       }
       if (!root.opened || !tag || (tag.target === "palette" && !root.paletteOpen)) return
-      root.insertPaste(tag.target === "palette" ? card.paletteInput : input, text)
+      var target
+      if (tag.direct === true) {
+        if (!tag.target || typeof tag.target.insert !== "function") return
+        target = tag.target
+      } else target = tag.target === "palette" ? card.paletteInput : input
+      root.insertPaste(target, text, tag.multiline === true)
     }
   }
 
@@ -686,7 +697,10 @@ Item {
              agentId: typeof askSession.agent === "string" ? askSession.agent : "",
              agent: askSession.agentName, model: askSession.modelName, status: root.askStatus, activity: askSession.activity,
              proposal: root.proposed(), context: askSession.context, capturing: windowShot.active, install: askSession.install,
-             missing: root.agentMissing ? root.agentProgram : "", turns: askSession.turns, agents: root.askAgents },
+             missing: root.agentMissing ? root.agentProgram : "", turns: askSession.turns, agents: root.askAgents,
+             sessionId: askSession.sessionId, commands: askSession.commands, plans: askSession.plans,
+             resultActions: askSession.resultActions, remoteSessions: askSession.remoteSessions,
+             form: askSession.form },
       conversations: root.conversations,
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error, running: answerSession.running, conversation: answerSession.conversation,
@@ -868,13 +882,20 @@ Item {
     return true
   }
 
-  function openLink(url) {
+  function openLink(url, source) {
     var run = Run.link(url)
     if (!run) {
       root.toast("Link not opened", "Only http, https and mail links can open from a preview.")
       return false
     }
-    return root.execute(run, "", "", null)
+    var opened = root.execute(run, "", "", null)
+    if (opened && source && source.ask === true)
+      askSession.openedLink(url, source.turn)
+    return opened
+  }
+
+  function setAskFormField(name, value) {
+    askSession.setFormField(name, value)
   }
 
   // ---------------------------------------------------------------- Ctrl+K
@@ -1389,6 +1410,33 @@ Item {
       askSession.allow()
     } else if (row.nodi === "askDeny") {
       askSession.deny()
+    } else if (row.nodi === "askCommand" && row.data) {
+      askSession.runCommand(row.data.name, row.data.input)
+    } else if (row.nodi === "askResume" && row.data) {
+      if (askSession.resumeRemote(row.data.index)) {
+        input.text = "ask "
+        input.cursorPosition = input.text.length
+      }
+    } else if (row.nodi === "askResult" && row.data) {
+      var resultItem = askSession.resultAction(row.data.index)
+      if (!resultItem) return
+      var resultAction = resultItem.action || {}
+      if (resultAction.exec !== undefined) {
+        askSession.proposeResultAction(row.data.index)
+      } else if (resultAction.open !== undefined) {
+        root.openLink(resultAction.open, { ask: true, turn: resultItem.turn })
+      } else if (resultAction.copy !== undefined) {
+        root.execute(Run.copy(resultAction.copy), "", "", null)
+      } else if (resultAction.paste !== undefined) {
+        root.execute(Run.paste(resultAction.paste), "", "", null)
+      } else if (resultAction.query !== undefined) {
+        input.text = String(resultAction.query)
+        input.cursorPosition = input.text.length
+      } else if (resultAction.prompt !== undefined) {
+        input.text = "ask " + String(resultAction.prompt)
+        input.cursorPosition = input.text.length
+        askSession.send(String(resultAction.prompt))
+      }
     } else if (row.nodi === "askWith" && row.ask) {
       // Claude on a text (the selection, a translation): asked as Ask asks,
       // the field showing the question, so the answer and its paste are Ask's.
@@ -2351,6 +2399,7 @@ Item {
     onActionTurnChanged: root.askRows = ({ turn: actionTurn, rows: ({}) })
     onPhaseChanged: Qt.callLater(root.syncAskPhase)
     onActivityChanged: if (root.opened) root.recompute()
+    onInteractionRevisionChanged: if (root.opened && !askSession.form) root.recompute()
     // A status can change inside Ask's exit/reset handlers. Recomputing
     // there can select the Ask fallback and warm a new session before the
     // old handler has finished clearing it.
@@ -2485,6 +2534,11 @@ Item {
       return { key: "tool:" + p.title, title: p.title, subtitle: Acp.inputLine(p.input), run: null, risk: "",
                confirmWord: "", tool: true, input: p.input }
     if (p.kind === "action" && p.snapshot) return p.snapshot
+    if (p.kind === "metadataAction" && p.snapshot) return p.snapshot
+    if ((p.kind === "elicitation" || p.kind === "command") && askSession.form)
+      return { key: "form:" + p.kind, title: p.title || "Answer " + askSession.agentName,
+               subtitle: p.subtitle || "", run: null, risk: "", confirmWord: "",
+               form: askSession.form, input: {} }
     return null
   }
 
@@ -2552,7 +2606,10 @@ Item {
       paletteOpen: root.paletteOpen,
       ask: root.askOn ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: askSession.answer,
                           busy: askSession.phase === "waiting" || askSession.phase === "streaming", status: root.askStatus,
-                          error: askSession.phase === "error" ? askSession.error : "", turns: askSession.turns } : null,
+                          error: askSession.phase === "error" ? askSession.error : "", turns: askSession.turns,
+                          plans: askSession.plans, form: askSession.form,
+                          answerTurn: askSession.turn !== null
+                            ? askSession.actionTurn : askSession.completedTurn } : null,
       proposal: root.asking && askSession.phase === "proposing" ? root.proposed() : null,
       agent: askSession.agentName,
       answer: root.answerShown ? { question: answerSession.question, title: answerSession.title, text: answerSession.text, seq: answerSession.seq,

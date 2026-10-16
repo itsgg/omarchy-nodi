@@ -6,7 +6,8 @@ import "../lib/Ansi.js" as Ansi
 // The selected row's preview beside the list (ROADMAP item 26), shown only
 // when the row has one (his ruling 2026-10-04): a header, its labels, then
 // the text or the picture. A provider gives `preview` on a row:
-//   { title, subtitle, text, markdown, code, mono, follow, image, window, labels: [[label, value], ...] }
+//   { title, subtitle, text, markdown, code, mono, follow, image, window,
+//     plans, form, answerLink, answerTurn, labels: [[label, value], ...] }
 // An answer on its way (lib/Pane.js) is `busy`, and says what it waits on
 // in `status` until its words come: Omarchy's own way of waiting
 // (Ui/MultiSelect.qml, the weather panel), a spinning 󰦖 and a dim line.
@@ -76,7 +77,8 @@ Rectangle {
   readonly property bool hasWindow: !hasImage && !!p.window && !!nodi.captures
   readonly property bool hasMarkdown: !hasImage && typeof p.markdown === "string" && p.markdown !== ""
   readonly property bool hasCode: !hasImage && !hasMarkdown && typeof p.code === "string" && p.code !== ""
-  readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text)
+  readonly property bool hasText: !hasImage && (hasMarkdown || !!p.text
+    || !!p.form || (p.plans || []).length > 0)
   readonly property bool hasStatus: !hasImage && !hasText && !!p.status
   // An answer on its way or done (Ask's, a streamed one's) is drawn as
   // blocks (lib/Markdown.js blocks()): each finished block laid out once,
@@ -268,7 +270,7 @@ Rectangle {
     // No header (a preview of Markdown alone): the pane's own margin only.
     anchors.topMargin: head.height > 0 ? Style.spacing.popupPadding : 0
     contentWidth: width
-    contentHeight: pane.streams ? blockColumn.implicitHeight : bodyText.implicitHeight
+    contentHeight: contentColumn.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     property bool scrolled: false
@@ -277,50 +279,80 @@ Rectangle {
     onContentHeightChanged: if (pane.p.follow && !scrolled && contentHeight > height) contentY = contentHeight - height
     onMovementStarted: scrolled = true
 
-    // A stream's blocks, laid out one by one (syncBlocks above).
     Column {
-      id: blockColumn
-      objectName: "paneBlocks"
-      visible: pane.streams
+      id: contentColumn
       width: body.width
-      // The gap Qt puts between paragraphs inside one Text, near enough.
-      spacing: Math.round(bodyText.font.pixelSize * 0.6)
-      Repeater {
-        model: blocks
-        Text {
-          required property string t
-          required property bool md
-          width: blockColumn.width
-          wrapMode: Text.Wrap
-          textFormat: md ? Text.MarkdownText : Text.PlainText
-          text: md ? Markdown.forPane(t) : t
-          horizontalAlignment: Text.AlignLeft
-          color: nodi.foreground
-          linkColor: nodi.link
-          onLinkActivated: function(link) { nodi.openLink(link) }
-          font.family: nodi.fontFamily
-          font.pixelSize: bodyText.font.pixelSize
-          lineHeight: bodyText.lineHeight
+      spacing: Style.spacing.lg
+
+      AskPlan {
+        width: contentColumn.width
+        visible: (pane.p.plans || []).length > 0
+        nodi: pane.nodi
+        entries: pane.p.plans || []
+      }
+
+      AskForm {
+        width: contentColumn.width
+        visible: !!pane.p.form
+        nodi: pane.nodi
+        form: pane.p.form
+      }
+
+      // A stream's blocks, laid out one by one (syncBlocks above).
+      Column {
+        id: blockColumn
+        objectName: "paneBlocks"
+        visible: pane.streams
+        width: contentColumn.width
+        // The gap Qt puts between paragraphs inside one Text, near enough.
+        spacing: Math.round(bodyText.font.pixelSize * 0.6)
+        Repeater {
+          model: blocks
+          Text {
+            required property string t
+            required property bool md
+            width: blockColumn.width
+            wrapMode: Text.Wrap
+            textFormat: md ? Text.MarkdownText : Text.PlainText
+            text: md ? Markdown.forPane(t) : t
+            horizontalAlignment: Text.AlignLeft
+            color: nodi.foreground
+            linkColor: nodi.link
+            onLinkActivated: function(link) {
+              nodi.openLink(link, {
+                ask: pane.p.answerLink === true,
+                turn: pane.p.answerTurn || ""
+              })
+            }
+            font.family: nodi.fontFamily
+            font.pixelSize: bodyText.font.pixelSize
+            lineHeight: bodyText.lineHeight
+          }
         }
       }
-    }
 
-    Text {
-      id: bodyText
-      visible: !pane.streams
-      width: body.width
-      wrapMode: Text.Wrap
-      textFormat: pane.hasMarkdown ? Text.MarkdownText : pane.hasCode ? Text.RichText : Text.PlainText
-      // Empty while a stream is drawn as blocks: bound to the answer, it
-      // would be laid out whole at every word though nothing showed it.
-      text: pane.streams ? "" : pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
-      horizontalAlignment: Text.AlignLeft
-      color: nodi.foreground
-      linkColor: nodi.link
-      onLinkActivated: function(link) { nodi.openLink(link) }
-      font.family: nodi.fontFamily
-      font.pixelSize: pane.p.mono ? Style.font.caption : Style.font.subtitle
-      lineHeight: 1.15
+      Text {
+        id: bodyText
+        visible: !pane.streams && (pane.hasMarkdown || pane.hasCode || !!pane.p.text)
+        width: contentColumn.width
+        wrapMode: Text.Wrap
+        textFormat: pane.hasMarkdown ? Text.MarkdownText : pane.hasCode ? Text.RichText : Text.PlainText
+        // Empty while a stream is drawn as blocks: bound to the answer, it
+        // would be laid out whole at every word though nothing showed it.
+        text: pane.streams ? "" : pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
+        horizontalAlignment: Text.AlignLeft
+        color: nodi.foreground
+        linkColor: nodi.link
+        onLinkActivated: function(link) {
+          nodi.openLink(link, {
+            ask: pane.p.answerLink === true,
+            turn: pane.p.answerTurn || ""
+          })
+        }
+        font.family: nodi.fontFamily
+        font.pixelSize: pane.p.mono ? Style.font.caption : Style.font.subtitle
+        lineHeight: 1.15
+      }
     }
   }
 }

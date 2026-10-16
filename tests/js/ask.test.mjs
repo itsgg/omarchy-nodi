@@ -1110,6 +1110,65 @@ test("Ask continues: about the selection, about the window, a new question (ROAD
   assert.equal(plain(run("ask what is this", pic)).find(r => r.key === "ask:again").subtitle, "what is this, with the same picture");
 });
 
+test("ACP commands, result actions, forms, plans, and saved sessions are visible", () => {
+  const commands = [
+    { name: "status", description: "Show status", input: null },
+    { name: "review", description: "Review", input: { hint: "scope", required: true } }
+  ];
+  let rows = plain(run("ask /", {
+    ask: { phase: "done", question: "x", answer: "done", commands }
+  }));
+  assert.deepEqual(rows.map(r => [r.key, r.nodi, r.complete]), [
+    ["ask:command:status", "askCommand", ""],
+    ["ask:command:review", "", "ask /review "]
+  ]);
+
+  const done = {
+    ask: {
+      phase: "done", question: "x", answer: "done",
+      sessionId: "current",
+      commands,
+      resultActions: [
+        { title: "Continue", action: { prompt: "/status" } },
+        { title: "Run", action: { exec: ["true"] } }
+      ],
+      remoteSessions: [
+        { sessionId: "current", title: "Current", cwd: "/tmp" },
+        { sessionId: "saved-1", title: "Saved", cwd: "/tmp" }
+      ]
+    }
+  };
+  rows = plain(run("ask x", done));
+  assert.deepEqual(rows.slice(0, 7).map(r => r.key), [
+    "ask:paste", "ask:copy", "ask:agent",
+    "ask:result:0", "ask:result:1",
+    "ask:answer-command:status", "ask:answer-command:review"
+  ], "agent additions follow the fixed answer actions");
+  assert.equal(rows.find(r => r.key === "ask:session:saved-1").data.index, 1,
+            "saved sessions are offered");
+
+  const form = { message: "Choose", fields: [{ name: "strategy", type: "enum", enum: ["safe", "fast"], value: "safe" }] };
+  rows = plain(run("ask x", {
+    ask: { phase: "proposing", question: "x", answer: "", form,
+           proposal: { form: true, title: "Choose" } }
+  }));
+  assert.deepEqual(rows.map(r => [r.title, r.nodi]), [
+    ["Submit", "askAllow"], ["Cancel", "askDeny"]
+  ]);
+
+  const Pane = load("lib/Pane.js");
+  assert.equal(plain(Pane.choose({
+    proposal: { title: "Choose", subtitle: "", form }
+  })).form.message, "Choose", "the form remains visible if the query changes");
+  const pane = plain(Pane.choose({
+    ask: { question: "x", agent: "Claude", text: "", plans: [
+      { content: "Inspect", status: "in_progress", priority: "high" }
+    ], form, answerTurn: "turn-1" }
+  }));
+  assert.deepEqual([pane.plans[0].content, pane.form.message, pane.answerLink, pane.answerTurn],
+                   ["Inspect", "Choose", true, "turn-1"]);
+});
+
 test("MCP servers he names, for Ask: given to the session, each tool call his to allow (ROADMAP 49)", () => {
   const s = A.servers({ github: { command: "gh-mcp" }, nodi: { command: "x" }, "bad name": { command: "y" }, web: { url: "https://x" }, junk: { foo: 1 },
                         "a__b": { command: "z" } });

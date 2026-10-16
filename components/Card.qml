@@ -15,10 +15,28 @@ BorderSurface {
   // What is typed, with an input method's composition in it while it is
   // composed (ROADMAP 76): results follow the preedit, as Vicinae's
   // consider_preedit does, not only what is committed.
-  readonly property string composed: composedNow()
+  property string composed: ""
   // Read at the moment, for a handler of the field's change (Nodi.queryNow).
   function composedNow() {
     return input.preeditText !== "" ? input.text.slice(0, input.cursorPosition) + input.preeditText + input.text.slice(input.cursorPosition) : input.text
+  }
+  property string notifiedQuery: ""
+  function notifyQueryChanged(query) {
+    if (query === notifiedQuery) return
+    notifiedQuery = query
+    nodi.queryChanged()
+  }
+  function textChanged() {
+    var query = composedNow()
+    notifyQueryChanged(query)
+    composed = query
+  }
+  function preeditChanged() {
+    if (input.preeditText !== "") {
+      textChanged()
+      return
+    }
+    Qt.callLater(function() { card.textChanged() })
   }
   function revealCursor(viewport, editor) {
     var left = editor.cursorRectangle.x
@@ -233,10 +251,10 @@ BorderSurface {
           wrapMode: TextEdit.NoWrap
           focus: true
           onTextChanged: {
-            nodi.queryChanged()
+            card.textChanged()
             card.revealCursor(inputViewport, input)
           }
-          onPreeditTextChanged: nodi.queryChanged()
+          onPreeditTextChanged: card.preeditChanged()
           onCursorRectangleChanged: card.revealCursor(inputViewport, input)
           Accessible.name: "Nodi"
           Accessible.searchEdit: true
