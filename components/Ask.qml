@@ -429,7 +429,7 @@ Item {
     ask.afterTool = false
     ask.cut = false
     var preface = ask.instructed ? "" : Agents.firstPromptInstructions(ask.agent, ask.instructions)
-    ask.instructed = !!ask.spec && ask.spec.instructs
+    ask.instructed = true
     var nodi = p.snapshot ? PromptContext.build(p.snapshot) : undefined
     ask.turn = ask.toAgent("prompt", function(id) { return Acp.prompt(id, ask.sessionId, text, image, preface, nodi) })
   }

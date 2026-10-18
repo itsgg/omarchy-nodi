@@ -196,7 +196,7 @@ function parentOf(path) {
 // told only its extension, for the colours, or a name every project has
 // (Makefile, .bashrc), never one of his own (Fable 2026-10-10: a name
 // with no dot went whole).
-var FILE_HEAD = 'f=${NODI_TEXT-}; unset NODI_TEXT'
+var FILE_HEAD = 'ulimit -v 393216 -t 4 -f 16384 -c 0 || exit 1; f=${NODI_TEXT-}; unset NODI_TEXT'
   + "\n" + 'if [ -d "$f" ]; then'
   + "\n" + '  [ -r "$f" ] && [ -x "$f" ] && exec 3< "$f" || exit 1'
   + "\n" + '  stat -L -c "%s\t%Y" /dev/fd/3 || exit 1'

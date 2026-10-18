@@ -42,6 +42,17 @@ Everything Nodi reads, writes, starts and sends, and when.
 - It shows text as plain text: a title, a clipboard entry or a filter's
   row that holds HTML is shown as written, and an `<img>` in it fetches
   nothing.
+- File, clipboard, theme, app and extension images are decoded in a separate
+  worker, one at a time. It reads regular files of at most 16 MB, with a
+  384 MB address-space ceiling, three CPU seconds and a four-second deadline.
+  Pictures above 16 million pixels are refused. The shell receives only a
+  new PNG of at most 1000 pixels per side, containing pixel data without the
+  original metadata. SVGs have no base URI for external file references.
+  The image queue holds at most 64 requests and its memory cache at most
+  128 entries or 24 MB. Unsupported tray image handles use the row's glyph.
+  PDF and video preview workers and clipboard OCR also have memory, CPU,
+  output-file and time limits. Reader error output is capped before it
+  reaches the shell.
 - Its notices are its own toast, a small popup at the top of the screen
   that no other program draws, and never a desktop notification:
   `notify-send` holds its words in its arguments, and Omarchy's

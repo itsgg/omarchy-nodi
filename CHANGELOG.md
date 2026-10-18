@@ -5,6 +5,21 @@ What changed in each version of Nodi, newest first. A version is a tag
 follows the main branch, not the tags: it shows the diff from the commit
 you have and asks before pulling. ROADMAP.md has each item's detail.
 
+## Unreleased (2026-10-18)
+
+- Decode file, clipboard, theme, app and extension images in a worker with
+  memory, CPU, file-size and time limits. Only a new PNG without source
+  metadata reaches the shell; images are cached with bounded queue and
+  memory use. Opaque tray image handles use the tray glyph.
+- Bound PDF, video and OCR worker resources and cap reader error output
+  before it reaches Qt.
+- Leave socket error cleanup to Quickshell's native handler, avoiding a
+  shell crash when a source disconnects.
+- Qualify Omarchy's palette references so Qt 6.12's new Color singleton
+  cannot shadow the theme.
+- Send plain ACP agents their initial instructions once per session,
+  preserving the instructions state on later questions.
+
 ## 0.5.0 (2026-10-14)
 
 Ask can switch ACP agents (2026-10-12)

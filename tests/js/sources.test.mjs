@@ -147,6 +147,14 @@ test("readers: the cap and the deadline hold outside Quickshell", () => {
   assert.equal(go(["false"], 1000, 100).status, 1, "the program's own failure comes through");
 });
 
+test("readers bound a continuous error stream before Qt's parser sees it", () => {
+  const argv = S.limited(["/usr/bin/bash", "-c", "head -c 5000000 /dev/zero >&2; printf done"], 2000, 100);
+  const result = spawnSync(argv[0], argv.slice(1), { timeout: 5000 });
+  assert.equal(result.status, 0);
+  assert.equal(result.stdout.toString(), "done");
+  assert.equal(result.stderr.length, 65536);
+});
+
 test("windows from Quickshell's records, null and junk skipped (ROADMAP 32)", () => {
   const recs = [{ address: "0xa", class: "foot", title: "~", workspace: { id: 2, name: "2" }, focusHistoryID: 1, pid: 42, mapped: true, hidden: false },
                 { address: "0xb", class: "x", title: "hid", workspace: { id: 1, name: "1" }, focusHistoryID: 0, mapped: true, hidden: true }, null, "junk"];

@@ -241,7 +241,7 @@ Rectangle {
     // and follows the rows, it re-decoded the picture on every frame.
     sourceSize.width: Style.space(1000)
     sourceSize.height: Style.space(600)
-    source: pane.hasImage ? nodi.iconSource(pane.p.image) : ""
+    source: pane.hasImage ? nodi.iconSource(pane.p.image, true) : ""
   }
 
   Loader {
@@ -256,7 +256,10 @@ Rectangle {
     anchors.bottom: parent.bottom
     anchors.margins: Style.spacing.popupPadding
     source: "WindowShot.qml"
+    // The runtime Loader item is WindowShot; qmllint sees only QObject.
+    // qmllint disable missing-property
     onLoaded: item.address = Qt.binding(function() { return String(pane.p.window || "") })
+    // qmllint enable missing-property
   }
 
   Flickable {

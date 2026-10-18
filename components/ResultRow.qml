@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 
 // One result: its picture, title, what it is, and a badge for its state.
@@ -99,7 +100,7 @@ Item {
       // The word in the text colour, the state in the fill and the border:
       // accent or urgent text on its own tint read under 4.5 in most themes.
       foreground: nodi.foreground
-      tone: rowItem.digit ? nodi.foreground : (rowItem.armed ? Color.urgent : (rowItem.modelData.badgeTone === "on" ? Color.accent : nodi.foreground))
+      tone: rowItem.digit ? nodi.foreground : (rowItem.armed ? Commons.Color.urgent : (rowItem.modelData.badgeTone === "on" ? Commons.Color.accent : nodi.foreground))
       fontFamily: nodi.fontFamily
       rounded: nodi.cornerRadius > 0
     }

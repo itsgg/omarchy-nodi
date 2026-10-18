@@ -4,6 +4,7 @@ import "../components"
 import "../lib/Rows.js" as Rows
 import "../lib/Contrast.js" as Contrast
 import qs.Commons
+import qs.Commons as Commons
 import ".."
 
 // An answer as it streams (components/PreviewPane.qml): drawn as blocks,
@@ -145,11 +146,11 @@ Item {
       says("[Read it](" + url + ")", false)
       wait(120)
       var text = blockTexts()[0]
-      var soft = Contrast.over(Color.accent, 0.35, look.foreground)
+      var soft = Contrast.over(Commons.Color.accent, 0.35, look.foreground)
       var expected = look.rgb(Contrast.guard(soft, look.opaqueCard, look.foreground))
       compare(String(text.linkColor), String(expected), "the active theme's softened accent")
       verify(Contrast.ratio(text.linkColor, look.opaqueCard) >= 4.5, "readable on the card")
-      verify(String(text.linkColor) !== String(look.rgb(Color.accent)), "not the full-strength focus accent")
+      verify(String(text.linkColor) !== String(look.rgb(Commons.Color.accent)), "not the full-strength focus accent")
       verify(String(text.linkColor) !== "#0000ff", "not Qt's default blue")
     }
 

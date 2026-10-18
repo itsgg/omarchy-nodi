@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 
 // A row's picture: a colour swatch, an app's or a theme's own image, or a
 // font glyph on a soft tile.
@@ -12,8 +13,8 @@ Rectangle {
   property string swatch: ""
   property bool selected: false
   property real size: Style.space(30)
-  property color foreground: Color.foreground
-  property color selectedText: Color.foreground
+  property color foreground: Commons.Color.foreground
+  property color selectedText: Commons.Color.foreground
   property string fontFamily: Style.font.family
 
   readonly property bool hasSwatch: /^#[0-9A-Fa-f]{6}$/.test(swatch)

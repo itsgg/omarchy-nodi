@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import "../lib/Rows.js" as Rows
 
 // What the selected row is, and what the keys do now.
@@ -91,7 +92,7 @@ Item {
     // A confirmation shows in the key's urgent fill and border; the word stays readable.
     Keycap { objectName: "key-Enter"; visible: primaryText.text !== ""; label: "Enter"; anchors.verticalCenter: parent.verticalCenter; foreground: nodi.foreground
              clickable: true; onClicked: footer.press(Qt.Key_Return)
-             tone: parent.primary === "Confirm" || parent.armed ? Color.urgent : nodi.foreground; strong: parent.primary === "Confirm" || parent.armed
+             tone: parent.primary === "Confirm" || parent.armed ? Commons.Color.urgent : nodi.foreground; strong: parent.primary === "Confirm" || parent.armed
              fontFamily: nodi.fontFamily; rounded: nodi.cornerRadius > 0 }
   }
 }

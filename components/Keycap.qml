@@ -1,12 +1,13 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 
 // A key or a short state, drawn as a small keycap: the footer's hints and a
 // row's badge ("ON", "Current", "Enter again").
 Rectangle {
   id: cap
   property string label: ""
-  property color foreground: Color.foreground
+  property color foreground: Commons.Color.foreground
   property color tone: foreground       // the fill and border: a state's colour
   property string fontFamily: Style.font.family
   property bool rounded: true

@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "../lib/Scroll.js" as Scroll
 
@@ -166,7 +167,7 @@ Column {
         label: actionItem.armed ? "Enter again" : (actionItem.modelData.chord || actionItem.modelData.detail || "")
         strong: actionItem.armed
         foreground: nodi.foreground
-        tone: actionItem.armed ? Color.urgent : nodi.foreground
+        tone: actionItem.armed ? Commons.Color.urgent : nodi.foreground
         fontFamily: nodi.fontFamily
         rounded: nodi.cornerRadius > 0
       }

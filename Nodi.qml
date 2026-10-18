@@ -2769,7 +2769,7 @@ Item {
     root.describeApps()
   }
 
-  // Every app's icon, decoded once and held, at the sizes the rows draw them
+  // Up to 48 app icons, decoded once and held, at the sizes the rows draw them
   // (components/ResultRow.qml: a row's tile, the top hit's larger one). A
   // row's picture loads off the GUI thread, and Qt keeps a picture nobody
   // holds only for a while, dropping a quarter of them every 30 s; the rows
@@ -2779,7 +2779,7 @@ Item {
   readonly property var warmIcons: {
     var seen = ({})
     var out = []
-    for (var i = 0; i < root.apps.length; i++) {
+    for (var i = 0; i < root.apps.length && out.length < 48; i++) {
       var icon = root.apps[i].icon
       if (icon && !seen[icon]) { seen[icon] = true; out.push(icon) }
     }
@@ -2797,13 +2797,13 @@ Item {
     }
   }
 
-  function iconSource(icon) {
+  Images { id: images; pluginDir: decodeURIComponent(root.pluginDir) }
+
+  function iconSource(icon, large) {
+    // Depend on completed reads and on a reopen, which refreshes old images.
+    var revision = images.revision + root.opens
     var value = String(icon || "")
-    if (value.charAt(0) === "/") return Rows.fileUrl(value)
-    // A tray item's picture, as Quickshell serves it.
-    if (/^image:\/\//.test(value)) return value
-    var themed = value ? Quickshell.iconPath(value, true) : ""
-    return themed || Quickshell.iconPath("application-x-executable", true)
+    return images.source(value || "application-x-executable", !!large)
   }
 
   Timer { id: appsDebounce; interval: 300; onTriggered: root.rebuildApps() }

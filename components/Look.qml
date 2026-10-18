@@ -1,5 +1,6 @@
 import QtQuick
 import qs.Commons
+import qs.Commons as Commons
 import "../lib/Contrast.js" as Contrast
 
 // How the bar looks and measures: Omarchy's menu tokens, so a theme that
@@ -10,22 +11,22 @@ QtObject {
   property real screenWidth: 1920
   property real screenHeight: 1200
 
-  property color background: Color.menu.background
-  property color foreground: Color.menu.text
-  property color border: Color.menu.border
+  property color background: Commons.Color.menu.background
+  property color foreground: Commons.Color.menu.text
+  property color border: Commons.Color.menu.border
   // Two pixels, as the shell's popups draw theirs (Menu.qml, Clipboard.qml).
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   // The selected row's border, as Omarchy's menu draws it (Menu.qml): none
   // in a theme that sets no [menu] selected-border, as most do (item 24).
-  readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Color.menu.selectedBorder, 0)
+  readonly property var selectedBorderSpec: Border.surfaceSpec("menu", "selected-border", Commons.Color.menu.selectedBorder, 0)
   // Every row keeps its content clear of that border, selected or not, as
   // the menu does (Menu.qml:96-97), so a wide one covers nothing and the
   // row does not shift when chosen. Zero where the theme sets none.
   readonly property real rowInsetLeft: Border.left(selectedBorderSpec)
   readonly property real rowInsetRight: Border.right(selectedBorderSpec)
-  property color scrim: Color.menu.scrim
-  property color selectedBackground: Color.menu.selectedBackground
-  property color selectedText: Color.menu.selectedText
+  property color scrim: Commons.Color.menu.scrim
+  property color selectedBackground: Commons.Color.menu.selectedBackground
+  property color selectedText: Commons.Color.menu.selectedText
   // Colours by their ratio on the surface they sit on (lib/Contrast.js).
   // The card as an opaque colour stands in for what the 0.93 card shows.
   readonly property color opaqueCard: Qt.rgba(background.r, background.g, background.b, 1)
@@ -35,11 +36,11 @@ QtObject {
   // text colour mixed to it, or black or white where the text colour
   // itself falls short.
   readonly property real secondaryTarget: highContrast ? 7 : 4.5
-  readonly property color secondary: rgb(Contrast.secondary(foreground, Color.muted, opaqueCard, secondaryTarget))
+  readonly property color secondary: rgb(Contrast.secondary(foreground, Commons.Color.muted, opaqueCard, secondaryTarget))
   readonly property color secondaryOnSelected: rgb(highContrast ? Contrast.atLeast(foreground, selectedFill, 7) : Contrast.readable(foreground, selectedFill, 4.5))
   // Markdown links keep a quiet hint of the theme accent without borrowing
   // the full focus colour; fall back to readable text ink where needed.
-  readonly property color softLink: rgb(Contrast.over(Color.accent, 0.35, foreground))
+  readonly property color softLink: rgb(Contrast.over(Commons.Color.accent, 0.35, foreground))
   readonly property color link: rgb(highContrast ? Contrast.atLeast(softLink, opaqueCard, 7)
                                                   : Contrast.guard(softLink, opaqueCard, foreground))
   // The selected title, its glyph and the mode chip: the theme's selected

@@ -203,8 +203,11 @@ Item {
         }
       }
       onError: function(error) {
+        // Quickshell finishes its native error handler after emitting this
+        // signal. Disconnecting here clears the socket pointer it still
+        // uses in 0.3.2. Failed connects are discarded by Quickshell; a
+        // peer closing reaches onConnectionStateChanged above.
         if (transport !== reader.wire) return
-        if (connected) connected = false
         reader.disconnected(transport)
       }
     }
