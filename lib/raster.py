@@ -29,7 +29,14 @@ def limits():
     for kind, value in ((resource.RLIMIT_AS, MEMORY_MAX),
                         (resource.RLIMIT_CPU, 3), (resource.RLIMIT_CORE, 0),
                         (resource.RLIMIT_FSIZE, 64 * 1024 * 1024)):
+        # A lower hard limit already set is kept: raising one is refused.
+        hard = resource.getrlimit(kind)[1]
+        if hard != resource.RLIM_INFINITY:
+            value = min(value, hard)
         resource.setrlimit(kind, (value, value))
+    # Out of memory, the kernel ends this worker before the shell.
+    with open("/proc/self/oom_score_adj", "w", encoding="ascii") as stream:
+        stream.write("1000")
     signal.signal(signal.SIGALRM, lambda *_: os._exit(124))
     signal.alarm(4)
     os.environ["RAYON_NUM_THREADS"] = "1"

@@ -117,6 +117,36 @@ for (const page of all) {
   for (const ch of ["\u2014", "\u2013", "\u2192", "\u201c", "\u201d", "\u2018", "\u2019", "\u2026", "\u00b7"]) if (prose.includes(ch)) problems.push(rel + ": " + JSON.stringify(ch) + " in prose");
 }
 
+// The image worker's limits, as docs/privacy.md's item on images states
+// them, are the ones lib/raster.py sets: a limit changed there fails here
+// until the page says it (2026-10-20, the ceiling went to 2 GB and the
+// page kept 768 MB).
+const privacyPage = join(docs, "privacy.md");
+if (existsSync(privacyPage)) {
+  const raster = read(join(root, "lib/raster.py"));
+  const found = (re, what) => {
+    const m = raster.match(re);
+    if (!m) problems.push("tools/docs.mjs: lib/raster.py sets no " + what);
+    return m ? m[1].split("*").reduce((n, x) => n * Number(x), 1) : 0;
+  };
+  const constant = name => found(new RegExp("^" + name + " = ([\\d *]+?)[ \\t]*(?:#.*)?\\r?$", "m"), name);
+  const size = bytes => bytes % 2 ** 30 === 0 ? bytes / 2 ** 30 + " GB" : bytes / 2 ** 20 + " MB";
+  const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+  const spelled = n => words[n] || String(n);
+  const cpu = found(/RLIMIT_CPU, (\d+)\)/, "RLIMIT_CPU"), alarm = found(/signal\.alarm\((\d+)\)/, "signal.alarm");
+  // Only that item, so a figure another item gives cannot stand in for it.
+  const item = (read(privacyPage).match(/^- File, clipboard, theme, app and extension images[\s\S]*?(?=^\S|(?![\s\S]))/m) || [""])[0].replace(/\s+/g, " ");
+  if (!item) problems.push("docs/privacy.md: no item that starts \"- File, clipboard, theme, app and extension images\"");
+  else for (const s of [
+    "regular files of at most " + size(constant("INPUT_MAX")),
+    size(constant("MEMORY_MAX")) + " address-space ceiling",
+    spelled(cpu) + " CPU second" + (cpu === 1 ? "" : "s"),
+    spelled(alarm) + "-second deadline",
+    "above " + constant("PIXELS_MAX") / 2 ** 20 + " million pixels",
+    "at most " + constant("EDGE_MAX") + " pixels per side",
+  ]) if (!item.includes(s)) problems.push("docs/privacy.md: its item on images does not say \"" + s + "\", as lib/raster.py sets it");
+}
+
 // Every setting docs/settings.md names is a key of the defaults, a
 // provider's id (a provider's section, lib/Engine.js contextFor), or one
 // of these: keys the defaults leave out, and the keys of an entry in a

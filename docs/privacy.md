@@ -44,7 +44,8 @@ Everything Nodi reads, writes, starts and sends, and when.
   nothing.
 - File, clipboard, theme, app and extension images are decoded in a separate
   worker, one at a time. It reads regular files of at most 16 MB, with a
-  768 MB address-space ceiling, three CPU seconds and a four-second deadline.
+  2 GB address-space ceiling, three CPU seconds and a four-second deadline,
+  and is the first process the kernel ends if memory runs out.
   Pictures above 16 million pixels are refused. The shell receives only a
   new PNG of at most 1000 pixels per side, containing pixel data without the
   original metadata. SVGs have no base URI for external file references.

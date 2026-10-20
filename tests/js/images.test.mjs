@@ -77,6 +77,18 @@ test("metadata bombs, huge dimensions, special files and invalid sources stay in
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("worker limits keep a lower hard limit and make it the OOM killer's first choice", () => {
+  // A hard ceiling just under MEMORY_MAX: raising it to MEMORY_MAX is refused.
+  const hard = 2047 * 1024 * 1024;
+  const probe = "import resource, sys; sys.path.insert(0, sys.argv[1]); import raster; raster.limits(); " +
+    "print(resource.getrlimit(resource.RLIMIT_AS)[1], resource.getrlimit(resource.RLIMIT_CPU)[1], open('/proc/self/oom_score_adj').read().strip())";
+  const result = spawnSync("/usr/bin/prlimit", ["--as=" + hard, "--", "/usr/bin/python3", "-I", "-c", probe, join(root, "lib")], {
+    env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, encoding: "utf8", timeout: 7000
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), hard + " 3 1000");
+});
+
 test("SVG previews scale and cannot include a neighbouring image", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-image-svg-"));
   try {
