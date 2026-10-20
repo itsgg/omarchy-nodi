@@ -18,7 +18,7 @@ import zlib
 from urllib.parse import unquote, urlsplit
 
 INPUT_MAX = 16 * 1024 * 1024
-MEMORY_MAX = 768 * 1024 * 1024
+MEMORY_MAX = 2048 * 1024 * 1024
 PIXELS_MAX = 16 * 1024 * 1024
 EDGE_MAX = 1000
 
