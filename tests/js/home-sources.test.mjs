@@ -29,6 +29,23 @@ test("JSONL rows inherit source groups and keep explicit groups, priorities and 
   ]);
 });
 
+test("a row's icon is a picture by its theme name or file, never glyph text", () => {
+  const got = Home.parse([
+    '{"id":"a","title":"A","icon":"emblem-default"}',
+    '{"id":"b","title":"B","icon":"emblem-default","image":"/abs/p.png"}',
+    '{"id":"c","title":"C","icon":"/usr/share/pixmaps/c.png"}',
+    '{"id":"d","title":"D"}',
+    '{"id":"e","title":"E","icon":"$(x)"}'
+  ].join("\n"), source({ icon: "view-list", max: 5 }), safe);
+  assert.deepEqual(plain(got.rows.map(r => [r.icon, r.image])), [
+    ["", "emblem-default"],
+    ["", "/abs/p.png"],
+    ["", "/usr/share/pixmaps/c.png"],
+    ["", "view-list"],
+    ["", "view-list"]
+  ]);
+});
+
 test("invalid row shapes are skipped and source max limits accepted rows", () => {
   const lines = [
     "null", "[]", '"text"', '{"title":""}', '{"title":3}',

@@ -37,7 +37,9 @@ chmod 600 "$tmp"
 mv -f -- "$tmp" "$XDG_RUNTIME_DIR/example/home.jsonl"
 ```
 
-The source's optional `icon` is the fallback for rows without one. Each
+An `icon` is a theme icon's name, such as `view-list`, or an absolute
+file, drawn as a picture; a row's `image` comes before it. The source's
+optional `icon` is the fallback for rows without one. Each
 non-empty line is one JSON object. It may have `id`, `title`,
 `subtitle`, `icon`, an absolute `image`, `badge`, `group`, `priority`,
 `expires` (an ISO 8601 time with a zone), `preview`, `action`, `confirm`,
