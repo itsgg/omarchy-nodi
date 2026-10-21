@@ -19,6 +19,11 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   cannot shadow the theme.
 - Send plain ACP agents their initial instructions once per session,
   preserving the instructions state on later questions.
+- Draw Markdown links in the theme's accent. Qt gave them the palette's
+  pure blue whatever the pane asked; the pane now draws Qt's own HTML of
+  the Markdown with the links recoloured, laid out as before.
+- Draw a watched home row's icon name as its picture, not as text across
+  the row.
 
 ## 0.5.0 (2026-10-14)
 

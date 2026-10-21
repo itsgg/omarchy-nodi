@@ -47,12 +47,37 @@ Rectangle {
     var md = pane.hasMarkdown
     for (var i = 0; i < list.length; i++) {
       if (i < blocks.count) {
-        if (blocks.get(i).md !== md) blocks.set(i, { t: list[i], md: md })
-        else if (blocks.get(i).t !== list[i]) blocks.setProperty(i, "t", list[i])
-      } else blocks.append({ t: list[i], md: md })
+        if (blocks.get(i).md !== md) blocks.set(i, { t: list[i], md: md, h: md ? pane.rich(list[i]) : "" })
+        else if (blocks.get(i).t !== list[i]) {
+          blocks.setProperty(i, "h", md ? pane.rich(list[i]) : "")
+          blocks.setProperty(i, "t", list[i])
+        }
+      } else blocks.append({ t: list[i], md: md, h: md ? pane.rich(list[i]) : "" })
     }
     if (blocks.count > list.length) blocks.remove(list.length, blocks.count - list.length)
   }
+
+  // Markdown is drawn as rich text: Qt's own HTML of it, the same layout to
+  // the pixel, with the links in the theme's colour, which Text.linkColor
+  // cannot give a Markdown link (MarkdownHtml.qml, Markdown.inkLinks). Made
+  // here when a block, the preview or the colour changes, never in a
+  // binding: the converter is one TextEdit, and a binding that wrote to it
+  // would be told of every other block's change too.
+  MarkdownHtml { id: markdownHtml }
+  function rich(markdown) {
+    return Markdown.inkLinks(markdownHtml.html(Markdown.forPane(markdown), bodyText.font), String(nodi.link))
+  }
+  readonly property string bodyMarkdown: !pane.streams && pane.hasMarkdown ? String(pane.p.markdown || "") : ""
+  property string bodyHtml: ""
+  function syncBody() { bodyHtml = bodyMarkdown ? rich(bodyMarkdown) : "" }
+  onBodyMarkdownChanged: syncBody()
+  // Made again in a new colour or font (a theme, a text size).
+  readonly property string ink: String(nodi.link) + "\n" + bodyText.font.family + "\n" + bodyText.font.pixelSize + "\n" + bodyText.font.pointSize
+  onInkChanged: {
+    for (var i = 0; i < blocks.count; i++) if (blocks.get(i).md) blocks.setProperty(i, "h", rich(blocks.get(i).t))
+    syncBody()
+  }
+  Component.onCompleted: syncBody()
   onStreamedChanged: if (!throttle.running) throttle.start()
   onStreamsChanged: Qt.callLater(pane.syncBlocks)
   // Done: the whole answer at once, not 80 ms later. Called later, not
@@ -314,10 +339,11 @@ Rectangle {
           Text {
             required property string t
             required property bool md
+            required property string h
             width: blockColumn.width
             wrapMode: Text.Wrap
-            textFormat: md ? Text.MarkdownText : Text.PlainText
-            text: md ? Markdown.forPane(t) : t
+            textFormat: md ? Text.RichText : Text.PlainText
+            text: md ? h : t
             horizontalAlignment: Text.AlignLeft
             color: nodi.foreground
             linkColor: nodi.link
@@ -339,10 +365,10 @@ Rectangle {
         visible: !pane.streams && (pane.hasMarkdown || pane.hasCode || !!pane.p.text)
         width: contentColumn.width
         wrapMode: Text.Wrap
-        textFormat: pane.hasMarkdown ? Text.MarkdownText : pane.hasCode ? Text.RichText : Text.PlainText
+        textFormat: pane.hasMarkdown || pane.hasCode ? Text.RichText : Text.PlainText
         // Empty while a stream is drawn as blocks: bound to the answer, it
         // would be laid out whole at every word though nothing showed it.
-        text: pane.streams ? "" : pane.hasMarkdown ? Markdown.forPane(pane.p.markdown) : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
+        text: pane.streams ? "" : pane.hasMarkdown ? pane.bodyHtml : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
         horizontalAlignment: Text.AlignLeft
         color: nodi.foreground
         linkColor: nodi.link

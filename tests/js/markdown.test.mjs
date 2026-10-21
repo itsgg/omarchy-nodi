@@ -84,3 +84,27 @@ test("code is drawn as text in the pane's own font, lines, indent and characters
   assert.equal(Markdown.forPane("use `a<b>` here"), "use a\\<b\\> here", "inline code shows its characters, no stray backslash");
 });
 
+
+// Qt 6.12's HTML of "See [the **docs**](https://x.test/a) and <https://x.test/b>."
+// (a TextEdit read as rich text, as components/MarkdownHtml.qml does).
+const QT_HTML = "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.0//EN\" \"http://www.w3.org/TR/REC-html40/strict.dtd\">\n<html><head><meta name=\"qrichtext\" content=\"1\" /><meta charset=\"utf-8\" /><style type=\"text/css\">\np, li { white-space: pre-wrap; }\nhr { height: 1px; border-width: 0; }\nli.unchecked::marker { content: \"\\2610\"; }\nli.checked::marker { content: \"\\2612\"; }\n</style></head><body style=\" font-family:'Adwaita Sans'; font-size:11pt; font-weight:400; font-style:normal;\">\n<p style=\" margin-top:7px; margin-bottom:7px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\">See <a href=\"https://x.test/a\"><span style=\" text-decoration: underline; color:#0000ff;\">the </span></a><a href=\"https://x.test/a\"><span style=\" font-weight:700; text-decoration: underline; color:#0000ff;\">docs</span></a> and <a href=\"https://x.test/b\"><span style=\" text-decoration: underline; color:#0000ff;\">https://x.test/b</span></a>.</p></body></html>";
+
+test("links in Qt's HTML of Markdown take the theme's colour, no underline, and the Text's font", () => {
+  const out = Markdown.inkLinks(QT_HTML, "#99c1dc");
+  assert.ok(!/#0000ff/.test(out), "no palette blue left");
+  assert.ok(!/underline/.test(out), "no underline");
+  assert.equal((out.match(/<a href="https:\/\/x\.test\/a" style="text-decoration: none; color:#99c1dc;"><span style=" text-decoration: none; color:#99c1dc;">the <\/span><\/a>/g) || []).length, 1, "the link and its span");
+  assert.match(out, /<span style=" font-weight:700; text-decoration: none; color:#99c1dc;">docs<\/span>/, "bold kept");
+  assert.match(out, /<a href="https:\/\/x\.test\/b" style="text-decoration: none; color:#99c1dc;">/, "an autolink too");
+  assert.match(out, /<body>/, "the document's font dropped");
+  assert.ok(out.includes("See ") && out.includes(" and ") && out.includes("margin-top:7px"), "the rest as Qt wrote it");
+});
+
+test("a bad colour leaves the link's colour alone, and no picture survives", () => {
+  const out = Markdown.inkLinks(QT_HTML, "red; background-image:url(x)");
+  assert.ok(!/background-image|url\(/.test(out), "nothing of the colour is written");
+  assert.match(out, /color:#0000ff;/, "Qt's colour stays");
+  assert.ok(!/underline/.test(out));
+  assert.equal(Markdown.inkLinks('<p>a<img src="https://x.test/p.png" />b<IMG\nsrc=x></p>', "#99c1dc"), "<p>ab</p>");
+  assert.equal(Markdown.inkLinks("", "#99c1dc"), "");
+});

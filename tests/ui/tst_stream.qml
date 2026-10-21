@@ -47,7 +47,7 @@ Item {
     }
 
     function markdownText(item) {
-      if (item.visible && item.textFormat === Text.MarkdownText && typeof item.linkAt === "function") return item
+      if (item.visible && item.textFormat === Text.RichText && typeof item.linkAt === "function") return item
       for (var i = 0; i < item.children.length; i++) {
         var found = markdownText(item.children[i])
         if (found) return found
@@ -141,17 +141,24 @@ Item {
       compare(openedLinks(), [url])
     }
 
-    function test_markdown_links_use_a_soft_readable_theme_colour() {
+    // Markdown is drawn as Qt's HTML of it, its links carrying the colour
+    // (PreviewPane.qml rich): Text.linkColor never reaches a Markdown link.
+    function linkColours(text) {
+      return (text.text.match(/<a [^>]*><span style="[^"]*color:(#[0-9a-f]{6});/g) || [])
+        .map(function(a) { return a.match(/color:(#[0-9a-f]{6});$/)[1] })
+    }
+
+    function test_markdown_links_use_the_readable_theme_accent() {
       var url = "https://example.org/theme"
       says("[Read it](" + url + ")", false)
       wait(120)
       var text = blockTexts()[0]
-      var soft = Contrast.over(Commons.Color.accent, 0.35, look.foreground)
-      var expected = look.rgb(Contrast.guard(soft, look.opaqueCard, look.foreground))
-      compare(String(text.linkColor), String(expected), "the active theme's softened accent")
-      verify(Contrast.ratio(text.linkColor, look.opaqueCard) >= 4.5, "readable on the card")
-      verify(String(text.linkColor) !== String(look.rgb(Commons.Color.accent)), "not the full-strength focus accent")
-      verify(String(text.linkColor) !== "#0000ff", "not Qt's default blue")
+      compare(text.textFormat, Text.RichText, "drawn as Qt's HTML of the Markdown")
+      var expected = String(look.rgb(Contrast.guard(Commons.Color.accent, look.opaqueCard, look.foreground)))
+      compare(linkColours(text), [expected], "the link in the active theme's accent")
+      verify(Contrast.ratio(Qt.color(expected), look.opaqueCard) >= 4.5, "readable on the card")
+      verify(!/#0000ff|underline|<img/i.test(text.text), "no palette blue, underline or picture")
+      verify(!text.layer.enabled, "the text is drawn as Qt draws it")
     }
 
     function test_high_contrast_links_match_in_streamed_and_ordinary_markdown() {
@@ -160,9 +167,9 @@ Item {
       says("[Read it](" + url + ")", false)
       wait(120)
       var streamed = blockTexts()[0]
-      var expected = look.rgb(Contrast.atLeast(look.softLink, look.opaqueCard, 7))
-      compare(String(streamed.linkColor), String(expected), "the streamed link's enhanced colour")
-      verify(Contrast.ratio(streamed.linkColor, look.opaqueCard) >= 7, "the streamed link reaches 7:1")
+      var expected = String(look.rgb(Contrast.atLeast(Commons.Color.accent, look.opaqueCard, 7)))
+      compare(linkColours(streamed), [expected], "the streamed link's enhanced colour")
+      verify(Contrast.ratio(Qt.color(expected), look.opaqueCard) >= 7, "the streamed link reaches 7:1")
 
       fake.streamed = null
       fake.rows = [Rows.normalize({ key: "article", title: "Article", copy: "Article",
@@ -171,8 +178,7 @@ Item {
       wait(120)
       var ordinary = markdownText(card)
       verify(ordinary, "the ordinary Markdown text")
-      compare(String(ordinary.linkColor), String(expected), "both Markdown paths use the same colour")
-      verify(Contrast.ratio(ordinary.linkColor, look.opaqueCard) >= 7, "the ordinary link reaches 7:1")
+      compare(linkColours(ordinary), [expected], "both Markdown paths use the same colour")
     }
   }
 }
