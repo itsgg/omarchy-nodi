@@ -51,13 +51,38 @@ from zoneinfo import ZoneInfo
 
 # Raised with any change to what an expansion holds, so one kept by an
 # older lib/ics.py is not answered with (Sonnet 2026-10-06).
-VERSION = 2
+VERSION = 3
 FRESH_S = 600
 DAYS = 9
 TIMEOUT_S = 10
 READ_S = 20
 MAX_BYTES = 20 * 1024 * 1024
+CACHE_BYTES_MAX = 8 * 1024 * 1024
+OUTPUT_BYTES_MAX = 3 * 1024 * 1024
+EVENTS_CACHE_MAX = 64
+OUTPUT_COMPACT_EVENTS_MAX = 128
 DESCRIPTION_MAX = 1500
+DESCRIPTION_SCAN_MAX = 8192
+LINK_MAX = 2048
+LINK_SCAN_MAX = 8192
+UID_KEY_MAX = 128
+ICAL_LINES_MAX = 100000
+ICAL_LINE_MAX = 256 * 1024
+ICAL_COMPONENTS_MAX = 10000
+ICAL_PROPERTIES_MAX = 50000
+ICAL_PARAMETERS_MAX = 32
+ICAL_PARAMETER_VALUES_MAX = 256
+ICAL_PARAMETERS_TOTAL_MAX = 100000
+ICAL_PARAMETER_VALUES_TOTAL_MAX = 200000
+DATE_VALUES_MAX = 10000
+DATE_VALUES_TOTAL_MAX = 100000
+ZONE_DATE_VALUES_MAX = 512
+ZONE_IDS_MAX = 512
+OCCURRENCES_MAX = 512
+EVENTS_MAX = 512
+RULE_VALUES_MAX = 256
+RULE_PARTS_MAX = 32
+RULE_DAYS_TOTAL_MAX = 1000000
 # The most periods one rule is walked through (a daily rule from 1990 is
 # about 13000), past which its occurrences stop.
 PERIODS_MAX = 40000
@@ -66,6 +91,7 @@ WEEKDAYS = {"MO": 0, "TU": 1, "WE": 2, "TH": 3, "FR": 4, "SA": 5, "SU": 6}
 DATE_TIME = re.compile(r"(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?")
 DURATION = re.compile(r"([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?")
 NAME = re.compile(r"[A-Za-z0-9-]+")
+LINE_END = re.compile(r"[\r\n]")
 BYDAY = re.compile(r"([+-]?\d{1,2})?(MO|TU|WE|TH|FR|SA|SU)")
 
 # A meeting's link by its host: Meet, Zoom, Teams, Webex, Jitsi, Whereby,
@@ -88,6 +114,10 @@ GOOGLE_FEED = re.compile(r"^/calendar/ical/([^/]+)/(?:private-[^/]+|public)/basi
 # Google's block under an invitation that says how to join, which the link
 # already does.
 GOOGLE_INVITE = re.compile(r"-::~[:~]*::-.*?-::~[:~]*::-", re.S)
+
+
+class CalendarLimitError(Exception):
+    """The feed exceeded a fixed parsing or expansion bound."""
 
 
 # ---------------------------------------------------------------- reading
@@ -113,18 +143,51 @@ class Component:
 
 
 def unfold(text):
-    text = text.replace("\r\n", "\n").replace("\r", "\n")
-    return re.sub(r"\n[ \t]", "", text).split("\n")
+    """Yield folded lines without first allocating a list for the whole feed."""
+    i, n, count = 0, len(text), 0
+    parts, size = None, 0
+    while i < n:
+        endmark = LINE_END.search(text, i)
+        end = endmark.start() if endmark else n
+        line = text[i:end]
+        if end == n:
+            i = n
+        elif text[end] == "\r" and end + 1 < n and text[end + 1] == "\n":
+            i = end + 2
+        else:
+            i = end + 1
+        count += 1
+        if count > ICAL_LINES_MAX:
+            raise CalendarLimitError("calendar has too many lines")
+        if line.startswith((" ", "\t")) and parts is not None:
+            part = line[1:]
+            size += len(part)
+            if size > ICAL_LINE_MAX:
+                raise CalendarLimitError("calendar line is too long")
+            parts.append(part)
+        else:
+            if parts is not None:
+                yield "".join(parts)
+            if len(line) > ICAL_LINE_MAX:
+                raise CalendarLimitError("calendar line is too long")
+            parts, size = [line], len(line)
+    if parts is not None:
+        yield "".join(parts)
 
 
 # NAME;PARAM=a,"b;c":value, or None for a line that is not one.
-def content_line(line):
+def content_line(line, parameter_budget=None):
     m = NAME.match(line)
     if not m:
         return None
     name, i, n = m.group(0).upper(), m.end(), len(line)
-    params = {}
+    parameter_budget = parameter_budget if parameter_budget is not None else [0, 0]
+    params, param_count = {}, 0
     while i < n and line[i] == ";":
+        param_count += 1
+        parameter_budget[0] += 1
+        if param_count > ICAL_PARAMETERS_MAX or parameter_budget[0] > ICAL_PARAMETERS_TOTAL_MAX:
+            raise CalendarLimitError("calendar property has too many parameters")
         m = NAME.match(line, i + 1)
         if not m or m.end() >= n or line[m.end()] != "=":
             return None
@@ -135,12 +198,18 @@ def content_line(line):
                 j = line.find('"', i + 1)
                 if j < 0:
                     return None
+                parameter_budget[1] += 1
+                if len(values) >= ICAL_PARAMETER_VALUES_MAX or parameter_budget[1] > ICAL_PARAMETER_VALUES_TOTAL_MAX:
+                    raise CalendarLimitError("calendar parameter has too many values")
                 values.append(line[i + 1:j])
                 i = j + 1
             else:
                 j = i
                 while j < n and line[j] not in ';:,"':
                     j += 1
+                parameter_budget[1] += 1
+                if len(values) >= ICAL_PARAMETER_VALUES_MAX or parameter_budget[1] > ICAL_PARAMETER_VALUES_TOTAL_MAX:
+                    raise CalendarLimitError("calendar parameter has too many values")
                 values.append(line[i:j])
                 i = j
             if i < n and line[i] == ",":
@@ -156,12 +225,19 @@ def content_line(line):
 def parse(text):
     root = Component("ROOT")
     stack = [root]
+    components, properties = 0, 0
+    parameter_budget = [0, 0]
     for line in unfold(text):
-        got = content_line(line)
+        got = content_line(line, parameter_budget)
         if not got:
             continue
         name, params, value = got
         if name == "BEGIN":
+            components += 1
+            if components > ICAL_COMPONENTS_MAX:
+                raise CalendarLimitError("calendar has too many components")
+            if len(value) > 128:
+                raise CalendarLimitError("calendar component name is too long")
             c = Component(value.strip().upper())
             stack[-1].children.append(c)
             stack.append(c)
@@ -169,6 +245,9 @@ def parse(text):
             if len(stack) > 1:
                 stack.pop()
         else:
+            properties += 1
+            if properties > ICAL_PROPERTIES_MAX:
+                raise CalendarLimitError("calendar has too many properties")
             stack[-1].props.append((name, params, value))
     cals = [c for c in root.children if c.name == "VCALENDAR"]
     return cals[0] if cals else None
@@ -206,10 +285,11 @@ class Observances(tzinfo):
     """A VTIMEZONE: the offset of a wall time is the one its latest change
     before it set (each STANDARD and DAYLIGHT part a change, on its rule)."""
 
-    def __init__(self, tzid, parts):
+    def __init__(self, tzid, parts, day_budget=None):
         self.tzid = tzid
         self.parts = parts          # [(start naive, rule or None, rdates, offset_from, offset_to)]
         self.years = {}
+        self.day_budget = day_budget if day_budget is not None else [0]
 
     # Its changes up to the end of `year`: each part's start and RDATEs
     # however old (a zone that stopped changing years ago keeps its last
@@ -227,7 +307,7 @@ class Observances(tzinfo):
                 n = 0
                 ended = rule.get("until_wall")
                 lo = min(year, ended.year if ended else year) - 1
-                for d in rule_days(start.date(), rule, hi, date(max(lo, 1), 1, 1)):
+                for d in rule_days(start.date(), rule, hi, date(max(lo, 1), 1, 1), self.day_budget):
                     if rule["count"] is not None and n >= rule["count"]:
                         break
                     n += 1
@@ -267,15 +347,34 @@ def offset(v):
     return timedelta(seconds=-s if m.group(1) == "-" else s)
 
 
+def comma_values(value):
+    """Yield comma-separated values without allocating one list per field."""
+    start = 0
+    while True:
+        end = value.find(",", start)
+        if end < 0:
+            yield value[start:]
+            return
+        yield value[start:end]
+        start = end + 1
+
+
 class Zones:
-    def __init__(self, cal, fallback):
+    def __init__(self, cal, fallback, day_budget=None):
         self.fallback = fallback
         self.cache = {}
         self.own = {}
+        self.day_budget = day_budget if day_budget is not None else [0]
+        zone_count, zone_date_count = 0, 0
         for c in cal.children:
             if c.name != "VTIMEZONE":
                 continue
+            zone_count += 1
+            if zone_count > ZONE_IDS_MAX:
+                raise CalendarLimitError("calendar has too many time zones")
             tzid = c.text("TZID").strip()
+            if len(tzid) > 256:
+                continue
             parts = []
             for p in c.children:
                 if p.name not in ("STANDARD", "DAYLIGHT"):
@@ -297,20 +396,29 @@ class Zones:
                         rule["until_wall"] = datetime(*[int(x or 0) for x in u.groups()[:6]]) + (fr if u.group(7) else timedelta(0))
                 rdates = []
                 for (_, v) in p.all("RDATE"):
-                    for one in v.split(","):
+                    for one in comma_values(v):
+                        zone_date_count += 1
+                        if zone_date_count > ZONE_DATE_VALUES_MAX:
+                            raise CalendarLimitError("time zone has too many recurrence dates")
                         m2 = DATE_TIME.fullmatch(one.strip())
                         if m2:
                             rdates.append(datetime(*[int(x or 0) for x in m2.groups()[:6]]))
                 parts.append((start, rule, rdates, fr, to))
             if tzid and parts:
-                self.own[tzid] = Observances(tzid, parts)
+                self.own[tzid] = Observances(tzid, parts, self.day_budget)
 
     def zone(self, tzid):
         if not tzid:
             return self.fallback
         key = tzid.strip().strip('"')
+        if len(key) > 256:
+            return self.fallback
+        if key.count("/") > 15:
+            return self.fallback
         if key in self.cache:
             return self.cache[key]
+        if len(self.cache) >= ZONE_IDS_MAX:
+            raise CalendarLimitError("calendar has too many time zones")
         found = None
         # "/mozilla.org/20050126_1/America/New_York" and its like.
         bits = key.strip("/").split("/")
@@ -356,7 +464,10 @@ def duration_s(v):
 
 def parse_rule(value):
     r = {}
-    for part in (value or "").split(";"):
+    parts = (value or "").split(";", RULE_PARTS_MAX)
+    if len(parts) > RULE_PARTS_MAX:
+        raise CalendarLimitError("recurrence rule has too many parts")
+    for part in parts:
         if "=" in part:
             k, v = part.split("=", 1)
             r[k.strip().upper()] = v.strip()
@@ -366,7 +477,19 @@ def parse_rule(value):
     if any(k in r for k in ("BYWEEKNO", "BYHOUR", "BYMINUTE", "BYSECOND")):
         return None
     try:
-        ints = lambda k, lo, hi: [int(x) for x in r[k].split(",") if x.strip() and lo <= abs(int(x)) <= hi] if k in r else []
+        def ints(k, lo, hi):
+            out, count = [], 0
+            if k not in r:
+                return out
+            for x in comma_values(r[k]):
+                count += 1
+                if count > RULE_VALUES_MAX:
+                    raise CalendarLimitError("recurrence rule has too many values")
+                if x.strip():
+                    n = int(x)
+                    if lo <= abs(n) <= hi:
+                        out.append(n)
+            return out
         rule = {
             "freq": freq,
             "interval": max(1, int(r.get("INTERVAL") or 1)),
@@ -382,7 +505,9 @@ def parse_rule(value):
         }
     except ValueError:
         return None
-    for one in r.get("BYDAY", "").split(","):
+    for i, one in enumerate(comma_values(r.get("BYDAY", ""))):
+        if i >= RULE_VALUES_MAX:
+            raise CalendarLimitError("recurrence rule has too many values")
         m = BYDAY.fullmatch(one.strip().upper())
         if m:
             n = int(m.group(1)) if m.group(1) else None
@@ -403,22 +528,27 @@ def year_days(y):
     return 366 if (y % 4 == 0 and y % 100 != 0) or y % 400 == 0 else 365
 
 
-def rule_days(start, rule, hi, lo=None):
+def rule_days(start, rule, hi, lo=None, day_budget=None):
     """The dates a rule makes from `start` on, in order, up to `hi`: each
     period's days that every BYxxx part allows (dateutil's way), then
     BYSETPOS over them. From the period before `lo` when one is given and
     the rule has no COUNT, which counts from the start."""
     freq, interval = rule["freq"], rule["interval"]
-    bymonth, bymonthday, byyearday = rule["bymonth"], rule["bymonthday"], rule["byyearday"]
-    byday, bysetpos = list(rule["byday"]), rule["bysetpos"]
+    bymonth, bymonthday, byyearday = set(rule["bymonth"]), set(rule["bymonthday"]), set(rule["byyearday"])
+    byday = {}
+    for ordinal, weekday in rule["byday"]:
+        byday.setdefault(weekday, set()).add(ordinal)
+    bysetpos = rule["bysetpos"]
+    setpos_positive = {p - 1 for p in bysetpos if p > 0}
+    setpos_negative = {p for p in bysetpos if p < 0}
     if not (byyearday or bymonthday or byday):
         if freq == "YEARLY":
-            bymonth = bymonth or [start.month]
-            bymonthday = [start.day]
+            bymonth = bymonth or {start.month}
+            bymonthday = {start.day}
         elif freq == "MONTHLY":
-            bymonthday = [start.day]
+            bymonthday = {start.day}
         elif freq == "WEEKLY":
-            byday = [(None, start.weekday())]
+            byday = {start.weekday(): {None}}
     week0 = start - timedelta(days=(start.weekday() - rule["wkst"]) % 7)
 
     def allows(d):
@@ -433,18 +563,16 @@ def rule_days(start, rule, hi, lo=None):
             if yd not in byyearday and yd - diy - 1 not in byyearday:
                 return False
         if byday:
-            for (n, wd) in byday:
-                if d.weekday() != wd:
-                    continue
-                if n is None or freq in ("DAILY", "WEEKLY"):
-                    return True
-                if freq == "MONTHLY" or bymonth:
-                    span, at = month_days(d.year, d.month), d.day
-                else:
-                    span, at = year_days(d.year), d.timetuple().tm_yday
-                if n == (at - 1) // 7 + 1 or n == -((span - at) // 7 + 1):
-                    return True
-            return False
+            ordinals = byday.get(d.weekday(), ())
+            if not ordinals:
+                return False
+            if None in ordinals or freq in ("DAILY", "WEEKLY"):
+                return True
+            if freq == "MONTHLY" or bymonth:
+                span, at = month_days(d.year, d.month), d.day
+            else:
+                span, at = year_days(d.year), d.timetuple().tm_yday
+            return (at - 1) // 7 + 1 in ordinals or -((span - at) // 7 + 1) in ordinals
         return True
 
     def period(k):
@@ -467,6 +595,7 @@ def rule_days(start, rule, hi, lo=None):
         return first, [first + timedelta(days=i) for i in range(year_days(y))]
 
     k = 0
+    day_budget = day_budget if day_budget is not None else [0]
     if lo is not None and rule["count"] is None and lo > start:
         if freq == "DAILY":
             k = (lo - start).days // interval
@@ -481,14 +610,13 @@ def rule_days(start, rule, hi, lo=None):
         begins, days = period(k)
         if begins is None or begins > hi:
             return
+        day_budget[0] += len(days)
+        if day_budget[0] > RULE_DAYS_TOTAL_MAX:
+            raise CalendarLimitError("calendar recurrence expansion is too large")
         got = [d for d in days if allows(d)]
         if bysetpos:
-            picked = set()
-            for p in bysetpos:
-                i = p - 1 if p > 0 else len(got) + p
-                if 0 <= i < len(got):
-                    picked.add(got[i])
-            got = sorted(picked)
+            size = len(got)
+            got = [d for i, d in enumerate(got) if i in setpos_positive or i - size in setpos_negative]
         for d in got:
             if start <= d <= hi:
                 yield d
@@ -507,7 +635,7 @@ def instant(v, local):
     return datetime(v.year, v.month, v.day, tzinfo=local).timestamp()
 
 
-def starts(ev, start, zones, local, lo, hi):
+def starts(ev, start, zones, local, lo, hi, date_budget=None, day_budget=None):
     """The starts of an event's occurrences that could begin between lo and
     hi (seconds): its DTSTART, the rule's, and its RDATEs, less its
     EXDATEs."""
@@ -515,7 +643,18 @@ def starts(ev, start, zones, local, lo, hi):
     tz = start.tzinfo if timed else local
     _, rr = ev.first("RRULE")
     rule = parse_rule(rr) if rr else None
-    out = [start]
+    out, seen = [], set()
+    date_budget = date_budget if date_budget is not None else [0]
+
+    def add(value):
+        key = key_of(value)
+        if key in seen:
+            return
+        if len(out) >= OCCURRENCES_MAX:
+            raise CalendarLimitError("event has too many occurrences in the calendar window")
+        seen.add(key)
+        out.append(value)
+
     if rule:
         until = None
         if rule["until"]:
@@ -530,13 +669,17 @@ def starts(ev, start, zones, local, lo, hi):
         # neither (as recurring-ical-events and dateutil read it).
         if until is not None and ((instant(start, tz) > until) if timed else (start > until)):
             return []
+    start_at = instant(start, local)
+    if lo <= start_at < hi:
+        add(start)
+    if rule:
         day0 = start.astimezone(tz).date() if timed else start
         hi_day = datetime.fromtimestamp(hi, tz).date() + timedelta(days=1)
         lo_day = datetime.fromtimestamp(lo, tz).date() - timedelta(days=1)
         clock = start.astimezone(tz).timetz().replace(tzinfo=None) if timed else None
         # DTSTART is the first occurrence, by the rule or not (RFC 5545).
         n = 1
-        for d in rule_days(day0, rule, hi_day, lo_day):
+        for d in rule_days(day0, rule, hi_day, lo_day, day_budget):
             if rule["count"] is not None and n >= rule["count"]:
                 break
             occ = datetime.combine(d, clock, tzinfo=tz) if timed else d
@@ -544,16 +687,33 @@ def starts(ev, start, zones, local, lo, hi):
                 continue
             if until is not None and ((instant(occ, tz) > until) if timed else (occ > until)):
                 break
-            out.append(occ)
+            if lo <= instant(occ, local) < hi:
+                add(occ)
             n += 1
+    rdate_count = 0
     for (rp, rv) in ev.all("RDATE"):
-        for one in rv.split(","):
-            r = when(rp, one.split("/")[0], zones)
+        for one in comma_values(rv):
+            rdate_count += 1
+            date_budget[0] += 1
+            if rdate_count > DATE_VALUES_MAX:
+                raise CalendarLimitError("event has too many recurrence dates")
+            if date_budget[0] > DATE_VALUES_TOTAL_MAX:
+                raise CalendarLimitError("calendar has too many recurrence dates")
+            r = when(rp, one.partition("/")[0], zones)
             if r is not None:
-                out.append(r)
+                at = instant(r, local)
+                if lo <= at < hi:
+                    add(r)
     gone, gone_days = set(), set()
+    exdate_count = 0
     for (xp, xv) in ev.all("EXDATE"):
-        for one in xv.split(","):
+        for one in comma_values(xv):
+            exdate_count += 1
+            date_budget[0] += 1
+            if exdate_count > DATE_VALUES_MAX:
+                raise CalendarLimitError("event has too many exclusion dates")
+            if date_budget[0] > DATE_VALUES_TOTAL_MAX:
+                raise CalendarLimitError("calendar has too many exclusion dates")
             x = when(xp, one, zones)
             if x is None:
                 continue
@@ -565,11 +725,10 @@ def starts(ev, start, zones, local, lo, hi):
                 gone.add(x.date().isoformat())
             else:
                 gone.add(key_of(x))
-    kept, seen = [], set()
+    kept = []
     for o in out:
-        if key_of(o) in gone or key_of(o) in seen:
+        if key_of(o) in gone:
             continue
-        seen.add(key_of(o))
         if gone_days and isinstance(o, datetime) and o.astimezone(tz).date() in gone_days:
             continue
         kept.append(o)
@@ -579,6 +738,7 @@ def starts(ev, start, zones, local, lo, hi):
 # ---------------------------------------------------------------- events
 
 def plain(text):
+    text = text[:DESCRIPTION_SCAN_MAX]
     if re.search(r"<(?:br|p|a|div|span|b|i|ul|li|html)\b", text, re.I):
         text = re.sub(r"<br\s*/?>|</p>|</div>|</li>", "\n", text, flags=re.I)
         text = re.sub(r"<[^>]+>", "", text)
@@ -586,19 +746,34 @@ def plain(text):
     text = GOOGLE_INVITE.sub("", text)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", "", text)
     return text[:DESCRIPTION_MAX]
+
+
+def short_text(ev, name, limit):
+    """Read only the prefix needed for a bounded user-facing field."""
+    _, value = ev.first(name)
+    return unescape((value or "")[:limit * 4]).strip()[:limit]
+
+
+def uid_key(uid):
+    if len(uid) <= UID_KEY_MAX:
+        return uid
+    return "sha256:" + hashlib.sha256(uid.encode("utf-8")).hexdigest()
 
 
 def join_link(ev):
     for name in ("X-GOOGLE-CONFERENCE", "URL", "LOCATION", "DESCRIPTION"):
         for (_, v) in ev.all(name):
-            m = MEETING.search(html.unescape(unescape(v)))
+            m = MEETING.search(html.unescape(unescape(v[:LINK_SCAN_MAX])))
             if m:
-                return m.group(0).rstrip(").,;>]")
+                link = m.group(0).rstrip(").,;>]")
+                return link if len(link) <= LINK_MAX else ""
     # A place that is a link is where the meeting is.
-    loc = ev.text("LOCATION").strip()
+    loc = short_text(ev, "LOCATION", LINK_SCAN_MAX)
     m = ANY_URL.match(loc)
-    return m.group(0).rstrip(").,;>]") if m and m.end() == len(loc) else ""
+    link = m.group(0).rstrip(").,;>]") if m and m.end() == len(loc) else ""
+    return link if len(link) <= LINK_MAX else ""
 
 
 def declined(ev, me):
@@ -611,7 +786,7 @@ def declined(ev, me):
 
 
 def google_page(uid, cal_id):
-    if not cal_id or not uid.endswith("@google.com"):
+    if len(uid) > 256 or len(cal_id) > 256 or not cal_id or not uid.endswith("@google.com"):
         return ""
     eid = base64.urlsafe_b64encode(("%s %s" % (uid[:-len("@google.com")], cal_id)).encode()).decode().rstrip("=")
     return "https://calendar.google.com/calendar/event?eid=" + eid
@@ -622,12 +797,13 @@ def google_page(uid, cal_id):
 def events_of(cal, cal_id, me, local, lo, hi):
     _, wr = cal.first("X-WR-TIMEZONE")
     floating = local
-    if wr:
+    if wr and len(wr) <= 256:
         try:
             floating = ZoneInfo(wr.strip())
         except Exception:
             pass
-    zones = Zones(cal, floating)
+    day_budget = [0]
+    zones = Zones(cal, floating, day_budget)
     masters, moved = [], {}
     for ev in cal.children:
         if ev.name != "VEVENT":
@@ -636,15 +812,16 @@ def events_of(cal, cal_id, me, local, lo, hi):
         if rv is not None:
             r = when(rp, rv, zones)
             if r is not None:
-                moved.setdefault(ev.text("UID"), set()).add(key_of(r))
+                moved.setdefault(uid_key(ev.text("UID")), set()).add(key_of(r))
                 masters.append((ev, True))
             continue
         masters.append((ev, False))
-    out, details = [], {}
+    out, details, date_budget = [], {}, [0]
     for (ev, is_moved) in masters:
         if ev.text("STATUS").upper() == "CANCELLED" or declined(ev, me):
             continue
         uid = ev.text("UID")
+        uid_id = uid_key(uid)
         p, v = ev.first("DTSTART")
         start = when(p, v, zones)
         if start is None:
@@ -659,10 +836,10 @@ def events_of(cal, cal_id, me, local, lo, hi):
             length = d if d is not None else (86400 if not timed else 0)
         length = max(0, length)
         # One that began before the window and is still on counts.
-        occs = [start] if is_moved else starts(ev, start, zones, local, lo - length, hi)
+        occs = [start] if is_moved else starts(ev, start, zones, local, lo - length, hi, date_budget, day_budget)
         common, dkey = None, "e%d" % len(details)
         for o in occs:
-            if not is_moved and key_of(o) in moved.get(uid, ()):
+            if not is_moved and key_of(o) in moved.get(uid_id, ()):
                 continue
             s = instant(o, local)
             if timed:
@@ -671,24 +848,27 @@ def events_of(cal, cal_id, me, local, lo, hi):
                 e = instant(o + timedelta(days=max(1, round(length / 86400))), local)
             if e <= lo or s >= hi:
                 continue
+            if len(out) >= EVENTS_MAX:
+                raise CalendarLimitError("calendar has more than 512 events in the next nine days")
             if common is None:
                 op, ov = ev.first("ORGANIZER")
+                _, description = ev.first("DESCRIPTION")
                 details[dkey] = {
-                    "description": plain(ev.text("DESCRIPTION")),
+                    "description": plain(unescape((description or "")[:DESCRIPTION_SCAN_MAX])),
                     "organizer": (param(op, "CN") or re.sub(r"^mailto:", "", ov or "", flags=re.I)).strip()[:120],
                     "guests": len(ev.all("ATTENDEE")),
                     "page": google_page(uid, cal_id),
                 }
                 common = {
-                    "title": ev.text("SUMMARY").strip()[:300] or "(no title)",
-                    "location": ev.text("LOCATION").strip()[:300],
+                    "title": short_text(ev, "SUMMARY", 300) or "(no title)",
+                    "location": short_text(ev, "LOCATION", 300),
                     "link": join_link(ev),
                     "tentative": ev.text("STATUS").upper() == "TENTATIVE",
                     "d": dkey,
                 }
             row = dict(common)
             row.update({
-                "key": "%s/%d" % (uid or row["title"], int(s)),
+                "key": "%s/%d" % (uid_id or row["title"], int(s)),
                 "uid": bool(uid),
                 "start": int(s * 1000),
                 "end": int(e * 1000),
@@ -905,7 +1085,7 @@ def main():
         text, state = by_url[url]
         state = dict(state)
         report.append(state)
-        state["name"] = str(c.get("name") or "")
+        state["name"] = str(c.get("name") or "")[:120]
         if text is None:
             state["name"] = state["name"] or "Calendar %d" % (i + 1)
             continue
@@ -913,50 +1093,102 @@ def main():
         me = {str(want.get("me") or "").strip().lower(), cal_id.lower()} - {""}
         try:
             got = expanded(cache_dir, url, text.lstrip("\ufeff"), state["name"], i, cal_id, me, local, lo, hi)
+        except CalendarLimitError as e:
+            got = {"error": str(e)}
         except Exception as e:
             got = {"error": "could not be read (%s)" % type(e).__name__}
         state["name"] = state["name"] or got.get("name") or "Calendar %d" % (i + 1)
         if got.get("error"):
             state.update({"ok": False, "error": got["error"]})
             continue
+        new_uids, accepted = set(), []
         for r in got["events"]:
+            if r.get("uid", True):
+                if r["key"] in seen or r["key"] in new_uids:
+                    continue
+                new_uids.add(r["key"])
+            accepted.append(r)
+        if len(events) + len(accepted) > EVENTS_MAX:
+            state.update({"ok": False, "error": "calendar list has more than 512 events"})
+            continue
+        accepted_details = {r.get("d") for r in accepted}
+        for r in accepted:
             # One meeting in two of your calendars (its UID and start) is
             # one row, from the first (Sonnet 2026-10-06: two rows of one
             # key); one with no UID is keyed by its calendar, never merged.
             if not r.pop("uid", True):
                 r["key"] = "c%d/%s" % (i, r["key"])
-            elif r["key"] in seen:
-                continue
             seen.add(r["key"])
             r["calendar"] = state["name"]
             r["d"] = "c%d%s" % (i, r["d"])
             events.append(r)
-        details.update(("c%d%s" % (i, k), v) for (k, v) in got["details"].items())
+        details.update(("c%d%s" % (i, k), v) for (k, v) in got["details"].items() if k in accepted_details)
     events.sort(key=lambda e: (e["start"], not e["allDay"], e["title"]))
-    print(json.dumps({"at": int(now * 1000), "calendars": report, "events": events, "details": details}))
+    output = {"at": int(now * 1000), "calendars": report, "events": events, "details": details}
+    serialized = json.dumps(output)
+    if len(serialized) + 1 > OUTPUT_BYTES_MAX:
+        for event in events:
+            event["title"] = event["title"][:128]
+            event["location"] = event["location"][:128]
+            event["calendar"] = event["calendar"][:120]
+            if len(event["link"]) > 128:
+                event["link"] = ""
+            event["key"] = "sha256:" + hashlib.sha256(event["key"].encode("utf-8")).hexdigest()
+        events = events[:OUTPUT_COMPACT_EVENTS_MAX]
+        output["events"] = events
+        used_details = {event["d"] for event in events}
+        output["details"] = {key: value for key, value in details.items() if key in used_details}
+        for detail in output["details"].values():
+            detail["description"] = detail["description"][:256]
+            detail["organizer"] = detail["organizer"][:120]
+            if len(detail["page"]) > 512:
+                detail["page"] = ""
+        output["calendars"] = [{
+            "name": "Calendar results",
+            "ok": False,
+            "error": "Results were shortened to fit the output limit",
+        }]
+        serialized = json.dumps(output)
+        if len(serialized) + 1 > OUTPUT_BYTES_MAX:
+            output["events"] = []
+            output["details"] = {}
+            serialized = json.dumps(output)
+    sys.stdout.write(serialized + "\n")
 
 
 # The window is whole days, so a feed's occurrences are the same all day
 # while its text is: kept with what they came of, and read back for it
 # (a big feed takes most of a second to expand).
 def expanded(cache_dir, url, text, name, i, cal_id, me, local, lo, hi):
-    stamp = hashlib.sha256(json.dumps([VERSION, text, sorted(me), str(local), lo, hi]).encode()).hexdigest()
+    metadata = json.dumps([VERSION, sorted(me), str(local), lo, hi], separators=(",", ":")).encode("utf-8")
+    stamp_hash = hashlib.sha256()
+    stamp_hash.update(len(metadata).to_bytes(8, "big"))
+    stamp_hash.update(metadata)
+    body = text.encode("utf-8")
+    stamp_hash.update(len(body).to_bytes(8, "big"))
+    stamp_hash.update(body)
+    del body
+    stamp = stamp_hash.hexdigest()
     path = os.path.join(cache_dir, hashlib.sha256(url.encode()).hexdigest()[:20] + ".out.json")
     try:
-        with open(path) as f:
-            kept = json.load(f)
-        if kept.get("stamp") == stamp and isinstance(kept.get("events"), list):
-            return kept
+        if os.path.getsize(path) <= CACHE_BYTES_MAX:
+            with open(path) as f:
+                kept = json.load(f)
+            if kept.get("stamp") == stamp and isinstance(kept.get("events"), list):
+                return kept
     except (OSError, ValueError, AttributeError):
         pass
     cal = parse(text)
     if cal is None:
         return {"error": "not a calendar"}
     rows, details = events_of(cal, cal_id, me, local, lo, hi)
-    got = {"stamp": stamp, "name": cal.text("X-WR-CALNAME").strip(), "events": rows, "details": details}
+    got = {"stamp": stamp, "name": short_text(cal, "X-WR-CALNAME", 120), "events": rows, "details": details}
     try:
-        os.makedirs(cache_dir, mode=0o700, exist_ok=True)
-        write_private(path, json.dumps(got).encode("utf-8"))
+        if len(rows) <= EVENTS_CACHE_MAX:
+            encoded = json.dumps(got).encode("utf-8")
+            if len(encoded) <= CACHE_BYTES_MAX:
+                os.makedirs(cache_dir, mode=0o700, exist_ok=True)
+                write_private(path, encoded)
     except OSError:
         pass
     return got
