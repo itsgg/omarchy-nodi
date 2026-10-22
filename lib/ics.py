@@ -39,8 +39,9 @@ import html
 import json
 import os
 import re
-import sys
+import stat
 import string
+import sys
 import tempfile
 import time
 import urllib.error
@@ -989,13 +990,32 @@ def fetch(url, cache_dir, now):
     if kind is None:
         return None, {"ok": False, "error": at}
     if kind == "file":
+        fd = None
         try:
-            if os.path.getsize(at) > MAX_BYTES:
+            # A pathname size check can race with replacement by a FIFO or
+            # another file. Open nonblocking, then check and read that same
+            # descriptor; the read cap also covers a file that grows later.
+            fd = os.open(at, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                return None, {"ok": False, "error": "not a regular file"}
+            if info.st_size > MAX_BYTES:
                 return None, {"ok": False, "error": "over 20 MB"}
-            with open(at, "rb") as f:
-                return f.read().decode("utf-8", "replace"), {"ok": True, "fetchedAt": int(os.path.getmtime(at) * 1000)}
+            f = os.fdopen(fd, "rb")
+            fd = None
+            with f:
+                body = f.read(MAX_BYTES + 1)
+            if len(body) > MAX_BYTES:
+                return None, {"ok": False, "error": "over 20 MB"}
+            return body.decode("utf-8", "replace"), {"ok": True, "fetchedAt": int(info.st_mtime * 1000)}
         except OSError as e:
             return None, {"ok": False, "error": e.strerror or "could not be read"}
+        finally:
+            if fd is not None:
+                try:
+                    os.close(fd)
+                except OSError:
+                    pass
     base = os.path.join(cache_dir, hashlib.sha256(at.encode()).hexdigest()[:20])
     meta = {}
     try:

@@ -11,10 +11,10 @@ import { tmpdir } from "node:os";
 import { root } from "./load.mjs";
 
 // Runs `lines` with ics imported, and returns what they print as JSON.
-function py(lines, args = [], env = {}) {
+function py(lines, args = [], env = {}, execOptions = {}) {
   const code = ["import sys, json, os; sys.path.insert(0, sys.argv[1]); import ics"].concat(lines).join("\n");
   const out = execFileSync("/usr/bin/python3", ["-I", "-B", "-c", code, join(root, "lib")].concat(args),
-                           { env: { PATH: "/usr/bin:/bin", HOME: "/nonexistent", ...env } }).toString();
+                           { env: { PATH: "/usr/bin:/bin", HOME: "/nonexistent", ...env }, ...execOptions }).toString();
   return JSON.parse(out);
 }
 
@@ -253,11 +253,52 @@ test("ics: a local file past 20 MB is refused before it is read", () => {
     const big = join(dir, "big.ics");
     writeFileSync(big, "");
     truncateSync(big, 20 * 1024 * 1024 + 1);
-    // Not readable: a read first would say so; its size is all that is asked
-    // (Cursor's review, 2026-10-10). As root it is read anyway, and holds.
-    chmodSync(big, 0o000);
-    assert.deepEqual(py(["print(json.dumps(ics.fetch(sys.argv[2], sys.argv[3], 1)))"], [big, join(dir, "cache")]), [null, { ok: false, error: "over 20 MB" }]);
-    chmodSync(big, 0o600);
+    // Any attempt to make a file object (and read content) fails the test;
+    // the descriptor size alone must reject this file, regardless of uid.
+    const got = py([
+      "ics.os.fdopen = lambda *a, **k: (_ for _ in ()).throw(AssertionError('read'))",
+      "print(json.dumps(ics.fetch(sys.argv[2], sys.argv[3], 1)))"], [big, join(dir, "cache")]);
+    assert.deepEqual(got, [null, { ok: false, error: "over 20 MB" }]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("ics: a local calendar read stays capped if the opened file grows", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-ics-"));
+  try {
+    const file = join(dir, "feed.ics");
+    writeFileSync(file, "x".repeat(4096));
+    const got = py([
+      "from types import SimpleNamespace",
+      "real_fstat = os.fstat",
+      "def small_size(fd):",
+      "    s = real_fstat(fd)",
+      "    return SimpleNamespace(st_mode=s.st_mode, st_size=0, st_mtime=s.st_mtime)",
+      "ics.os.fstat = small_size",
+      "real_fdopen = os.fdopen",
+      "reads = []",
+      "class Guard:",
+      "    def __init__(self, f): self.f = f",
+      "    def __enter__(self): return self",
+      "    def __exit__(self, *a): self.f.close()",
+      "    def read(self, n=-1): reads.append(n); return self.f.read(n)",
+      "ics.os.fdopen = lambda fd, mode: Guard(real_fdopen(fd, mode))",
+      "ics.MAX_BYTES = 100",
+      "result = ics.fetch(sys.argv[2], sys.argv[3], 1)",
+      "print(json.dumps([result, reads]))"], [file, join(dir, "cache")]);
+    assert.deepEqual(got, [[null, { ok: false, error: "over 20 MB" }], [101]],
+                     "even if fstat sees size zero, the opened file is read only to the cap plus one byte");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("ics: a local calendar FIFO is rejected without blocking", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-ics-"));
+  try {
+    const fifo = join(dir, "feed.ics");
+    const got = py([
+      "os.mkfifo(sys.argv[2])",
+      "print(json.dumps(ics.fetch(sys.argv[2], sys.argv[3], 1)))"],
+      [fifo, join(dir, "cache")], {}, { timeout: 3000 });
+    assert.deepEqual(got, [null, { ok: false, error: "not a regular file" }]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
