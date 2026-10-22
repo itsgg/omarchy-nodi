@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sys
+import string
 import tempfile
 import time
 import urllib.error
@@ -918,6 +919,56 @@ class HttpsOnly(urllib.request.HTTPRedirectHandler):
     review, 2026-10-09); and to http only on this machine, as where() takes
     one (Fable 2026-10-10). urllib follows ten at most, and only to http,
     https and ftp; ftp is no feed's either."""
+    def http_error_302(self, req, fp, code, msg, headers):
+        # urllib's handler reads the entire redirect body before following
+        # it. A configured feed can make that response arbitrarily large,
+        # outside fetch()'s bounded read loop, so close it without reading.
+        newurl = headers.get("location") or headers.get("uri")
+        if not newurl:
+            return
+        try:
+            parts = urllib.parse.urlparse(newurl)
+            if parts.scheme not in ("http", "https", "ftp", ""):
+                raise urllib.error.HTTPError(
+                    newurl, code,
+                    "%s - Redirection to url '%s' is not allowed" % (msg, newurl),
+                    headers, fp)
+            if not parts.path and parts.netloc:
+                parts = parts._replace(path="/")
+            newurl = urllib.parse.urlunparse(parts)
+            newurl = urllib.parse.quote(newurl, encoding="iso-8859-1", safe=string.punctuation)
+            newurl = urllib.parse.urljoin(req.full_url, newurl)
+            new = self.redirect_request(req, fp, code, msg, headers, newurl)
+            if new is None:
+                return
+
+            # Preserve urllib's redirect loop protection.
+            if hasattr(req, "redirect_dict"):
+                visited = new.redirect_dict = req.redirect_dict
+                if (visited.get(newurl, 0) >= self.max_repeats or
+                        len(visited) >= self.max_redirections):
+                    raise urllib.error.HTTPError(req.full_url, code,
+                                                 self.inf_msg + msg, headers, fp)
+            else:
+                visited = new.redirect_dict = req.redirect_dict = {}
+            visited[newurl] = visited.get(newurl, 0) + 1
+        except BaseException:
+            try:
+                fp.close()
+            except Exception:
+                pass
+            raise
+
+        fp.close()
+        return self.parent.open(new, timeout=req.timeout)
+
+    # The standard library aliases all supported redirect statuses to 302;
+    # bind them here too so none fall back to its unbounded body read.
+    http_error_301 = http_error_302
+    http_error_303 = http_error_302
+    http_error_307 = http_error_302
+    http_error_308 = http_error_302
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         to = (newurl or "").lower()
         if req.full_url.lower().startswith("https://") and not to.startswith("https://"):

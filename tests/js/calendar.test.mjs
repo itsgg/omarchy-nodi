@@ -204,6 +204,26 @@ test("ics: a redirect is followed, but never from https to anything else (codex'
                                      "refused: a redirect to no web address", "refused: a redirect to http elsewhere", "https://b.example/y", true]);
 });
 
+test("ics: redirect responses are closed without reading their bodies", () => {
+  const out = execFileSync("/usr/bin/python3", ["-I", "-B", "-c", [
+    "import sys, json, urllib.request; sys.path.insert(0, sys.argv[1]); import ics",
+    "class FP:",
+    "    def __init__(self): self.reads, self.closed = 0, False",
+    "    def read(self, *a): self.reads += 1; raise AssertionError('redirect body read')",
+    "    def close(self): self.closed = True",
+    "class Parent:",
+    "    def open(self, req, timeout=None): return [req.full_url, timeout, fp.closed]",
+    "rows = []",
+    "for code in (301, 302, 303, 307, 308):",
+    "    h = ics.HttpsOnly(); fp = FP(); h.parent = Parent()",
+    "    req = urllib.request.Request('http://localhost/x'); req.timeout = 7",
+    "    rows.append([getattr(h, 'http_error_%d' % code)(req, fp, code, 'Found', {'location': 'http://127.0.0.1:8080/y'}), fp.reads, fp.closed])",
+    "print(json.dumps(rows))"].join("\n"), join(root, "lib")]).toString();
+  assert.deepEqual(JSON.parse(out), Array.from({ length: 5 }, () => [
+    ["http://127.0.0.1:8080/y", 7, true], 0, true
+  ]), "each supported redirect closes its body before following and never reads it");
+});
+
 test("ics: a redirect to no web address, through the real opener, says so (codex's review, 2026-10-09)", () => {
   const out = execFileSync("/usr/bin/python3", ["-I", "-B", "-c", [
     "import sys, json, threading, tempfile, http.server; sys.path.insert(0, sys.argv[1]); import ics",
