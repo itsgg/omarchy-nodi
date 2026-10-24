@@ -16,6 +16,6 @@ test("the icons held are held at the rows' own sizes", () => {
   const plainRow = row[2].trim().replace(/nodi\./g, "");
   const nodi = read("Nodi.qml");
   const warm = nodi.slice(nodi.indexOf("readonly property var warmIcons"), nodi.indexOf("function iconSource("));
-  const sizes = [...warm.matchAll(/IconTile \{ imageSource: root\.iconSource\(modelData\); size: (.+?) \}/g)].map((m) => m[1].replace(/root\./g, ""));
+  const sizes = [...warm.matchAll(/IconTile \{ imageSource: root\.iconSource\(modelData, false, true\); size: (.+?) \}/g)].map((m) => m[1].replace(/root\./g, ""));
   assert.deepEqual(sizes.sort(), [heroRow, plainRow].sort());
 });

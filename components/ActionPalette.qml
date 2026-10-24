@@ -14,8 +14,12 @@ import "../lib/Scroll.js" as Scroll
 Column {
   id: actionList
   property var nodi
+  property real heightLimit: 0
+  height: heightLimit > 0 ? heightLimit : implicitHeight
+  clip: heightLimit > 0
 
   Text {
+    id: paletteTitle
     leftPadding: Style.spacing.lg
     width: parent.width
     height: nodi.sectionHeight
@@ -39,7 +43,9 @@ Column {
   ListView {
     id: actions
     width: actionList.width
-    height: nodi.paletteHeight(nodi.paletteActions)
+    height: actionList.heightLimit > 0
+      ? Math.max(0, Math.min(nodi.paletteHeight(nodi.paletteActions), actionList.heightLimit - paletteTitle.height - actionList.spacing))
+      : nodi.paletteHeight(nodi.paletteActions)
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     model: nodi.paletteOpen ? nodi.paletteActions : []

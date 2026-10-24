@@ -102,12 +102,27 @@ QtObject {
   // on that part, not on the seventh row, which the list held to the pixel
   // and the fade then hid (Fable 2026-10-05, his Spotify row).
   readonly property int rowPeek: Math.round(rowHeight * 0.55)
-  // 960 while the selected row has a preview, the list 430 of it, as
-  // Kadhir's (his ruling: the pane only when the row has one).
+  // 960 when the selected row's preview fits beside the 430 px list, as
+  // Kadhir ruled; on a narrow screen the preview stacks below the list.
   property bool wide: false
-  property int cardWidth: Math.min(Style.space(wide ? 960 : 680), screenWidth - Style.gapsOut * 2)
+  readonly property int compactCardWidth: Math.min(Style.space(680), screenWidth - Style.gapsOut * 2)
   readonly property int listColumn: Style.space(430)
+  readonly property int paneMinWidth: Style.space(280)
+  readonly property int splitMinCardWidth: listColumn + Style.spacing.md + paneMinWidth + contentMargin * 2
+  readonly property bool twoColumn: wide && screenWidth - Style.gapsOut * 2 >= splitMinCardWidth
+  property int cardWidth: Math.min(Style.space(twoColumn ? 960 : 680), screenWidth - Style.gapsOut * 2)
+  // Keep the results column in place while its detail pane opens to the
+  // right. If the screen edge leaves no room, use the last safe position.
+  readonly property real cardX: {
+    var rightLimit = screenWidth - Style.gapsOut - cardWidth
+    var compactLeft = (screenWidth - compactCardWidth) / 2
+    return twoColumn ? Math.min(compactLeft, rightLimit) : (screenWidth - cardWidth) / 2
+  }
   readonly property int paneMin: Math.min(Style.space(280), bodyMax)
+  // In a stacked layout, keep the detail pane useful without letting a
+  // one-row result leave a large empty block below it. The height stays
+  // fixed while navigating; long previews scroll inside the pane.
+  readonly property int stackPanePreferredHeight: Math.min(Style.space(210), bodyMax)
   // An answer from Ask scrolls past this.
   readonly property int answerMax: Math.round(screenHeight * 0.35)
 

@@ -1,8 +1,9 @@
 import QtQuick
 import "../lib/Images.js" as Images
 
-// One decoder at a time, a bounded queue and a bounded in-memory cache.
-// Only raster.py's newly written PNG enters a Qt image decoder.
+// One decoder at a time, with visible icon requests ahead of background
+// warmup, a bounded queue and a bounded in-memory cache. Only raster.py's
+// newly written PNG enters a Qt image decoder.
 Item {
   id: images
   visible: false
@@ -10,10 +11,10 @@ Item {
   property int revision: 0
   property var cacheState: Images.create()
 
-  function source(value, large) {
+  function source(value, large, background) {
     var key = Images.key(value, large)
     if (!key) return ""
-    var result = Images.get(cacheState, key, Date.now())
+    var result = Images.get(cacheState, key, Date.now(), !!background)
     Qt.callLater(images.drain)
     return result
   }

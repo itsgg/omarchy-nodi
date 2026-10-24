@@ -63,10 +63,11 @@ BorderSurface {
   // longest when a loaded machine stretched the animation over slow frames
   // (his report 2026-10-07; tests/ui/tst_grow.qml).
   clip: true
-  // None under reduced motion (ROADMAP 73).
-  Behavior on height { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
-  // The pane comes and goes with the selected row: Kadhir's 140 ms.
-  Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+  // The card and its result/detail split move together. None under reduced
+  // motion (ROADMAP 73).
+  Behavior on x { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+  Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+  Behavior on height { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
   MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -516,9 +517,18 @@ BorderSurface {
     Item {
       id: body
       width: parent.width
+      readonly property real stackGap: Math.min(Style.spacing.md, Math.max(0, nodi.bodyMax - nodi.rowHeight))
+      readonly property real stackPaneHeight: Math.min(nodi.stackPanePreferredHeight, Math.max(0, nodi.bodyMax - nodi.rowHeight - stackGap))
+      readonly property real stackPrimaryNaturalHeight: nodi.paletteOpen
+        ? nodi.sectionHeight + nodi.paletteHeight(nodi.paletteActions) : nodi.listHeight
+      readonly property real stackPrimaryHeight: Math.min(stackPrimaryNaturalHeight,
+        Math.max(0, nodi.bodyMax - stackPaneHeight - stackGap))
+      readonly property real stackedHeight: Math.min(nodi.bodyMax,
+        stackPrimaryHeight + stackGap + stackPaneHeight)
       // With a pane, tall enough for it even when one row shows.
-      height: nodi.paletteOpen ? Math.max(palette.implicitHeight, nodi.preview ? nodi.paneMin : 0)
-        : (nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight)
+      height: nodi.preview && !nodi.twoColumn ? stackedHeight
+        : (nodi.paletteOpen ? Math.max(palette.implicitHeight, nodi.preview ? nodi.paneMin : 0)
+          : (nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight))
       visible: nodi.paletteOpen || nodi.rows.length > 0
 
       // ---------- Ctrl+K: the selected row's actions ----------
@@ -527,7 +537,9 @@ BorderSurface {
         nodi: card.nodi
         anchors.left: parent.left
         anchors.top: parent.top
-        width: nodi.preview ? nodi.listColumn : parent.width
+        width: nodi.preview && nodi.twoColumn ? nodi.listColumn : parent.width
+        heightLimit: nodi.preview && !nodi.twoColumn ? body.stackPrimaryHeight : 0
+        Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
         visible: nodi.paletteOpen
       }
 
@@ -539,8 +551,10 @@ BorderSurface {
         visible: !nodi.paletteOpen
         anchors.left: parent.left
         anchors.top: parent.top
-        height: nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight
-        width: nodi.preview ? nodi.listColumn : parent.width
+        height: nodi.preview && !nodi.twoColumn ? body.stackPrimaryHeight
+          : (nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight)
+        width: nodi.preview && nodi.twoColumn ? nodi.listColumn : parent.width
+        Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
         ListView {
           id: list
@@ -592,10 +606,13 @@ BorderSurface {
         visible: !!nodi.preview
         nodi: card.nodi
         preview: nodi.preview
-        anchors.left: nodi.paletteOpen ? palette.right : listBox.right
-        anchors.leftMargin: Style.spacing.md
+        readonly property bool sideBySide: !!nodi.preview && nodi.twoColumn
+        readonly property bool stacked: !!nodi.preview && !nodi.twoColumn
+        anchors.left: sideBySide ? (nodi.paletteOpen ? palette.right : listBox.right) : parent.left
+        anchors.leftMargin: sideBySide ? Style.spacing.md : 0
         anchors.right: parent.right
-        anchors.top: parent.top
+        anchors.top: stacked ? (nodi.paletteOpen ? palette.bottom : listBox.bottom) : parent.top
+        anchors.topMargin: stacked ? body.stackGap : 0
         anchors.bottom: parent.bottom
       }
     }

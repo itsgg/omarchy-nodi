@@ -53,6 +53,9 @@ Item {
   readonly property string pluginId: (manifest && manifest.id) || "io.github.itsgg.nodi"
 
   property bool opened: false
+  // The first preview can widen the card; keep that width until this open
+  // ends so live result filtering cannot make it contract and expand again.
+  property bool wideForOpen: false
   // Which example the empty field suggests (lib/Engine.js placeholder): the
   // next one on each open, from a random first one so a restart does not
   // always begin with the same; set at the open, so a settings change does
@@ -128,9 +131,11 @@ Item {
   // ---------------------------------------------------------------- look
 
   // How it looks and measures, from components/Look.qml.
-  // Held wide under Ctrl+K too, so the actions do not narrow the card.
+  // Held wide after a preview appears, so live search does not make the
+  // card contract and expand as its result set changes.
   Look { id: look; screenWidth: panel.width; screenHeight: panel.height; chrome: card.chrome; highContrast: root.appearance.highContrast
-         wide: root.preview !== null || (root.paletteOpen && root.anyPreview) }
+         wide: root.wideForOpen || (root.shownQuery === root.queryNow()
+           && (root.preview !== null || (root.paletteOpen && root.anyPreview))) }
   readonly property alias background: look.background
   readonly property alias foreground: look.foreground
   readonly property alias link: look.link
@@ -165,7 +170,10 @@ Item {
   function paletteHeight(actions) { return look.paletteHeight(actions) }
   readonly property alias cardWidth: look.cardWidth
   readonly property alias listColumn: look.listColumn
+  readonly property alias twoColumn: look.twoColumn
   readonly property alias paneMin: look.paneMin
+  readonly property alias stackPanePreferredHeight: look.stackPanePreferredHeight
+  readonly property alias bodyMax: look.bodyMax
   readonly property alias answerMax: look.answerMax
 
   readonly property var rows: results
@@ -198,7 +206,10 @@ Item {
     // This open's times (lib/Opens.js), from its start: an open while the
     // bar is up is not one, and leaves the record as it was.
     var starting = !root.opened
-    if (starting) root.openRec = Opens.start(Date.now(), root.openBy || "call", false)
+    if (starting) {
+      root.wideForOpen = false
+      root.openRec = Opens.start(Date.now(), root.openBy || "call", false)
+    }
     root.openBy = ""
     // The window it opened over, first: a payload's query below is
     // answered over it, a script filter's run told of it (Cursor
@@ -2625,6 +2636,19 @@ Item {
     })
   }
   readonly property var preview: paneRead.preview
+  function holdWideForOpen() {
+    // Ignore the previous open's rows until recompute has caught up with the
+    // current query; otherwise reopening with a different query could inherit
+    // a stale wide layout.
+    if (root.opened && root.shownQuery !== null && root.shownQuery === root.queryNow()
+        && (root.preview !== null || (root.paletteOpen && root.anyPreview)))
+      root.wideForOpen = true
+  }
+  onPreviewChanged: holdWideForOpen()
+  onAnyPreviewChanged: holdWideForOpen()
+  onPaletteOpenChanged: holdWideForOpen()
+  onShownQueryChanged: holdWideForOpen()
+  onOpenedChanged: if (!opened) wideForOpen = false
 
   // Media, audio devices, Bluetooth, Wi-Fi and the battery, as they are.
   Desktop { id: desktopState }
@@ -2774,8 +2798,10 @@ Item {
   // row's picture loads off the GUI thread, and Qt keeps a picture nobody
   // holds only for a while, dropping a quarter of them every 30 s; the rows
   // go when the bar closes, so a later open decoded them again, and they
-  // came in after the rows' words (his report 2026-10-11). Held here, every
-  // open finds them in the cache and draws them with the rows. A few MB.
+  // came in after the rows' words (his report 2026-10-11). These warm in the
+  // background; a visible row can promote its icon ahead of them. Held here,
+  // every open finds recent icons in the cache and draws them with the rows.
+  // A few MB.
   readonly property var warmIcons: {
     var seen = ({})
     var out = []
@@ -2791,19 +2817,19 @@ Item {
       model: root.warmIcons
       Item {
         required property string modelData
-        IconTile { imageSource: root.iconSource(modelData); size: root.tileSize }
-        IconTile { imageSource: root.iconSource(modelData); size: Math.round(root.tileSize * 1.4) }
+        IconTile { imageSource: root.iconSource(modelData, false, true); size: root.tileSize }
+        IconTile { imageSource: root.iconSource(modelData, false, true); size: Math.round(root.tileSize * 1.4) }
       }
     }
   }
 
   Images { id: images; pluginDir: decodeURIComponent(root.pluginDir) }
 
-  function iconSource(icon, large) {
+  function iconSource(icon, large, background) {
     // Depend on completed reads and on a reopen, which refreshes old images.
     var revision = images.revision + root.opens
     var value = String(icon || "")
-    return images.source(value || "application-x-executable", !!large)
+    return images.source(value || "application-x-executable", !!large, !!background)
   }
 
   Timer { id: appsDebounce; interval: 300; onTriggered: root.rebuildApps() }
@@ -3147,7 +3173,7 @@ Item {
     Card {
       id: card
       nodi: root
-      anchors.horizontalCenter: parent.horizontalCenter
+      x: look.cardX
       y: look.cardTop
       // Unseen until the empty bar's rows are whole: the GUI thread draws
       // the first frame before it reads the selection's answer, so a card

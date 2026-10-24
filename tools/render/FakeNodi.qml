@@ -47,7 +47,10 @@ QtObject {
   readonly property int tileRadius: look.tileRadius
   readonly property int cardWidth: look.cardWidth
   readonly property int listColumn: look.listColumn
+  readonly property bool twoColumn: look.twoColumn
   readonly property int paneMin: look.paneMin
+  readonly property int stackPanePreferredHeight: look.stackPanePreferredHeight
+  readonly property real bodyMax: look.bodyMax
   readonly property bool anyPreview: rows.some(Pane.hasPane)
   readonly property var preview: readPreview(Pane.choose({
     paletteOpen: paletteOpen,

@@ -116,6 +116,36 @@ test("image queue deduplicates, caps work and never returns original URLs on fai
   assert.equal(I.key("data:image/png;base64,abc", false), "");
 });
 
+test("visible icon requests run before prewarm work and promote a queued duplicate", () => {
+  const s = I.create();
+  const warm = I.key("/warm.png", false), nextWarm = I.key("/next-warm.png", false);
+  const visible = I.key("/visible.png", false);
+  I.get(s, warm, 0, true);
+  I.get(s, nextWarm, 0, true);
+  I.get(s, visible, 0);
+  assert.equal(I.next(s).key, visible);
+  assert.equal(I.next(s).key, warm);
+
+  const promoted = I.create();
+  I.get(promoted, warm, 0, true);
+  I.get(promoted, nextWarm, 0, true);
+  I.get(promoted, nextWarm, 1);
+  assert.equal(I.next(promoted).key, nextWarm);
+  assert.equal(I.next(promoted).key, warm);
+});
+
+test("visible requests can displace the last background job when the queue is full", () => {
+  const s = I.create();
+  const warm = Array.from({ length: I.MAX_QUEUE }, (_, n) => I.key("/warm-" + n + ".png", false));
+  warm.forEach(key => I.get(s, key, 0, true));
+  const visible = I.key("/visible.png", false);
+  I.get(s, visible, 1);
+  assert.equal(s.queue.length + s.backgroundQueue.length, I.MAX_QUEUE);
+  assert.equal(s.pending[visible], true);
+  assert.equal(s.pending[warm[warm.length - 1]], undefined);
+  assert.equal(I.next(s).key, visible);
+});
+
 test("image cache evicts old rasters and retries expired failures", () => {
   const s = I.create(), value = "data:image/png;base64," + "A".repeat(5000000);
   for (let n = 0; n < 12; n++) I.finish(s, I.key("/image-" + n, true), value, n);
