@@ -1238,12 +1238,22 @@ test("what the agent writes is bounded before the shell reads it: a long line br
                "the environment moves no bound");
   const err = go(null, 'head -c 70000 /dev/zero | tr "\\0" e >&2; echo >&2');
   assert.deepEqual(err.stderr.split("\n").map(l => l.length).slice(0, 2), [65536, 70000 - 65536], "stderr's lines at 64 KB");
-  // A line at a time: the first is read while the agent still runs.
-  const p = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "exec", "/usr/bin/bash", "-c", "echo first; sleep 3; echo second"], { env: { PATH: "/usr/bin:/bin" } });
-  const first = await new Promise(r => { const t0 = Date.now(); p.stdout.once("data", d => r([String(d), Date.now() - t0])); });
-  p.kill();
-  assert.equal(first[0], "first\n");
-  assert.ok(first[1] < 2500, "the first line came in " + first[1] + " ms, not held to the end");
+  // A line at a time: the agent waits for the reader to release it after
+  // the first line, so the test does not depend on OS pipe chunk boundaries.
+  const { createInterface } = await import("node:readline");
+  const p = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "exec", "/usr/bin/bash", "-c", "echo first; IFS= read -r _; echo second"], { env: { PATH: "/usr/bin:/bin" } });
+  const exited = new Promise(resolve => p.once("exit", resolve));
+  const lines = createInterface({ input: p.stdout });
+  const nextLine = label => new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => { p.kill(); reject(new Error(label + " was not streamed")) }, 20000);
+    lines.once("line", value => { clearTimeout(timeout); resolve(value) });
+  });
+  assert.equal(await nextLine("first line"), "first");
+  p.stdin.write("\n");
+  assert.equal(await nextLine("second line"), "second");
+  const status = await exited;
+  lines.close();
+  assert.equal(status, 0);
 });
 
 test("an answer kept to its most characters: the separator counted, never half a character (codex's review, 2026-10-09)", () => {

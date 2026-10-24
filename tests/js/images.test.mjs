@@ -87,6 +87,13 @@ test("worker limits keep a lower hard limit and make it the OOM killer's first c
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), hard + " 3 1000");
+  const iconProbe = "import resource, sys; sys.path.insert(0, sys.argv[1]); import raster; raster.limits(128); " +
+    "print(resource.getrlimit(resource.RLIMIT_AS)[1], resource.getrlimit(resource.RLIMIT_CPU)[1], open('/proc/self/oom_score_adj').read().strip())";
+  const iconResult = spawnSync("/usr/bin/prlimit", ["--as=" + hard, "--", "/usr/bin/python3", "-I", "-c", iconProbe, join(root, "lib")], {
+    env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, encoding: "utf8", timeout: 7000
+  });
+  assert.equal(iconResult.status, 0, iconResult.stderr);
+  assert.equal(iconResult.stdout.trim(), (512 * 1024 * 1024) + " 3 1000", "small app icon workers share a lower memory ceiling");
 });
 
 test("SVG previews scale and cannot include a neighbouring image", () => {
@@ -116,12 +123,101 @@ test("image queue deduplicates, caps work and never returns original URLs on fai
   assert.equal(I.key("data:image/png;base64,abc", false), "");
 });
 
-test("image cache evicts old rasters and retries expired failures", () => {
+test("visible icon requests run before prewarm work and promote a queued duplicate", () => {
+  const s = I.create();
+  const warm = I.key("/warm.png", false), nextWarm = I.key("/next-warm.png", false);
+  const visible = I.key("/visible.png", false);
+  I.get(s, warm, 0, true);
+  I.get(s, nextWarm, 0, true);
+  I.get(s, visible, 0);
+  assert.equal(I.next(s).key, visible);
+  assert.equal(I.next(s).key, warm);
+
+  const promoted = I.create();
+  I.get(promoted, warm, 0, true);
+  I.get(promoted, nextWarm, 0, true);
+  I.get(promoted, nextWarm, 1);
+  assert.equal(I.next(promoted).key, nextWarm);
+  assert.equal(I.next(promoted).key, warm);
+});
+
+test("visible requests can displace the last background job when the queue is full", () => {
+  const s = I.create();
+  const warm = Array.from({ length: I.MAX_QUEUE }, (_, n) => I.key("/warm-" + n + ".png", false));
+  warm.forEach(key => I.get(s, key, 0, true));
+  const visible = I.key("/visible.png", false);
+  I.get(s, visible, 1);
+  assert.equal(s.queue.length + s.backgroundQueue.length, I.MAX_QUEUE);
+  assert.equal(s.pending[visible], true);
+  assert.equal(s.pending[warm[warm.length - 1]], undefined);
+  assert.equal(I.next(s).key, visible);
+});
+
+test("a busy large preview can leave the other worker for small icons", () => {
+  const s = I.create();
+  const large = I.key("/preview.png", true), icon = I.key("/app.png", false);
+  I.get(s, large, 0);
+  I.get(s, icon, 0);
+  assert.equal(I.next(s).key, large);
+  assert.equal(I.next(s, false).key, icon);
+  I.get(s, I.key("/next-preview.png", true), 1);
+  assert.equal(I.next(s, false), null, "a second worker does not start another large decode");
+  assert.equal(I.next(s).edge, 1000, "the large preview remains queued for the first worker");
+});
+
+test("image cache evicts old rasters and retries failures after their cooldown", () => {
   const s = I.create(), value = "data:image/png;base64," + "A".repeat(5000000);
   for (let n = 0; n < 12; n++) I.finish(s, I.key("/image-" + n, true), value, n);
   assert.ok(s.bytes <= I.MAX_BYTES);
   assert.ok(Object.keys(s.cache).length < 12);
   const key = I.key("/bad", false);
-  I.finish(s, key, "", 0); I.get(s, key, 1); assert.equal(s.queue.length, 0);
-  I.get(s, key, I.MAX_AGE); assert.equal(s.queue.length, 1);
+  I.finish(s, key, "", 0);
+  for (const now of [1, 10000, 20000, I.FAILURE_RETRY_MS - 1]) {
+    I.get(s, key, now);
+    assert.equal(s.queue.length, 0, "a repeated miss is held only to the original expiry");
+  }
+  I.get(s, key, I.FAILURE_RETRY_MS + 1); assert.equal(s.queue.length, 1);
+});
+
+test("named icons stay warm until invalidation or bounded LRU eviction", () => {
+  const s = I.create(), key = I.key("application-x-executable", false), value = "data:image/png;base64,iVBORw0KGgo=";
+  I.finish(s, key, value, 0);
+  assert.equal(I.get(s, key, 10 * 24 * 60 * 60 * 1000), value, "an idle icon does not expire by time");
+  assert.equal(s.queue.length, 0);
+  I.invalidate(s);
+  assert.equal(I.get(s, key, 10 * 24 * 60 * 60 * 1000), "", "an update invalidates the prior raster");
+  assert.equal(s.queue[0], key);
+});
+
+test("file rasters refresh after a quiet period unless they are app icons or prewarmed", () => {
+  const s = I.create(), file = I.key("/preview.png", false);
+  const value = "data:image/png;base64,iVBORw0KGgo=";
+  I.finish(s, file, value, 0);
+  I.get(s, file, I.MAX_AGE + 1);
+  assert.equal(s.queue[0], file, "mutable file previews are refreshed");
+  const warmState = I.create(), warm = I.key("/app-icon.png", false);
+  I.get(warmState, warm, 0, true);
+  const job = I.next(warmState);
+  assert.equal(job.key, warm);
+  I.finish(warmState, warm, value, 1, job.generation);
+  assert.equal(I.get(warmState, warm, 10 * 24 * 60 * 60 * 1000), value, "a prewarmed file-backed app icon stays cached");
+
+  const appState = I.create(), app = I.key("/unwarmed-app-icon.png", false);
+  I.get(appState, app, 0, false, true);
+  I.finish(appState, app, value, 1);
+  assert.equal(I.get(appState, app, 10 * 24 * 60 * 60 * 1000), value, "an app's file-backed icon stays cached too");
+});
+
+test("an old worker cannot repopulate the cache after an update", () => {
+  const s = I.create(), key = I.key("/changed.png", false), oldValue = "data:image/png;base64,aA==", newValue = "data:image/png;base64,bA==";
+  I.get(s, key, 0);
+  const oldJob = I.next(s);
+  I.invalidate(s);
+  I.get(s, key, 1);
+  const newJob = I.next(s);
+  assert.notEqual(oldJob.generation, newJob.generation);
+  assert.equal(I.finish(s, key, oldValue, 2, oldJob.generation), false);
+  assert.equal(s.pending[key], true, "the stale worker leaves the updated request pending");
+  assert.equal(I.finish(s, key, newValue, 3, newJob.generation), true);
+  assert.equal(I.get(s, key, 4), newValue);
 });

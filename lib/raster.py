@@ -19,14 +19,16 @@ from urllib.parse import unquote, urlsplit
 
 INPUT_MAX = 16 * 1024 * 1024
 MEMORY_MAX = 2048 * 1024 * 1024
+ICON_MEMORY_MAX = 512 * 1024 * 1024
 PIXELS_MAX = 16 * 1024 * 1024
 EDGE_MAX = 1000
 
 
-def limits():
+def limits(edge=EDGE_MAX):
     # Before opening the file or importing any decoder. These include native
     # allocations and compressed metadata, unlike a pixel allocation limit.
-    for kind, value in ((resource.RLIMIT_AS, MEMORY_MAX),
+    memory_max = ICON_MEMORY_MAX if edge == 128 else MEMORY_MAX
+    for kind, value in ((resource.RLIMIT_AS, memory_max),
                         (resource.RLIMIT_CPU, 3), (resource.RLIMIT_CORE, 0),
                         (resource.RLIMIT_FSIZE, 64 * 1024 * 1024)):
         # A lower hard limit already set is kept: raising one is refused.
@@ -155,12 +157,12 @@ def raster(data, edge):
 
 
 def main():
-    limits()
-    os.umask(0o077)
-    path = icon_path(os.environ.pop("NODI_IMAGE", ""))
     edge = int(sys.argv[1]) if len(sys.argv) == 2 else 128
     if edge not in (128, EDGE_MAX):
         raise ValueError("invalid size")
+    limits(edge)
+    os.umask(0o077)
+    path = icon_path(os.environ.pop("NODI_IMAGE", ""))
     encoded = base64.b64encode(raster(read_image(path), edge)).decode("ascii")
     print("data:image/png;base64," + encoded)
 

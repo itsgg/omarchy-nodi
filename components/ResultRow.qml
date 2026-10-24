@@ -84,6 +84,7 @@ Item {
       size: rowItem.hero ? Math.round(nodi.tileSize * 1.4) : nodi.tileSize
       radius: nodi.tileRadius
       foreground: nodi.foreground
+      glyphColor: nodi.link
       selectedText: nodi.selectedInk
       fontFamily: nodi.fontFamily
     }
