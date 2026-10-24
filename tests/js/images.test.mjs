@@ -87,6 +87,13 @@ test("worker limits keep a lower hard limit and make it the OOM killer's first c
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), hard + " 3 1000");
+  const iconProbe = "import resource, sys; sys.path.insert(0, sys.argv[1]); import raster; raster.limits(128); " +
+    "print(resource.getrlimit(resource.RLIMIT_AS)[1], resource.getrlimit(resource.RLIMIT_CPU)[1], open('/proc/self/oom_score_adj').read().strip())";
+  const iconResult = spawnSync("/usr/bin/prlimit", ["--as=" + hard, "--", "/usr/bin/python3", "-I", "-c", iconProbe, join(root, "lib")], {
+    env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, encoding: "utf8", timeout: 7000
+  });
+  assert.equal(iconResult.status, 0, iconResult.stderr);
+  assert.equal(iconResult.stdout.trim(), (512 * 1024 * 1024) + " 3 1000", "small app icon workers share a lower memory ceiling");
 });
 
 test("SVG previews scale and cannot include a neighbouring image", () => {
@@ -146,12 +153,38 @@ test("visible requests can displace the last background job when the queue is fu
   assert.equal(I.next(s).key, visible);
 });
 
+test("a busy large preview can leave the other worker for small icons", () => {
+  const s = I.create();
+  const large = I.key("/preview.png", true), icon = I.key("/app.png", false);
+  I.get(s, large, 0);
+  I.get(s, icon, 0);
+  assert.equal(I.next(s).key, large);
+  assert.equal(I.next(s, false).key, icon);
+  I.get(s, I.key("/next-preview.png", true), 1);
+  assert.equal(I.next(s, false), null, "a second worker does not start another large decode");
+  assert.equal(I.next(s).edge, 1000, "the large preview remains queued for the first worker");
+});
+
 test("image cache evicts old rasters and retries expired failures", () => {
   const s = I.create(), value = "data:image/png;base64," + "A".repeat(5000000);
   for (let n = 0; n < 12; n++) I.finish(s, I.key("/image-" + n, true), value, n);
   assert.ok(s.bytes <= I.MAX_BYTES);
   assert.ok(Object.keys(s.cache).length < 12);
   const key = I.key("/bad", false);
-  I.finish(s, key, "", 0); I.get(s, key, 1); assert.equal(s.queue.length, 0);
-  I.get(s, key, I.MAX_AGE); assert.equal(s.queue.length, 1);
+  I.finish(s, key, "", 0);
+  for (const now of [1, 10000, 20000, I.MAX_AGE - 1]) {
+    I.get(s, key, now);
+    assert.equal(s.queue.length, 0, "a repeated miss is held only to the original expiry");
+  }
+  I.get(s, key, I.MAX_AGE + 1); assert.equal(s.queue.length, 1);
+});
+
+test("image cache keeps recently used rasters warm", () => {
+  const s = I.create(), key = I.key("/warm.png", false), value = "data:image/png;base64,iVBORw0KGgo=";
+  I.finish(s, key, value, 0);
+  assert.equal(I.get(s, key, 20000), value);
+  assert.equal(I.get(s, key, I.MAX_AGE + 19999), value, "recent use extends the cache lifetime");
+  assert.equal(I.get(s, key, I.MAX_AGE + 50000), "", "unused entries still expire");
+  assert.equal(s.queue.length, 1);
+  assert.equal(s.queue[0], key);
 });
