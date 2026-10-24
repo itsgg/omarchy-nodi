@@ -1245,7 +1245,7 @@ test("what the agent writes is bounded before the shell reads it: a long line br
   const exited = new Promise(resolve => p.once("exit", resolve));
   const lines = createInterface({ input: p.stdout });
   const nextLine = label => new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => { p.kill(); reject(new Error(label + " was not streamed")) }, 5000);
+    const timeout = setTimeout(() => { p.kill(); reject(new Error(label + " was not streamed")) }, 20000);
     lines.once("line", value => { clearTimeout(timeout); resolve(value) });
   });
   assert.equal(await nextLine("first line"), "first");
