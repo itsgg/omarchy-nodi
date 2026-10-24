@@ -66,9 +66,18 @@ Item {
       test.done(false, "opaque handle escaped the decoder boundary")
       return
     }
-    test.paths = ["home.png", "ask.png", "themes.png"].map(function(name) {
+    // A decoder must not attach to the shell's Wayland display while GTK
+    // resolves the icon theme. Simulate the inherited variable here.
+    for (var i = 0; i < images.readers.length; i++) images.readers[i].extraEnvironment = ({ WAYLAND_DISPLAY: "wayland-test" })
+    var workerEnv = images.readers[0].environment(images.workerEnvironment("application-x-executable"))
+    if (workerEnv.WAYLAND_DISPLAY !== "") {
+      test.finished = true
+      test.done(false, "icon worker inherited the Wayland display")
+      return
+    }
+    test.paths = ["home.png", "ask.png"].map(function(name) {
       return decodeURIComponent(String(Qt.resolvedUrl("../../docs/" + name)).replace(/^file:\/\//, "").replace(/\/$/, ""))
-    })
+    }).concat(["application-x-executable"])
     test.refreshIcons()
     Qt.callLater(test.checkParallel)
   }

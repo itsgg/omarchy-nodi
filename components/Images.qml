@@ -12,6 +12,12 @@ Item {
   property var cacheState: Images.create()
   readonly property var readers: [reader0, reader1]
 
+  // GTK must resolve icon names without connecting to the shell's Wayland
+  // display. Its display backend exhausts the small decoder memory limit.
+  function workerEnvironment(path) {
+    return { NODI_IMAGE: String(path || ""), WAYLAND_DISPLAY: "" }
+  }
+
   function source(value, large, background) {
     var key = Images.key(value, large)
     if (!key) return ""
@@ -34,7 +40,7 @@ Item {
       worker.imageEdge = job.edge
       if (job.edge === 1000) largeBusy = true
       worker.run(["/usr/bin/python3", "-I", pluginDir + "/lib/raster.py", String(job.edge)],
-                 { key: job.key, env: { NODI_IMAGE: job.path } })
+                 { key: job.key, env: images.workerEnvironment(job.path) })
     }
   }
 
