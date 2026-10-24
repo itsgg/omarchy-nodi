@@ -14,6 +14,7 @@ Rectangle {
   property bool selected: false
   property real size: Style.space(30)
   property color foreground: Commons.Color.foreground
+  property color glyphColor: foreground
   property color selectedText: Commons.Color.foreground
   property string fontFamily: Style.font.family
 
@@ -46,7 +47,7 @@ Rectangle {
     visible: !tile.hasSwatch && !tile.hasImage
     anchors.centerIn: parent
     text: tile.glyph
-    color: tile.selected ? tile.selectedText : tile.foreground
+    color: tile.selected ? tile.selectedText : tile.glyphColor
     font.family: tile.glyphFont || tile.fontFamily
     font.pixelSize: Math.round(tile.size * 0.56)
   }

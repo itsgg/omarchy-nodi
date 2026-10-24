@@ -19,3 +19,15 @@ test("the icons held are held at the rows' own sizes", () => {
   const sizes = [...warm.matchAll(/IconTile \{ imageSource: root\.iconSource\(modelData, false, true\); size: (.+?) \}/g)].map((m) => m[1].replace(/root\./g, ""));
   assert.deepEqual(sizes.sort(), [heroRow, plainRow].sort());
 });
+
+test("app images keep their color; Nodi glyphs use the readable theme accent", () => {
+  const tile = read("components/IconTile.qml");
+  const look = read("components/Look.qml");
+  assert.match(tile, /property color glyphColor: foreground/);
+  assert.match(tile, /color: tile\.selected \? tile\.selectedText : tile\.glyphColor/);
+  assert.match(look, /property color link: rgb\(highContrast \? Contrast\.atLeast\(Commons\.Color\.accent/);
+  for (const file of ["components/ResultRow.qml", "components/ActionPalette.qml"]) {
+    assert.match(read(file), /glyphColor: nodi\.link/, file + " colors symbolic icons with the guarded accent");
+  }
+  assert.match(tile, /source: tile\.hasImage \? tile\.imageSource : ""/, "an app's own image is drawn without recoloring");
+});
