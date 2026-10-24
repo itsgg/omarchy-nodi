@@ -110,6 +110,7 @@ Item {
   property string localZone: ""
   property var emojis: []
   property var apps: []
+  property var appIcons: Object.create(null)
   property var appEntries: ({})
   property var hiddenApps: ({})
   property var history: ({})        // row key -> { n, t }: what was run, how often, when (lib/History.js)
@@ -2773,6 +2774,7 @@ Item {
   function rebuildApps() {
     var list = []
     var byId = {}
+    var icons = Object.create(null)
     var values = DesktopEntries.applications.values || []
     for (var i = 0; i < values.length; i++) {
       var e = values[i]
@@ -2782,13 +2784,16 @@ Item {
       try { for (var k = 0; k < e.keywords.length; k++) keywords.push(String(e.keywords[k])) } catch (err) {}
       var actions = []
       try { for (var a = 0; a < e.actions.length; a++) actions.push({ index: a, id: String(e.actions[a].id || ""), name: String(e.actions[a].name || "") }) } catch (err2) {}
+      var icon = String(e.icon || "")
+      if (icon) icons[icon] = true
       byId[id] = e
       list.push({ id: id, name: String(e.name || id), generic: String(e.genericName || ""), comment: String(e.comment || ""),
-                  keywords: keywords, icon: String(e.icon || ""), wmclass: String(e.startupClass || ""), actions: actions,
+                  keywords: keywords, icon: icon, wmclass: String(e.startupClass || ""), actions: actions,
                   exec: String(e.execString || ""), terminal: !!e.runInTerminal })
     }
     root.appEntries = byId
     root.apps = list
+    root.appIcons = icons
     if (root.opened) root.recompute()
     root.describeApps()
   }
@@ -2800,7 +2805,7 @@ Item {
   // go when the bar closes, so a later open decoded them again, and they
   // came in after the rows' words (his report 2026-10-11). These warm in the
   // background; a visible row can promote its icon ahead of them. Held here,
-  // every open finds recent icons in the cache and draws them with the rows.
+  // every open finds cached icons and draws them with the rows.
   // A few MB.
   readonly property var warmIcons: {
     var seen = ({})
@@ -2829,14 +2834,42 @@ Item {
     // Depend on completed reads and on a reopen, which refreshes old images.
     var revision = images.revision + root.opens
     var value = String(icon || "")
-    return images.source(value || "application-x-executable", !!large, !!background)
+    return images.source(value || "application-x-executable", !!large, !!background, !!root.appIcons[value])
   }
 
-  Timer { id: appsDebounce; interval: 300; onTriggered: root.rebuildApps() }
+  Timer {
+    id: appsDebounce
+    interval: 300
+    onTriggered: { root.rebuildApps(); images.invalidate() }
+  }
 
   Connections {
     target: DesktopEntries.applications
     function onValuesChanged() { appsDebounce.restart() }
+  }
+
+  // GTK resolves named icons through this theme. Keep their rasters until
+  // the catalog or theme changes; a settings edit starts a new cache epoch.
+  FileView {
+    id: gtkIconSettings
+    path: root.home + "/.config/gtk-3.0/settings.ini"
+    watchChanges: true
+    printErrors: false
+    property bool initialized: false
+    property string iconTheme: ""
+    onLoaded: {
+      var match = /^\s*gtk-icon-theme-name\s*=\s*(.*?)\s*$/m.exec(String(text()))
+      var current = match ? match[1] : ""
+      if (initialized && current !== iconTheme) images.invalidate()
+      iconTheme = current
+      initialized = true
+    }
+    onLoadFailed: {
+      if (initialized && iconTheme !== "") images.invalidate()
+      iconTheme = ""
+      initialized = true
+    }
+    onFileChanged: reload()
   }
 
   FileView {

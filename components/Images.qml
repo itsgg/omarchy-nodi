@@ -18,12 +18,18 @@ Item {
     return { NODI_IMAGE: String(path || ""), WAYLAND_DISPLAY: "" }
   }
 
-  function source(value, large, background) {
+  function source(value, large, background, persistent) {
     var key = Images.key(value, large)
     if (!key) return ""
-    var result = Images.get(cacheState, key, Date.now(), !!background)
+    var result = Images.get(cacheState, key, Date.now(), !!background, !!persistent)
     Qt.callLater(images.drain)
     return result
+  }
+
+  function invalidate() {
+    Images.invalidate(cacheState)
+    revision++
+    Qt.callLater(images.drain)
   }
 
   function drain() {
@@ -40,12 +46,12 @@ Item {
       worker.imageEdge = job.edge
       if (job.edge === 1000) largeBusy = true
       worker.run(["/usr/bin/python3", "-I", pluginDir + "/lib/raster.py", String(job.edge)],
-                 { key: job.key, env: images.workerEnvironment(job.path) })
+                 { key: job.key, generation: job.generation, env: images.workerEnvironment(job.path) })
     }
   }
 
   function finished(text, ok, tag) {
-    Images.finish(cacheState, tag.key, ok ? text.trim() : "", Date.now())
+    Images.finish(cacheState, tag.key, ok ? text.trim() : "", Date.now(), tag.generation)
     revision++
     Qt.callLater(images.drain)
   }
