@@ -193,6 +193,42 @@ test("Ctrl+K: the row's own, then Copy, then Manage, each with its chord", () =>
   assert.deepEqual([copy.chord, copy.chordKey, copy.group], ["Ctrl Enter", "copy", "Copy"], "what Ctrl+Enter copies from the list");
 });
 
+test("Ctrl+K retains nodi action metadata like ask and data payloads", () => {
+  const row = {
+    key: "file:test.txt",
+    title: "test.txt",
+    actions: [
+      {
+        label: "Ask about this file",
+        icon: "󰚩",
+        nodi: "askWith",
+        ask: { question: "Explain test.txt", message: "Explain test.txt:\n@f:/test.txt", context: "file", purpose: "ask" }
+      },
+      {
+        label: "Ask question about file...",
+        icon: "󰚩",
+        nodi: "complete",
+        data: "ask @f:/test.txt "
+      }
+    ]
+  };
+  const acts = Rows.actionsFor(row, {});
+  const askAct = acts.find(a => a.label === "Ask about this file");
+  assert.ok(askAct, "Ask about this file is in actions");
+  assert.equal(askAct.nodi, "askWith");
+  assert.deepEqual(plain(askAct.ask), {
+    question: "Explain test.txt",
+    message: "Explain test.txt:\n@f:/test.txt",
+    context: "file",
+    purpose: "ask"
+  });
+
+  const completeAct = acts.find(a => a.label === "Ask question about file...");
+  assert.ok(completeAct, "Ask question about file... is in actions");
+  assert.equal(completeAct.nodi, "complete");
+  assert.equal(completeAct.data, "ask @f:/test.txt ");
+});
+
 test("Ctrl+K typed into: words that start the label or group's, each group under its name once", () => {
   const Prefs = load("lib/Prefs.js");
   const row = Rows.normalize({ key: "app:firefox", title: "Firefox", run: Run.app("firefox"), copy: "" }, { id: "apps", name: "Apps" }, 0, 0);
