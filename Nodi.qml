@@ -1032,11 +1032,12 @@ Item {
       root.forget(row.key)
       return
     }
-    if (a.nodi === "askWith" && a.ask) {
+    if (a.nodi === "askWith" && (a.ask || row.ask)) {
+      var askSpec = a.ask || row.ask
       if (askSession.busy() || windowShot.active) return
       root.askRows = ({ turn: "", rows: ({}) })
-      root.startAsk("", a.ask.question, a.ask.message, a.ask.context, undefined, a.ask.purpose)
-      input.text = "ask " + a.ask.question
+      root.startAsk("", askSpec.question, askSpec.message, askSpec.context, undefined, askSpec.purpose)
+      input.text = "ask " + askSpec.question
       input.cursorPosition = input.text.length
       return
     }
