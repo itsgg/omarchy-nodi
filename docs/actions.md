@@ -16,6 +16,8 @@ one, is on its right.
   a terminal for its password), after a second Enter.
 - A clipboard entry: pin it, copy it without pasting, send it to a
   device.
+- An Ask question or answer: switch coding agent (Claude, Codex, OpenCode,
+  Pi, Agy), choose a model, ask again, or start a new conversation.
 - Anything that holds text: copy it (Ctrl+Enter, without opening
   Ctrl+K), and copy its title.
 
