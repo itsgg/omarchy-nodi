@@ -148,6 +148,10 @@ test("expandMentions expands @window, @cb, and @selection with structured contex
     'explain [File "lib/PromptContext.js":\nexport function test() {}\n] please'
   );
   assert.equal(
+    P.expandMentions('explain @f:"lib/PromptContext.js" please', snap),
+    'explain [File "lib/PromptContext.js":\nexport function test() {}\n] please'
+  );
+  assert.equal(
     P.expandMentions("check @file:missing.txt", snap),
     'check [File "missing.txt"]'
   );

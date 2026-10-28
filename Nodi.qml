@@ -1032,6 +1032,14 @@ Item {
       root.forget(row.key)
       return
     }
+    if (a.nodi === "askWith" && a.ask) {
+      if (askSession.busy() || windowShot.active) return
+      root.askRows = ({ turn: "", rows: ({}) })
+      root.startAsk("", a.ask.question, a.ask.message, a.ask.context, undefined, a.ask.purpose)
+      input.text = "ask " + a.ask.question
+      input.cursorPosition = input.text.length
+      return
+    }
     if (a.nodi === "complete") {
       if (a.data) {
         input.text = String(a.data)

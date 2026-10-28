@@ -415,11 +415,11 @@ Item {
     ask.pending = null
     var image = p.image && ask.caps.image ? p.image : null
     var snap = p.snapshot || {}
-    var fileMatches = String(p.text).match(/@(?:file|f):([^\s\n"']+)/g)
+    var fileMatches = String(p.text).match(/@(?:file|f):(?:"[^"]+"|\'[^\']+\'|[^\s\n"']+)/g)
     if (fileMatches && fileMatches.length > 0) {
       if (!snap.files) snap.files = {}
       for (var fi = 0; fi < fileMatches.length; fi++) {
-        var mPath = fileMatches[fi].replace(/^@(?:file|f):/, "")
+        var mPath = fileMatches[fi].replace(/^@(?:file|f):/, "").replace(/^["']|["']$/g, "")
         var fullPath = mPath
         if (fullPath.charAt(0) === "~") {
           var homeDir = Quickshell.env("HOME") || ""

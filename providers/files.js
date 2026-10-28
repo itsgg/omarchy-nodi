@@ -276,8 +276,20 @@ function fileRow(path, name, isDir, score, home) {
     actions: [{ label: "Copy the path", icon: "󰆏", run: Run.copy(path) }]
   }
   if (!isDir) {
+    var fileMention = path.indexOf(" ") !== -1 ? '@f:"' + path + '"' : "@f:" + path
     row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
-    row.actions.push({ label: "Ask about this file", icon: "󰚩", nodi: "complete", data: "ask @f:" + path + " " })
+    row.actions.push({
+      label: "Ask about this file",
+      icon: "󰚩",
+      nodi: "askWith",
+      ask: {
+        question: "Explain " + name,
+        message: "Explain what this file does and summarize its key parts:\n" + fileMention,
+        context: "file",
+        purpose: "ask"
+      }
+    })
+    row.actions.push({ label: "Ask question about file...", icon: "󰚩", nodi: "complete", data: "ask " + fileMention + " " })
     row.actions.push({ label: "Move to trash", icon: "󰩺", run: Run.exec(["/usr/bin/gio", "trash", "--", path]), confirm: true })
   }
   if (isDir) row.complete = tilde(path, home).replace(/\/?$/, "/")
