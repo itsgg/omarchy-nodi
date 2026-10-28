@@ -8,7 +8,8 @@ one, is on its right.
 
 ## What a row's kind offers
 
-- A file: open its folder, copy its path.
+- A file: open its folder, copy its path, ask your coding agent about it, or
+  move it to trash (confirmed with a second Enter).
 - A window: bring it to this workspace, float it or tile it, close it,
   and its app's [window rules](#window-rules).
 - An app: copy its desktop id; uninstall it, as Omarchy's own launcher

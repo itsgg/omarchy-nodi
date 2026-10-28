@@ -278,6 +278,7 @@ function fileRow(path, name, isDir, score, home) {
   if (!isDir) {
     row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
     row.actions.push({ label: "Ask about this file", icon: "󰚩", nodi: "complete", data: "ask @f:" + path + " " })
+    row.actions.push({ label: "Move to trash", icon: "󰩺", run: Run.exec(["/usr/bin/gio", "trash", "--", path]), confirm: true })
   }
   if (isDir) row.complete = tilde(path, home).replace(/\/?$/, "/")
   // A folder's, which over a file dialog types it in (providers/chooser.js).
