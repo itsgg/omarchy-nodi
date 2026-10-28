@@ -167,14 +167,13 @@ test("a name under home: the words in no argument, matched in the last part of a
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
 
-test("a file row offers Open the folder, Ask about this file, Ask question, Move to trash, and Copy path", () => {
+test("a file row offers Open the folder, Ask about this file, Move to trash, and Copy path", () => {
   const row = F.fileRow("/home/u/Work/notes.txt", "notes.txt", false, 90, "/home/u");
   const labels = row.actions.map(a => a.label);
   assert.deepEqual(plain(labels), [
     "Open the folder",
     "Copy the path",
     "Ask about this file",
-    "Ask question about file...",
     "Move to trash"
   ]);
   const askAction = row.actions.find(a => a.label === "Ask about this file");
@@ -182,10 +181,6 @@ test("a file row offers Open the folder, Ask about this file, Ask question, Move
   assert.equal(askAction.ask.context, "file");
   assert.equal(askAction.ask.question, "Explain notes.txt");
   assert.ok(askAction.ask.message.includes("@f:/home/u/Work/notes.txt"));
-
-  const completeAction = row.actions.find(a => a.label === "Ask question about file...");
-  assert.equal(completeAction.nodi, "complete");
-  assert.equal(completeAction.data, "ask @f:/home/u/Work/notes.txt ");
 
   const trashAction = row.actions.find(a => a.label === "Move to trash");
   assert.equal(trashAction.confirm, true);

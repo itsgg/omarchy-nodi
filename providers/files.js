@@ -289,7 +289,6 @@ function fileRow(path, name, isDir, score, home) {
         purpose: "ask"
       }
     })
-    row.actions.push({ label: "Ask question about file...", icon: "󰚩", nodi: "complete", data: "ask " + fileMention + " " })
     row.actions.push({ label: "Move to trash", icon: "󰩺", run: Run.exec(["/usr/bin/gio", "trash", "--", path]), confirm: true })
   }
   if (isDir) row.complete = tilde(path, home).replace(/\/?$/, "/")
