@@ -1032,7 +1032,17 @@ Item {
       root.forget(row.key)
       return
     }
-    if (a.nodi === "complete") { root.complete(row); return }
+    if (a.nodi === "complete") {
+      if (a.data) {
+        input.text = String(a.data)
+        input.cursorPosition = input.text.length
+        root.closePalette()
+        root.recompute()
+      } else {
+        root.complete(row)
+      }
+      return
+    }
     if (a.nodi === "askAgent" && a.data) { root.selectAskAgent(a.data.id); return }
     if (a.nodi) { root.setPref(a, row); return }
     var own = !!a.own

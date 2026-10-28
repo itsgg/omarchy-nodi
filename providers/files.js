@@ -275,7 +275,10 @@ function fileRow(path, name, isDir, score, home) {
     run: Run.open(path),
     actions: [{ label: "Copy the path", icon: "󰆏", run: Run.copy(path) }]
   }
-  if (!isDir) row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
+  if (!isDir) {
+    row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
+    row.actions.push({ label: "Ask about this file", icon: "󰚩", nodi: "complete", data: "ask @f:" + path + " " })
+  }
   if (isDir) row.complete = tilde(path, home).replace(/\/?$/, "/")
   // A folder's, which over a file dialog types it in (providers/chooser.js).
   if (isDir) row.folder = path.length > 1 ? path.replace(/\/+$/, "") : path

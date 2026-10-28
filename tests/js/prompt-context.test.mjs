@@ -140,8 +140,17 @@ test("expandMentions expands @window, @cb, and @selection with structured contex
   const snap = {
     window: { class: "kitty", title: "make check", cwd: "/home/user/project" },
     clipboard: "error: test failed",
-    primarySelection: "const x = 1;"
+    primarySelection: "const x = 1;",
+    files: { "lib/PromptContext.js": "export function test() {}" }
   };
+  assert.equal(
+    P.expandMentions("explain @f:lib/PromptContext.js please", snap),
+    'explain [File "lib/PromptContext.js":\nexport function test() {}\n] please'
+  );
+  assert.equal(
+    P.expandMentions("check @file:missing.txt", snap),
+    'check [File "missing.txt"]'
+  );
   assert.equal(
     P.expandMentions("why is this failing: @window", snap),
     'why is this failing: [Active Window: "make check" (kitty) in /home/user/project]'
