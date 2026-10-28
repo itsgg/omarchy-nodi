@@ -160,7 +160,7 @@ install:
 # then (a session locked with no locker it restarts and locks again). The
 # shell is down by the restart, so a failed one is tried once more and then
 # fails the make, never passed over (Fable 2026-10-07).
-reload:
+reload: compile
 	@if omarchy-hyprland-session-locked && [ "$$(OMARCHY_SHELL_IPC_TIMEOUT=0.5s omarchy-shell lock status 2>/dev/null | jq -r '.secure or .requested' 2>/dev/null)" = true ]; then \
 	  echo "reload: the screen is locked; the shell is left running" >&2; exit 1; fi
 	@while timeout 5 quickshell kill -p "$${OMARCHY_PATH:-/usr/share/omarchy}/shell" --any-display >/dev/null 2>&1; do :; done
