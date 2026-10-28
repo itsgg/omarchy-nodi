@@ -166,7 +166,6 @@ Item {
   Component.onCompleted: ask.checkReady()
   // This start was allowed to install (NODI_INSTALL=1).
   property bool startInstalls: false
-  onLaunchKeyChanged: if (proc.running && !ask.busy() && !ask.recycling) ask.restart()
 
   // What the bar shows.
   property string question: ""
