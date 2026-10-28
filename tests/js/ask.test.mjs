@@ -113,6 +113,13 @@ test("what the agent is told: the bar's rules, its tools only with actions, the 
   assert.match(A.ACTS, /search.+inspect alternatives/i);
 });
 
+test("user standing instructions are appended cleanly to agent system instructions", () => {
+  assert.equal(A.instructions(false, false, "Be brief and direct."), A.SYSTEM + "\n\nUser instructions:\nBe brief and direct.");
+  assert.equal(A.instructions(true, false, "  Trimmed.  "), A.SYSTEM + A.ACTS + "\n\nUser instructions:\nTrimmed.");
+  assert.equal(A.instructions(false, false, ""), A.SYSTEM);
+  assert.equal(A.instructions(false, false, null), A.SYSTEM);
+});
+
 test("each agent declares how Ask enforces its isolation policy", () => {
   const registered = G.registry({
     agents: [{ id: "free", name: "Free", command: ["free-acp"] }]

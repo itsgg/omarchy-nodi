@@ -2205,7 +2205,12 @@ Item {
   // about it (`context`) and the message holds its text, so the structured
   // copy never carries what the textual prompt does not.
   function askContext(message, context, purpose) {
-    var snap = { purpose: purpose || "", window: Sources.windowSnapshot(root.cameFrom, root.windows) }
+    var snap = {
+      purpose: purpose || "",
+      window: Sources.windowSnapshot(root.cameFrom, root.windows),
+      clipboard: root.lastCopied || "",
+      primarySelection: root.selection || ""
+    }
     var source = context === "copied" ? "clipboard" : context === "selection" ? "selection" : ""
     if (source && root.selectionSource === source && root.selection !== "" && String(message || "").indexOf(root.selection) !== -1) {
       var seen = source === "clipboard" ? root.copiedSeenAt : root.selectionSeenAt
@@ -2377,10 +2382,18 @@ Item {
     onFileChanged: reload()
   }
 
+  property bool askWasBusy: false
+
   // A quick answer from a coding agent, held open over ACP (components/Ask.qml).
   function syncAskPhase() {
     if (!askSession.busy() && root.directAskAgent && !root.queryUsesDirectAgent(root.queryNow()))
       root.directAskAgent = ""
+    if (root.askWasBusy && !askSession.busy() && askSession.phase === "done" && !root.opened) {
+      if (root.config.ask && root.config.ask.notifyOnDone && askSession.answer.trim()) {
+        toaster.show("Answer ready: " + askSession.agentName, askSession.question)
+      }
+    }
+    root.askWasBusy = askSession.busy()
     if (root.opened) root.recompute()
   }
 
@@ -2404,6 +2417,7 @@ Item {
     // "ask": { "actions": false } (ROADMAP 44).
     acts: !(root.config.ask && root.config.ask.actions === false)
     mcp: AskTools.servers(root.config.ask && root.config.ask.mcpServers)
+    customInstructions: String((root.config.ask && root.config.ask.instructions) || "")
     // Variables of his the agent needs beyond those Ask passes (Ask.qml).
     passed: Array.isArray(root.config.ask && root.config.ask.environment) ? root.config.ask.environment : []
     searcher: root.askSearch

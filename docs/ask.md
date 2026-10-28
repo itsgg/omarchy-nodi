@@ -84,6 +84,15 @@ question and answer, to paste. The session starts as you type
 `ask `, so it is warm by the time you press Enter, and ends after thirty
 minutes with no question.
 
+### Context mentions
+
+A question can mention active context directly:
+- `@window` or `@app`: expands to the active window's title, class and working directory.
+- `@cb` or `@clipboard`: expands to the current clipboard text (up to 4 KB).
+- `@selection`: expands to the current primary selection (up to 4 KB).
+
+For example, `ask @window why is this failing` or `claude format this as json: @cb`.
+
 ### Agent interactions
 
 When an ACP agent advertises them, Ask also supports its interactive
@@ -278,6 +287,12 @@ it sets, as a terminal would. Name any other it needs:
 
 ```jsonc
 "ask": { "environment": ["MY_PROXY_TOKEN"] }
+```
+
+Name standing user instructions to append to every session:
+
+```jsonc
+"ask": { "instructions": "Prefer concise terminal commands." }
 ```
 
 An answer holds a million characters at most: past it the turn is

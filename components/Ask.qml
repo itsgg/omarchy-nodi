@@ -112,7 +112,8 @@ Item {
   readonly property bool providesActions: ask.acts && ask.agentCapabilities.actions
   readonly property bool actionServerAvailable: ask.providesActions && !!ask.toolServer && !!ask.actionServer
   readonly property bool named: ask.providesActions && Object.keys(ask.mcp || {}).length > 0
-  readonly property string instructions: AskTools.instructions(ask.providesActions, ask.named)
+  property string customInstructions: ""
+  readonly property string instructions: AskTools.instructions(ask.providesActions, ask.named, ask.customInstructions)
   readonly property string actionServer: ask.channel ? Acp.actionServer(ask.channel) : ""
   readonly property var serverNames: ask.providesActions ? (ask.actionServerAvailable ? [ask.actionServer] : []).concat(Object.keys(ask.mcp || {})) : []
   readonly property var spec: Agents.spec(ask.agent, ask.dataDir, ask.model, ask.instructions, ask.serverNames, ask.adaptersDir, ask.registry, ask.workDir)
@@ -133,7 +134,7 @@ Item {
   // What a session starts with: a change (another agent or model, actions,
   // servers) restarts an idle session, so the next question has it (Fable
   // 2026-10-06: an added server waited for a fresh conversation).
-  readonly property string launchKey: JSON.stringify([ask.agent, ask.registry, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer, ask.adaptersDir, ask.passed])
+  readonly property string launchKey: JSON.stringify([ask.agent, ask.registry, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer, ask.adaptersDir, ask.passed, ask.customInstructions])
   // The adapter an npm agent runs from, as a key: "" for an agent that is
   // its own program (OpenCode, his own).
   readonly property string adapterKey: ask.spec && ask.spec.adapter ? JSON.stringify([ask.spec.adapter, ask.dataDir, ask.adaptersDir]) : ""
@@ -411,7 +412,8 @@ Item {
     if (!p || ask.stage !== "ready") return
     ask.pending = null
     var image = p.image && ask.caps.image ? p.image : null
-    var text = p.text + (p.image && !image ? "\n\n(The picture could not be sent: " + ask.agentName + " takes none.)" : "")
+    var expanded = PromptContext.expandMentions ? PromptContext.expandMentions(p.text, p.snapshot) : p.text
+    var text = expanded + (p.image && !image ? "\n\n(The picture could not be sent: " + ask.agentName + " takes none.)" : "")
     ask.calls = Object.create(null)
     ask.actionTurn = ask.newToken()
     ask.interactionState = AskInteraction.bind(

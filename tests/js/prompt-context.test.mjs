@@ -135,3 +135,31 @@ test("a row's purpose survives normalisation bounded, and is absent when it is n
     assert.deepEqual(plain(n(bad)), { question: "q", message: "m", context: "selection" }, JSON.stringify(bad));
   assert.equal(Rows.normalize({ title: "x" }, { id: "p", name: "P" }, 0, 0).ask, null, "no ask, no purpose");
 });
+
+test("expandMentions expands @window, @cb, and @selection with structured context", () => {
+  const snap = {
+    window: { class: "kitty", title: "make check", cwd: "/home/user/project" },
+    clipboard: "error: test failed",
+    primarySelection: "const x = 1;"
+  };
+  assert.equal(
+    P.expandMentions("why is this failing: @window", snap),
+    'why is this failing: [Active Window: "make check" (kitty) in /home/user/project]'
+  );
+  assert.equal(
+    P.expandMentions("explain @cb please", snap),
+    'explain [Clipboard: "error: test failed"] please'
+  );
+  assert.equal(
+    P.expandMentions("review @selection", snap),
+    'review [Selection: "const x = 1;"]'
+  );
+  assert.equal(
+    P.expandMentions("no mentions in this text", snap),
+    "no mentions in this text"
+  );
+  assert.equal(
+    P.expandMentions("@window and @cb", {}),
+    "[Active Window: none] and [Clipboard: empty]"
+  );
+});
