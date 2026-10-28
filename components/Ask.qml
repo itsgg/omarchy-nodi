@@ -135,6 +135,7 @@ Item {
   // servers) restarts an idle session, so the next question has it (Fable
   // 2026-10-06: an added server waited for a fresh conversation).
   readonly property string launchKey: JSON.stringify([ask.agent, ask.registry, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer, ask.adaptersDir, ask.passed, ask.customInstructions])
+  onLaunchKeyChanged: if (proc.running && !ask.busy() && !ask.recycling) ask.restart(false)
   // The adapter an npm agent runs from, as a key: "" for an agent that is
   // its own program (OpenCode, his own).
   readonly property string adapterKey: ask.spec && ask.spec.adapter ? JSON.stringify([ask.spec.adapter, ask.dataDir, ask.adaptersDir]) : ""

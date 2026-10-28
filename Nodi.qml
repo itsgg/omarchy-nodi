@@ -2584,6 +2584,11 @@ Item {
     target: answerSession
     function onPhaseChanged() {
       root.keepConversation()
+      if (answerSession.phase === "done" && !root.opened) {
+        if (root.config.ask && root.config.ask.notifyOnDone && answerSession.text.trim()) {
+          toaster.show("Answer ready: " + (answerSession.title || answerSession.keyword), answerSession.question)
+        }
+      }
       if (!root.answerShown) return
       if (answerSession.phase === "done") card.announce(answerSession.title + ". " + Markdown.spoken(answerSession.text, 600))
       else if (answerSession.phase === "error") card.announce(answerSession.title + " failed. " + (answerSession.error || ""))

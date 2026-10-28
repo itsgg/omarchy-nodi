@@ -147,11 +147,23 @@ test("expandMentions expands @window, @cb, and @selection with structured contex
     'why is this failing: [Active Window: "make check" (kitty) in /home/user/project]'
   );
   assert.equal(
+    P.expandMentions("explain @w please", snap),
+    'explain [Active Window: "make check" (kitty) in /home/user/project] please'
+  );
+  assert.equal(
     P.expandMentions("explain @cb please", snap),
     'explain [Clipboard: "error: test failed"] please'
   );
   assert.equal(
+    P.expandMentions("explain @c please", snap),
+    'explain [Clipboard: "error: test failed"] please'
+  );
+  assert.equal(
     P.expandMentions("review @selection", snap),
+    'review [Selection: "const x = 1;"]'
+  );
+  assert.equal(
+    P.expandMentions("review @s", snap),
     'review [Selection: "const x = 1;"]'
   );
   assert.equal(
