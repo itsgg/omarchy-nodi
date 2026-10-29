@@ -368,8 +368,9 @@ function stepRows(f, q, step, ctx) {
   var param = JSON.stringify(p)
   var got = ctx.request ? ctx.request("filter-step", param) : { state: "pending" }
   var v = got.value
+  var askingWhom = String(title || "").replace(/^ask\s+/i, "") || title
   if (got.state === "error" && !v) return [{ title: title + " could not answer", subtitle: String(got.error || ""), score: 40, copy: "", remember: false }]
-  if (!v) return [{ title: "Asking " + title + "...", subtitle: step.depth ? step.pick : title, score: 40, copy: "", remember: false }]
+  if (!v) return [{ title: "Asking " + askingWhom + "...", subtitle: step.depth ? step.pick : title, score: 40, copy: "", remember: false }]
   // Nothing printed after a pick: the program has done its work.
   if (!v.rows.length && step.depth > 0) return [{ key: "filter:done", title: title + ": done", subtitle: step.pick, score: 40, copy: "", remember: false, nodi: "filterDone" }]
   var rows = named(f, v.rows, q).map(function(n, i) {
@@ -552,6 +553,7 @@ var provider = {
       return rows.length ? rows : [{ title: "Nothing from " + title, subtitle: hit.query ? "for " + hit.query : title, score: 40, copy: "", remember: false }]
     }
     if (got.state === "error") return [{ title: title + " could not answer", subtitle: String(got.error || ""), score: 40, copy: "", remember: false }]
-    return (f.list !== true && shown[f.keyword]) || [{ title: "Asking " + title + "...", subtitle: hit.query || title, score: 40, copy: "", remember: false }]
+    var askingWhom = String(title || "").replace(/^ask\s+/i, "") || title
+    return (f.list !== true && shown[f.keyword]) || [{ title: "Asking " + askingWhom + "...", subtitle: hit.query || title, score: 40, copy: "", remember: false }]
   }
 }

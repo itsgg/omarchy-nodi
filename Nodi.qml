@@ -1037,7 +1037,8 @@ Item {
       var qText = "ask " + askSpec.question
       input.text = qText
       input.cursorPosition = input.text.length
-      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom)
+      var extraEnv = askSpec.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
+      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, askSpec.message, extraEnv)
       if (ansSpec) {
         answerSession.start(ansSpec)
         return
@@ -1482,7 +1483,8 @@ Item {
       var qText = "ask " + row.ask.question
       input.text = qText
       input.cursorPosition = input.text.length
-      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom)
+      var extraEnv = row.ask.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
+      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, row.ask.message, extraEnv)
       if (ansSpec) {
         answerSession.start(ansSpec)
         return

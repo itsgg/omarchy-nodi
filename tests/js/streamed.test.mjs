@@ -29,6 +29,8 @@ test("Enter's run: the question as NODI_QUERY, last only when the answer says so
   assert.deepEqual([handed.env.NODI_QUERY, handed.argv[handed.argv.length - 1], handed.message],
                    ["Earlier context\n\nwhy", "Earlier context\n\nwhy", "Earlier context\n\nwhy"],
                    "a handoff keeps its displayed question while both input forms receive its full context");
+  const withSelection = plain(A.spec("a why", [helper], window, "Explain this\n\ncode", { NODI_SELECTION: "code" }));
+  assert.equal(withSelection.env.NODI_SELECTION, "code", "extraEnv extends the answer run's environment");
   assert.deepEqual([s.keyword, s.title, s.question, s.timeoutMs], ["a", "Assistant", "why is it slow", 120000]);
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 9e9 })]).timeoutMs, 600000, "ten minutes at most");
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 10 })]).timeoutMs, 1000);
