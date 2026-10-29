@@ -173,13 +173,6 @@ Programs of yours that turn what you type after a keyword into rows, set in nodi
 
 - `?filters`: Each one's keyword is in nodi.json under filters
 
-### Ask
-
-A quick answer from your coding agent; Enter pastes it, Ctrl+Enter copies it.
-
-- `ask `: Then a question, and Enter
-- `list open ports`: Tab, where there is nothing to fill in, asks it
-
 ### Answers
 
 Programs of yours that answer a question on Enter, streamed into the pane, set in nodi.json.
@@ -191,6 +184,13 @@ Programs of yours that answer a question on Enter, streamed into the pane, set i
 What an action of yours said would take it back, for ten minutes after it ran.
 
 - `undo`: Every undo still on offer
+
+### Ask
+
+A quick answer from your coding agent; Enter pastes it, Ctrl+Enter copies it.
+
+- `ask `: Then a question, and Enter
+- `list open ports`: Tab, where there is nothing to fill in, asks it
 
 ### Selection
 

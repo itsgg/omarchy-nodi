@@ -1034,11 +1034,17 @@ Item {
     }
     if (a.nodi === "askWith" && (a.ask || row.ask)) {
       var askSpec = a.ask || row.ask
+      var qText = "ask " + askSpec.question
+      input.text = qText
+      input.cursorPosition = input.text.length
+      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom)
+      if (ansSpec) {
+        answerSession.start(ansSpec)
+        return
+      }
       if (askSession.busy() || windowShot.active) return
       root.askRows = ({ turn: "", rows: ({}) })
       root.startAsk("", askSpec.question, askSpec.message, askSpec.context, undefined, askSpec.purpose)
-      input.text = "ask " + askSpec.question
-      input.cursorPosition = input.text.length
       return
     }
     if (a.nodi === "complete") {
@@ -1471,13 +1477,19 @@ Item {
         askSession.send(String(resultAction.prompt))
       }
     } else if (row.nodi === "askWith" && row.ask) {
-      // Claude on a text (the selection, a translation): asked as Ask asks,
-      // the field showing the question, so the answer and its paste are Ask's.
+      // If answers configures an answer provider for this query (e.g. Arivu), route to it;
+      // otherwise ask the coding agent.
+      var qText = "ask " + row.ask.question
+      input.text = qText
+      input.cursorPosition = input.text.length
+      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom)
+      if (ansSpec) {
+        answerSession.start(ansSpec)
+        return
+      }
       if (askSession.busy() || windowShot.active) return
       root.askRows = ({ turn: "", rows: ({}) })
       root.startAsk("", row.ask.question, row.ask.message, row.ask.context, undefined, row.ask.purpose)
-      input.text = "ask " + row.ask.question
-      input.cursorPosition = input.text.length
     } else if (row.nodi === "askNew") {
       if (askSession.busy()) return
       askSession.recycle()
@@ -1507,6 +1519,11 @@ Item {
       input.text = "ask " + row.ask.question
       input.cursorPosition = input.text.length
     } else if (row.nodi === "ask") {
+      var ansSpecNow = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom)
+      if (ansSpecNow) {
+        answerSession.start(ansSpecNow)
+        return
+      }
       var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
       // Not while a window's picture is taken for this question (askWindow).
       if (q && !askSession.busy() && !windowShot.active) {
