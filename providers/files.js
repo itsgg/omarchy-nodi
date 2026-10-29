@@ -5,6 +5,7 @@
 .import "../lib/Sources.js" as Sources
 .import "../lib/Score.js" as Score
 .import "../lib/Ansi.js" as Ansi
+.import "../lib/PromptContext.js" as PromptContext
 
 // Files: the ones you opened recently, and any directory by its path.
 //
@@ -276,7 +277,7 @@ function fileRow(path, name, isDir, score, home) {
     actions: [{ label: "Copy the path", icon: "󰆏", run: Run.copy(path) }]
   }
   if (!isDir) {
-    var fileMention = path.indexOf(" ") !== -1 ? '@f:"' + path + '"' : "@f:" + path
+    var fileMention = PromptContext.formatFileMention ? PromptContext.formatFileMention(path) : (path.indexOf(" ") !== -1 ? '@f:"' + path + '"' : "@f:" + path)
     row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
     row.actions.push({
       label: "Ask about this file",
@@ -285,6 +286,7 @@ function fileRow(path, name, isDir, score, home) {
       ask: {
         question: "Explain " + name,
         message: "Explain what this file does and summarize its key parts:\n" + fileMention,
+        file: path,
         context: "file",
         purpose: "ask"
       }

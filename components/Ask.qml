@@ -21,8 +21,6 @@ Item {
   id: ask
   visible: false
 
-  FileView { id: askFileReader; blockLoading: true; blockAllReads: true; printErrors: false }
-
   // The agent, by Omarchy's name for it or as nodi.json gives his own
   // (lib/Agents.js), and the model asked of it ("" is the agent's own
   // choice, haiku for Claude).
@@ -414,27 +412,7 @@ Item {
     if (!p || ask.stage !== "ready") return
     ask.pending = null
     var image = p.image && ask.caps.image ? p.image : null
-    var snap = p.snapshot || {}
-    var fileMatches = String(p.text).match(/@(?:file|f):(?:"[^"]+"|\'[^\']+\'|[^\s\n"']+)/g)
-    if (fileMatches && fileMatches.length > 0) {
-      if (!snap.files) snap.files = {}
-      for (var fi = 0; fi < fileMatches.length; fi++) {
-        var mPath = fileMatches[fi].replace(/^@(?:file|f):/, "").replace(/^["']|["']$/g, "")
-        var fullPath = mPath
-        if (fullPath.charAt(0) === "~") {
-          var homeDir = Quickshell.env("HOME") || ""
-          fullPath = homeDir ? fullPath.replace(/^~(?=\/|$)/, homeDir) : fullPath
-        }
-        if (fullPath.charAt(0) === "/" && !/^\/(?:dev|proc|sys)\//.test(fullPath)) {
-          askFileReader.path = fullPath
-          var fContent = String(askFileReader.text() || "")
-          askFileReader.path = ""
-          if (fContent) snap.files[mPath] = fContent
-        }
-      }
-    }
-    var expanded = PromptContext.expandMentions ? PromptContext.expandMentions(p.text, snap) : p.text
-    var text = expanded + (p.image && !image ? "\n\n(The picture could not be sent: " + ask.agentName + " takes none.)" : "")
+    var text = p.text + (p.image && !image ? "\n\n(The picture could not be sent: " + ask.agentName + " takes none.)" : "")
     ask.calls = Object.create(null)
     ask.actionTurn = ask.newToken()
     ask.interactionState = AskInteraction.bind(

@@ -202,7 +202,7 @@ test("Ctrl+K retains nodi action metadata like ask and data payloads", () => {
         label: "Ask about this file",
         icon: "󰚩",
         nodi: "askWith",
-        ask: { question: "Explain test.txt", message: "Explain test.txt:\n@f:/test.txt", context: "file", purpose: "ask" }
+        ask: { question: "Explain test.txt", message: "Explain test.txt:\n@f:/test.txt", file: "/test.txt", context: "file", purpose: "ask" }
       },
       {
         label: "Ask question about file...",
@@ -219,6 +219,7 @@ test("Ctrl+K retains nodi action metadata like ask and data payloads", () => {
   assert.deepEqual(plain(askAct.ask), {
     question: "Explain test.txt",
     message: "Explain test.txt:\n@f:/test.txt",
+    file: "/test.txt",
     context: "file",
     purpose: "ask"
   });

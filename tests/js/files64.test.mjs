@@ -179,6 +179,7 @@ test("a file row offers Open the folder, Ask about this file, Move to trash, and
   const askAction = row.actions.find(a => a.label === "Ask about this file");
   assert.equal(askAction.nodi, "askWith");
   assert.equal(askAction.ask.context, "file");
+  assert.equal(askAction.ask.file, "/home/u/Work/notes.txt");
   assert.equal(askAction.ask.question, "Explain notes.txt");
   assert.ok(askAction.ask.message.includes("@f:/home/u/Work/notes.txt"));
 
@@ -191,6 +192,7 @@ test("a file row offers Open the folder, Ask about this file, Move to trash, and
   assert.ok(paletteAsk, "palette includes Ask about this file");
   assert.equal(paletteAsk.nodi, "askWith");
   assert.equal(paletteAsk.ask.context, "file");
+  assert.equal(paletteAsk.ask.file, "/home/u/Work/notes.txt");
   assert.equal(paletteAsk.ask.question, "Explain notes.txt");
   assert.ok(paletteAsk.ask.message.includes("@f:/home/u/Work/notes.txt"));
 });

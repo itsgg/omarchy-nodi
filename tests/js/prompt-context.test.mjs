@@ -187,4 +187,63 @@ test("expandMentions expands @window, @cb, and @selection with structured contex
     P.expandMentions("@window and @cb", {}),
     "[Active Window: none] and [Clipboard: empty]"
   );
+  assert.equal(
+    P.expandMentions("contact dev@s.example.com and user@c.org please", { primarySelection: "SEC", clipboard: "CLIP" }),
+    "contact dev@s.example.com and user@c.org please"
+  );
+  assert.equal(
+    P.expandMentions("see @windowManager and @selectionExtra", snap),
+    "see @windowManager and @selectionExtra"
+  );
+  assert.equal(
+    P.expandMentions("explain @c", { clipboard: "price is $& and $1 for product" }),
+    'explain [Clipboard: "price is $& and $1 for product"]'
+  );
+  assert.equal(
+    P.expandMentions("explain @c", { clipboard: "contains @s and @w mentions", primarySelection: "SEC" }),
+    'explain [Clipboard: "contains @s and @w mentions"]'
+  );
+});
+
+test("formatFileMention and parseFileMentions handle spaces, quotes, and apostrophes", () => {
+  const oReilly = "/home/u/Work/O'Reilly Guide.txt";
+  const draft = '/home/u/Work/a "draft".txt';
+  const simple = "/home/u/Work/notes.txt";
+  const paren = "/tmp/a)b.txt";
+  const semi = "/tmp/a;b.txt";
+
+  const m1 = P.formatFileMention(oReilly);
+  const m2 = P.formatFileMention(draft);
+  const m3 = P.formatFileMention(simple);
+  const m4 = P.formatFileMention(paren);
+  const m5 = P.formatFileMention(semi);
+
+  assert.equal(m1, '@f:"/home/u/Work/O\'Reilly Guide.txt"');
+  assert.equal(m2, "@f:'/home/u/Work/a \"draft\".txt'");
+  assert.equal(m3, "@f:/home/u/Work/notes.txt");
+  assert.equal(m4, '@f:"/tmp/a)b.txt"');
+  assert.equal(m5, '@f:"/tmp/a;b.txt"');
+
+  const parsed = P.parseFileMentions(`check ${m1} and ${m2} and ${m3} and ${m4} and ${m5}`);
+  assert.deepEqual(plain(parsed), [
+    { token: "f", rawPath: oReilly },
+    { token: "f", rawPath: draft },
+    { token: "f", rawPath: simple },
+    { token: "f", rawPath: paren },
+    { token: "f", rawPath: semi }
+  ]);
+});
+
+test("expandMentions expands multiple file attachments in a single prompt", () => {
+  const snap = {
+    files: {
+      "/tmp/a.txt": "first file content",
+      "/tmp/b.txt": "second file content"
+    }
+  };
+  const expanded = P.expandMentions("compare @f:/tmp/a.txt with @f:/tmp/b.txt please", snap);
+  assert.equal(
+    expanded,
+    'compare [File "/tmp/a.txt":\nfirst file content\n] with [File "/tmp/b.txt":\nsecond file content\n] please'
+  );
 });

@@ -37,6 +37,7 @@ import "lib/Ansi.js" as Ansi
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
 import "lib/HomeSources.js" as HomeParser
+import "lib/PromptContext.js" as PromptContext
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -556,6 +557,8 @@ Item {
     root.aliasRow = null
     root.endWord()
     root.endCapture()
+    root.pendingFileAsk = null
+    if (askFileReader.active) askFileReader.cancel()
     // Claude's conversation goes on (ROADMAP 43), so a kept question sent
     // with its text is asked again with it; a run it waits on is refused.
     askSession.hidden()
@@ -1034,18 +1037,8 @@ Item {
     }
     if (a.nodi === "askWith" && (a.ask || row.ask)) {
       var askSpec = a.ask || row.ask
-      var qText = "ask " + askSpec.question
-      input.text = qText
-      input.cursorPosition = input.text.length
       var extraEnv = askSpec.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
-      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, askSpec.message, extraEnv)
-      if (ansSpec) {
-        answerSession.start(ansSpec)
-        return
-      }
-      if (askSession.busy() || windowShot.active) return
-      root.askRows = ({ turn: "", rows: ({}) })
-      root.startAsk("", askSpec.question, askSpec.message, askSpec.context, undefined, askSpec.purpose)
+      root.dispatchAsk(askSpec.question, askSpec.message, askSpec.context, askSpec.purpose, extraEnv, undefined, askSpec.file)
       return
     }
     if (a.nodi === "complete") {
@@ -1475,23 +1468,11 @@ Item {
       } else if (resultAction.prompt !== undefined) {
         input.text = "ask " + String(resultAction.prompt)
         input.cursorPosition = input.text.length
-        askSession.send(String(resultAction.prompt))
+        root.dispatchAsk(String(resultAction.prompt), String(resultAction.prompt), "", "ask")
       }
     } else if (row.nodi === "askWith" && row.ask) {
-      // If answers configures an answer provider for this query (e.g. Arivu), route to it;
-      // otherwise ask the coding agent.
-      var qText = "ask " + row.ask.question
-      input.text = qText
-      input.cursorPosition = input.text.length
       var extraEnv = row.ask.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
-      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, row.ask.message, extraEnv)
-      if (ansSpec) {
-        answerSession.start(ansSpec)
-        return
-      }
-      if (askSession.busy() || windowShot.active) return
-      root.askRows = ({ turn: "", rows: ({}) })
-      root.startAsk("", row.ask.question, row.ask.message, row.ask.context, undefined, row.ask.purpose)
+      root.dispatchAsk(row.ask.question, row.ask.message, row.ask.context, row.ask.purpose, extraEnv, undefined, row.ask.file)
     } else if (row.nodi === "askNew") {
       if (askSession.busy()) return
       askSession.recycle()
@@ -1521,20 +1502,13 @@ Item {
       input.text = "ask " + row.ask.question
       input.cursorPosition = input.text.length
     } else if (row.nodi === "ask") {
-      var ansSpecNow = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom)
-      if (ansSpecNow) {
-        answerSession.start(ansSpecNow)
-        return
-      }
       var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
-      // Not while a window's picture is taken for this question (askWindow).
       if (q && !askSession.busy() && !windowShot.active) {
-        root.askRows = ({ turn: "", rows: ({}) })
-        root.startAsk("", q)
+        root.dispatchAsk(q, q, "", "ask")
       }
     } else if (row.nodi === "askAs" && row.data) {
       if (!askSession.busy() && !windowShot.active)
-        root.startAsk(row.data.id, row.data.question)
+        root.dispatchAsk(row.data.question, row.data.question, "", "ask", undefined, undefined, undefined, row.data.id)
     } else if (row.nodi === "runWord" && root.wordAsk) {
       if (root.queryNow().trim() !== root.wordAsk.word) return
       var w = root.wordAsk
@@ -1555,7 +1529,14 @@ Item {
     } else if (row.nodi === "answer" || row.nodi === "answerFresh") {
       var retryMessage = Answers.retryMessage(root.queryNow(), root.config.answers, answerSession)
       var spec = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom, retryMessage)
-      if (spec) { spec.fresh = row.nodi === "answerFresh"; answerSession.start(spec) }
+      if (spec) {
+        if (spec.keyword === "ask" || (PromptContext.hasMentions && PromptContext.hasMentions(spec.question))) {
+          root.dispatchAsk(spec.question, retryMessage || spec.question, "", "ask", undefined, undefined, undefined, undefined, row.nodi === "answerFresh", root.queryNow())
+          return
+        }
+        spec.fresh = row.nodi === "answerFresh"
+        answerSession.start(spec)
+      }
     } else if (row.nodi === "askFallback" && row.data) {
       // The failed question, asked of the answer "fallback" names: the field
       // on its keyword, so its rows and its pane are that answer's.
@@ -2265,6 +2246,70 @@ Item {
     return { snapshot: root.askContext(message, context, purpose), address: String(root.cameFrom.address || "") }
   }
 
+  property var pendingFileAsk: null
+
+  // Dispatches an ask query after expanding context (window, clipboard, selection, and files)
+  // so that configured answer providers (e.g. Arivu) and ACP agents receive the exact same
+  // fully resolved question and context.
+  function dispatchAsk(question, rawMessage, context, purpose, extraEnv, image, filePath, agentId, answerFresh, commandQuery) {
+    root.pendingFileAsk = null
+    if (askFileReader.active) askFileReader.cancel()
+    var qText = commandQuery || ("ask " + question)
+    if (input.text !== qText) {
+      input.text = qText
+      input.cursorPosition = input.text.length
+    }
+    var snap = root.askCapture(rawMessage || question, context, purpose).snapshot
+    var env = extraEnv || (context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {})
+
+    var fileMentions = PromptContext.parseFileMentions ? PromptContext.parseFileMentions(rawMessage || question) : []
+    var targetFiles = []
+    if (filePath) targetFiles.push(filePath)
+    for (var fi = 0; fi < fileMentions.length; fi++) {
+      var fp = fileMentions[fi].rawPath
+      if (targetFiles.indexOf(fp) === -1) targetFiles.push(fp)
+    }
+
+    var resolvedFiles = []
+    for (var i = 0; i < targetFiles.length; i++) {
+      var p = targetFiles[i]
+      if (p.charAt(0) === "~") {
+        var home = Quickshell.env("HOME") || ""
+        p = home ? p.replace(/^~(?=\/|$)/, home) : p
+      }
+      if (p.charAt(0) === "/" && resolvedFiles.indexOf(p) === -1) resolvedFiles.push(p)
+    }
+
+    if (resolvedFiles.length > 0) {
+      var token = Math.random()
+      root.pendingFileAsk = {
+        question: question, rawMessage: rawMessage, context: context,
+        purpose: purpose, extraEnv: env, image: image, targetFiles: resolvedFiles,
+        agentId: agentId, snapshot: snap, token: token,
+        answerFresh: !!answerFresh, commandQuery: commandQuery
+      }
+      var pythonScript = 'import sys, os, stat\nfor p in sys.argv[1:]:\n    try:\n        fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK)\n        try:\n            st = os.fstat(fd)\n            if stat.S_ISREG(st.st_mode):\n                data = os.read(fd, 16384).decode("utf-8", errors="replace")\n                print("---NODI_FILE---")\n                print(p)\n                print(data)\n        finally:\n            os.close(fd)\n    except Exception:\n        pass'
+      askFileReader.run(["/usr/bin/python3", "-c", pythonScript].concat(resolvedFiles), root.pendingFileAsk)
+      return
+    }
+
+    root.finishDispatchAsk(question, rawMessage, context, purpose, env, image, snap, agentId, answerFresh, commandQuery)
+  }
+
+  function finishDispatchAsk(question, rawMessage, context, purpose, extraEnv, image, snapshot, agentId, answerFresh, commandQuery) {
+    var qText = commandQuery || ("ask " + question)
+    var expanded = PromptContext.expandMentions ? PromptContext.expandMentions(rawMessage || question, snapshot) : (rawMessage || question)
+    var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
+    if (ansSpec) {
+      if (answerFresh) ansSpec.fresh = true
+      answerSession.start(ansSpec)
+      return
+    }
+    if (askSession.busy() || windowShot.active) return
+    root.askRows = ({ turn: "", rows: ({}) })
+    root.startAsk(agentId || "", question, expanded, context, image, purpose, { snapshot: snapshot, address: String(root.cameFrom.address || "") })
+  }
+
   // `captured` (askCapture) is the context of an Ask chosen earlier.
   function startAsk(id, question, message, context, image, purpose, captured) {
     if (root.pendingAsk || askSession.busy() || windowShot.active) return false
@@ -2496,6 +2541,35 @@ Item {
       var message = data ? a.message : a.question + "\n\n(The window could not be captured.)"
       var context = data ? a.context : ""
       Qt.callLater(function() { root.startAsk("", a.question, message, context, image, a.purpose, a.captured) })
+    }
+  }
+
+  Reader {
+    id: askFileReader
+    timeoutMs: 1000
+    maxBytes: 65536
+    cancelable: true
+    onFinished: function(text, ok, tag) {
+      if (!tag || !root.pendingFileAsk || root.pendingFileAsk.token !== tag.token) return
+      var pending = root.pendingFileAsk
+      root.pendingFileAsk = null
+      if (ok && text) {
+        pending.snapshot.files = pending.snapshot.files || {}
+        var parts = text.split("---NODI_FILE---\n")
+        for (var pi = 1; pi < parts.length; pi++) {
+          var nl = parts[pi].indexOf("\n")
+          if (nl !== -1) {
+            var fPath = parts[pi].slice(0, nl)
+            var fData = parts[pi].slice(nl + 1)
+            pending.snapshot.files[fPath] = fData
+          }
+        }
+      }
+      root.finishDispatchAsk(
+        pending.question, pending.rawMessage, pending.context,
+        pending.purpose, pending.extraEnv, pending.image, pending.snapshot, pending.agentId,
+        pending.answerFresh, pending.commandQuery
+      )
     }
   }
 

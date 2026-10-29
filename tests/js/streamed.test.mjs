@@ -31,6 +31,15 @@ test("Enter's run: the question as NODI_QUERY, last only when the answer says so
                    "a handoff keeps its displayed question while both input forms receive its full context");
   const withSelection = plain(A.spec("a why", [helper], window, "Explain this\n\ncode", { NODI_SELECTION: "code" }));
   assert.equal(withSelection.env.NODI_SELECTION, "code", "extraEnv extends the answer run's environment");
+
+  const P = load("lib/PromptContext.js");
+  const expandedPrompt = P.expandMentions("explain @w and @s", {
+    window: { title: "vim", class: "foot", cwd: "/tmp" },
+    primarySelection: "const x = 1;"
+  });
+  const expandedSpec = plain(A.spec("a why", [Object.assign({}, helper, { argument: true })], window, expandedPrompt));
+  assert.equal(expandedSpec.env.NODI_QUERY, 'explain [Active Window: "vim" (foot) in /tmp] and [Selection: "const x = 1;"]');
+  assert.equal(expandedSpec.argv[expandedSpec.argv.length - 1], 'explain [Active Window: "vim" (foot) in /tmp] and [Selection: "const x = 1;"]');
   assert.deepEqual([s.keyword, s.title, s.question, s.timeoutMs], ["a", "Assistant", "why is it slow", 120000]);
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 9e9 })]).timeoutMs, 600000, "ten minutes at most");
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 10 })]).timeoutMs, 1000);
