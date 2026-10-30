@@ -7,6 +7,7 @@ ship with Omarchy. No source bytes or metadata are passed to Qt.
 
 import base64
 import configparser
+import hashlib
 import os
 import re
 import resource
@@ -156,6 +157,38 @@ def raster(data, edge):
                pixbuf.get_rowstride(), pixbuf.get_pixels())
 
 
+def cache_entry(data, edge):
+    cache_base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    key = hashlib.sha256(struct.pack(">I", edge) + data).hexdigest()[:32]
+    return os.path.join(cache_base, "nodi", "icons", key + ".png")
+
+
+def get_cached(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        with os.fdopen(fd, "rb") as stream:
+            cached = stream.read()
+            if (len(cached) >= 12 and
+                    cached.startswith(b"\x89PNG\r\n\x1a\n") and
+                    cached.endswith(b"IEND\xaeB`\x82")):
+                return cached
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def put_cached(path, png_bytes):
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        tmp = f"{path}.tmp.{os.getpid()}"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(png_bytes)
+        os.replace(tmp, path)
+    except (OSError, ValueError):
+        pass
+
+
 def main():
     edge = int(sys.argv[1]) if len(sys.argv) == 2 else 128
     if edge not in (128, EDGE_MAX):
@@ -163,7 +196,17 @@ def main():
     limits(edge)
     os.umask(0o077)
     path = icon_path(os.environ.pop("NODI_IMAGE", ""))
-    encoded = base64.b64encode(raster(read_image(path), edge)).decode("ascii")
+    data = read_image(path)
+    cpath = cache_entry(data, edge) if edge == 128 else None
+    if cpath:
+        cached = get_cached(cpath)
+        if cached:
+            print("data:image/png;base64," + base64.b64encode(cached).decode("ascii"))
+            return
+    out = raster(data, edge)
+    if cpath:
+        put_cached(cpath, out)
+    encoded = base64.b64encode(out).decode("ascii")
     print("data:image/png;base64," + encoded)
 
 

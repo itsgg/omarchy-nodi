@@ -109,6 +109,19 @@ test("SVG previews scale and cannot include a neighbouring image", () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("disk icon cache preserves bounded PNG output across runs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-icon-cache-"));
+  try {
+    const icon = join(dir, "app.png");
+    writeFileSync(icon, png());
+    const first = decoded(run(icon, 128));
+    const second = decoded(run(icon, 128));
+    assert.deepEqual(first.pixels, second.pixels);
+    assert.equal(first.width, second.width);
+    assert.equal(first.height, second.height);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("image queue deduplicates, caps work and never returns original URLs on failure", () => {
   const s = I.create();
   for (let n = 0; n < 200; n++) I.get(s, I.key("/image-" + n + ".png", false), 0);
