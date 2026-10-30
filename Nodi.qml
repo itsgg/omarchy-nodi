@@ -2266,7 +2266,10 @@ Item {
     var snap = root.askCapture(rawMessage || question, context, purpose).snapshot
     var env = extraEnv || (context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {})
 
-    var fileMentions = PromptContext.parseFileMentions ? PromptContext.parseFileMentions(rawMessage || question) : []
+    // Security: Only parse @f: file mentions from user-typed input (question),
+    // never from untrusted desktop selection or clipboard context in rawMessage.
+    var mentionSource = (context === "selection") ? (question || "") : (rawMessage || question)
+    var fileMentions = PromptContext.parseFileMentions ? PromptContext.parseFileMentions(mentionSource) : []
     var targetFiles = []
     if (filePath) targetFiles.push(filePath)
     for (var fi = 0; fi < fileMentions.length; fi++) {
