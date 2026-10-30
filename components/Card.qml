@@ -572,6 +572,36 @@ BorderSurface {
           delegate: ResultRow { nodi: card.nodi }
         }
 
+        // Gliding selection pill indicator
+        Rectangle {
+          id: selectionPill
+          visible: list.count > 0 && list.currentItem !== null && !nodi.reducedMotion && nodi.selectionBar
+          z: 2
+          width: nodi.barWidth
+          radius: width / 2
+          color: nodi.link
+          x: Style.spacing.xs + nodi.rowInsetLeft
+
+          readonly property real targetY: list.currentItem
+            ? (list.currentItem.y - list.contentY + (list.currentItem.section !== "" ? nodi.sectionHeight : 0) + (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) / 2 - height / 2)
+            : 0
+          readonly property real targetHeight: list.currentItem
+            ? Math.max(nodi.barWidth * 3, (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) - nodi.barInset * 2)
+            : 0
+
+          y: targetY
+          height: targetHeight
+
+          Behavior on y {
+            enabled: card.animated && !nodi.reducedMotion
+            NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+          }
+          Behavior on height {
+            enabled: card.animated && !nodi.reducedMotion
+            NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+          }
+        }
+
         // Rows hidden above or below fade the edge, as Omarchy's menu does
         // (Menu.qml): by how far the list is scrolled, not on a clock.
         Rectangle {
