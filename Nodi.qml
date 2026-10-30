@@ -332,8 +332,9 @@ Item {
   }
 
   function startReads() {
-    // The card is on screen by now: its size changes animate from here on.
-    card.animated = true
+    // The card is on screen by now: its size changes animate from here on,
+    // unless it is still held unseen, when it shows whole.
+    card.animated = !root.contentHeld
     if (!root.readsPending) return
     root.readsPending = false
     readsAfterFrame.stop()
@@ -682,8 +683,8 @@ Item {
   Connections {
     target: card.Window.window
     ignoreUnknownSignals: true
-    // The first frame that shows the card.
-    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1) Opens.stamp(root.openRec, "frame", Date.now()) }
+    // The first frame that shows the card: one held is not seen (contentHeld).
+    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1 && !root.contentHeld) Opens.stamp(root.openRec, "frame", Date.now()) }
   }
 
   // Hyprland maps the layer: what the compositor shows.
@@ -3350,12 +3351,14 @@ Item {
       nodi: root
       x: look.cardX
       y: look.cardTop
-      opacity: root.entered || root.reducedMotion ? 1.0 : 0.0
+      // Unseen until the empty bar's rows are whole so the card fades in whole
+      // without popping from text-bar to expanded overlay.
+      opacity: (!root.contentHeld && (root.entered || root.reducedMotion)) ? 1.0 : 0.0
       scale: root.entered || root.reducedMotion ? 1.0 : 0.96
       transformOrigin: Item.Center
 
       Behavior on opacity {
-        enabled: !root.reducedMotion
+        enabled: !root.reducedMotion && !root.contentHeld
         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
       }
       Behavior on scale {
