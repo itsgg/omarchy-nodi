@@ -604,6 +604,11 @@ BorderSurface {
       PreviewPane {
         id: pane
         visible: !!nodi.preview
+        opacity: visible ? 1 : 0
+        Behavior on opacity {
+          enabled: !nodi.reducedMotion
+          NumberAnimation { duration: 100; easing.type: Easing.OutCubic }
+        }
         nodi: card.nodi
         preview: nodi.preview
         readonly property bool sideBySide: !!nodi.preview && nodi.twoColumn

@@ -203,12 +203,16 @@ Item {
 
   // ---------------------------------------------------------------- lifecycle
 
+  property bool entered: false
+
   // payloadJson may carry a starting query: '{"query": ":"}' opens emoji search.
   function open(payloadJson) {
     // This open's times (lib/Opens.js), from its start: an open while the
     // bar is up is not one, and leaves the record as it was.
     var starting = !root.opened
     if (starting) {
+      root.entered = false
+      Qt.callLater(function() { root.entered = true })
       root.wideForOpen = false
       root.openRec = Opens.start(Date.now(), root.openBy || "call", false)
     }
@@ -328,10 +332,8 @@ Item {
   }
 
   function startReads() {
-    // The card is on screen by now: its size changes animate from here on,
-    // unless it is still held unseen, when it shows at its size (Cursor
-    // 2026-10-07: the reveal grew in 90 ms).
-    card.animated = !root.contentHeld
+    // The card is on screen by now: its size changes animate from here on.
+    card.animated = true
     if (!root.readsPending) return
     root.readsPending = false
     readsAfterFrame.stop()
@@ -543,6 +545,7 @@ Item {
 
   function close() {
     root.closedAt = Date.now()
+    root.entered = false
     card.animated = false
     root.keepOpenTime()
     // A pick closed without a choice: its command hears that nothing was.
@@ -679,8 +682,8 @@ Item {
   Connections {
     target: card.Window.window
     ignoreUnknownSignals: true
-    // The first frame that shows the card: one held is not seen (contentHeld).
-    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1 && !root.contentHeld) Opens.stamp(root.openRec, "frame", Date.now()) }
+    // The first frame that shows the card.
+    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1) Opens.stamp(root.openRec, "frame", Date.now()) }
   }
 
   // Hyprland maps the layer: what the compositor shows.
@@ -3330,7 +3333,15 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
-    Rectangle { anchors.fill: parent; color: root.scrim }
+    Rectangle {
+      anchors.fill: parent
+      color: root.scrim
+      opacity: root.entered || root.reducedMotion ? 1.0 : 0.0
+      Behavior on opacity {
+        enabled: !root.reducedMotion
+        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+      }
+    }
 
     MouseArea { anchors.fill: parent; onClicked: root.dismiss() }
 
@@ -3339,13 +3350,18 @@ Item {
       nodi: root
       x: look.cardX
       y: look.cardTop
-      // Unseen until the empty bar's rows are whole: the GUI thread draws
-      // the first frame before it reads the selection's answer, so a card
-      // shown at once showed without the rows that then pushed the list
-      // down (measured 2026-10-07: the read in at 75 ms, the frame at 74).
-      // Shown a frame later, whole. Opacity, not visibility: the field
-      // takes the keys meanwhile.
-      opacity: root.contentHeld ? 0 : 1
+      opacity: root.entered || root.reducedMotion ? 1.0 : 0.0
+      scale: root.entered || root.reducedMotion ? 1.0 : 0.96
+      transformOrigin: Item.Center
+
+      Behavior on opacity {
+        enabled: !root.reducedMotion
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+      }
+      Behavior on scale {
+        enabled: !root.reducedMotion
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+      }
     }
   }
 }
