@@ -26,10 +26,17 @@ Item {
     return result
   }
 
-  function invalidate() {
+  // Every drop re-decodes each warm app icon, so each one says why in the
+  // shell's log.
+  function invalidate(reason) {
+    console.info("nodi: icon rasters dropped: " + (reason || "unknown"))
     Images.invalidate(cacheState)
     revision++
     Qt.callLater(images.drain)
+  }
+
+  function catalog(apps) {
+    if (Images.catalogChanged(cacheState, apps)) invalidate("app catalog changed")
   }
 
   function drain() {

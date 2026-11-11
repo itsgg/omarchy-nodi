@@ -234,3 +234,15 @@ test("an old worker cannot repopulate the cache after an update", () => {
   assert.equal(I.finish(s, key, newValue, 3, newJob.generation), true);
   assert.equal(I.get(s, key, 4), newValue);
 });
+
+test("a rescan that returns the same app entries keeps every raster", () => {
+  const s = I.create(), key = I.key("firefox", false), value = "data:image/png;base64,iVBORw0KGgo=";
+  const apps = [{ id: "firefox.desktop", icon: "firefox", keywords: [] }, { id: "foot.desktop", icon: "foot", keywords: [] }];
+  assert.equal(I.catalogChanged(s, apps), true, "the first catalog is new");
+  I.finish(s, key, value, 0);
+  assert.equal(I.catalogChanged(s, apps.map(a => ({ ...a, keywords: [] }))), false, "equal entries rebuilt are not a change");
+  assert.equal(I.get(s, key, 1), value);
+  assert.equal(I.catalogChanged(s, apps.concat([{ id: "new.desktop", icon: "new", keywords: [] }])), true, "an added entry is");
+  assert.equal(I.catalogChanged(s, apps), true, "and so is its removal");
+  assert.equal(I.catalogChanged(s, [{ ...apps[0], icon: "firefox-nightly" }, apps[1]]), true, "and a changed icon name");
+});

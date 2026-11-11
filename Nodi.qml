@@ -2978,7 +2978,7 @@ Item {
   Timer {
     id: appsDebounce
     interval: 300
-    onTriggered: { root.rebuildApps(); images.invalidate() }
+    onTriggered: { root.rebuildApps(); images.catalog(root.apps) }
   }
 
   Connections {
@@ -2998,12 +2998,12 @@ Item {
     onLoaded: {
       var match = /^\s*gtk-icon-theme-name\s*=\s*(.*?)\s*$/m.exec(String(text()))
       var current = match ? match[1] : ""
-      if (initialized && current !== iconTheme) images.invalidate()
+      if (initialized && current !== iconTheme) images.invalidate("icon theme changed")
       iconTheme = current
       initialized = true
     }
     onLoadFailed: {
-      if (initialized && iconTheme !== "") images.invalidate()
+      if (initialized && iconTheme !== "") images.invalidate("icon theme unreadable")
       iconTheme = ""
       initialized = true
     }
