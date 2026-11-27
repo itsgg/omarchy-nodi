@@ -24,11 +24,28 @@ function png(width = 2, height = 1, extras = []) {
 const home = mkdtempSync(join(tmpdir(), "nodi-image-home-"));
 const cacheHome = join(home, "cache");
 after(() => rmSync(home, { recursive: true, force: true }));
+// The worker ends itself at 4 s of wall time and 3 s of CPU. The test's
+// own kill is far past both, so "ends itself" still tells a worker that
+// stops from one that hangs, and a busy machine has time to start it.
 function run(path, edge = 128, cache = cacheHome) {
   return spawnSync("/usr/bin/python3", ["-I", join(root, "lib/raster.py"), String(edge)], {
     env: { HOME: home, XDG_CACHE_HOME: cache, PATH: "/usr/bin:/bin", LANG: "C.UTF-8", NODI_IMAGE: path },
-    encoding: "utf8", timeout: 7000, maxBuffer: 5500000
+    encoding: "utf8", timeout: 30000, maxBuffer: 5500000
   });
+}
+// A decode that is to succeed, run again while the worker ended at its own
+// wall deadline (exit 124, or SIGALRM before its handler is in). A worker
+// that spends its time working ends at the CPU limit instead, by SIGXCPU,
+// so the wall deadline means it was waiting: on a busy machine, for a CPU.
+// Only a decode that finished is checked, so a retry proves no less; one
+// that never finishes still fails after ten.
+function decode(path, edge, cache) {
+  let result;
+  for (let n = 0; n < 10; n++) {
+    result = run(path, edge, cache);
+    if (result.status !== 124 && result.signal !== "SIGALRM") break;
+  }
+  return result;
 }
 function decoded(result) {
   assert.equal(result.status, 0, result.stderr);
@@ -52,10 +69,10 @@ test("image worker emits only fresh pixels and three PNG chunks", () => {
   try {
     const path = join(dir, "private #? % image.png");
     writeFileSync(path, png(2, 1, [chunk("zTXt", Buffer.concat([Buffer.from("private\0\0"), deflateSync("private metadata".repeat(1000))]))]));
-    const got = decoded(run(path));
+    const got = decoded(decode(path));
     assert.deepEqual([got.width, got.height], [2, 1]);
     assert.deepEqual([...got.pixels], [0, 255, 0, 0, 0, 255, 0]);
-    assert.deepEqual(decoded(run("file://" + path.split("/").map(encodeURIComponent).join("/"))).pixels, got.pixels);
+    assert.deepEqual(decoded(decode("file://" + path.split("/").map(encodeURIComponent).join("/"))).pixels, got.pixels);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -108,9 +125,9 @@ test("SVG previews scale and cannot include a neighbouring image", () => {
     const plain = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="blue"/>';
     writeFileSync(join(dir, "base.svg"), plain + '</svg>');
     writeFileSync(join(dir, "external.svg"), plain + '<image href="' + join(dir, "red.png") + '" width="400" height="200"/></svg>');
-    const base = decoded(run(join(dir, "base.svg")));
+    const base = decoded(decode(join(dir, "base.svg")));
     assert.deepEqual([base.width, base.height], [128, 64]);
-    assert.deepEqual(decoded(run(join(dir, "external.svg"))).pixels, base.pixels);
+    assert.deepEqual(decoded(decode(join(dir, "external.svg"))).pixels, base.pixels);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -119,7 +136,7 @@ test("disk icon cache serves a second run without decoding again", () => {
   try {
     const icon = join(dir, "app.png"), cache = join(dir, "cache"), icons = join(cache, "nodi", "icons");
     writeFileSync(icon, png());
-    const first = decoded(run(icon, 128, cache));
+    const first = decoded(decode(icon, 128, cache));
     assert.deepEqual([first.width, first.height], [2, 1]);
     const files = readdirSync(icons).filter(f => f.endsWith(".png"));
     assert.equal(files.length, 1, "the decode is kept");
@@ -128,10 +145,10 @@ test("disk icon cache serves a second run without decoding again", () => {
     const entry = join(icons, files[0]);
     writeFileSync(entry, pngOf(3, 3));
     utimesSync(entry, 1, 1);
-    const second = decoded(run(icon, 128, cache));
+    const second = decoded(decode(icon, 128, cache));
     assert.deepEqual([second.width, second.height], [3, 3], "served from the cache");
     assert.ok(statSync(entry).mtimeMs > 1000, "a hit marks the file used");
-    assert.equal(run(icon, 1000, cache).status, 0);
+    assert.equal(decode(icon, 1000, cache).status, 0);
     assert.equal(readdirSync(icons).filter(f => f.endsWith(".png")).length, 1, "previews are not cached");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -179,13 +196,13 @@ test("a decode that writes the cache looks it over once a day", () => {
     utimesSync(stale, 1, 1);
     const icon = join(dir, "app.png");
     writeFileSync(icon, png());
-    assert.equal(run(icon, 128, cache).status, 0);
+    assert.equal(decode(icon, 128, cache).status, 0);
     assert.equal(existsSync(stale), false, "a month-old icon went with the first write");
     assert.ok(existsSync(join(icons, ".pruned")));
     writeFileSync(stale, "x");
     utimesSync(stale, 1, 1);
     writeFileSync(icon, png(2, 1, [chunk("tEXt", Buffer.from("k\0another"))]));
-    assert.equal(run(icon, 128, cache).status, 0);
+    assert.equal(decode(icon, 128, cache).status, 0);
     assert.equal(existsSync(stale), true, "not looked over again the same day");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

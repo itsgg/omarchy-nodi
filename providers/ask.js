@@ -104,8 +104,9 @@ function fallbackMessage(a) {
 }
 
 // A failure that says the agent hit a limit: its plan's, a rate, its
-// credit. Claude says "usage limit reached", Codex "out of credits".
-var LIMITED = /\blimit\b|quota|rate.?limit|\b429\b|credit|too many requests|overloaded/i
+// credit. Claude says "usage limit reached" or "You've hit your 5-hour
+// limit", Codex "out of credits", Gemini's agents RESOURCE_EXHAUSTED.
+var LIMITED = /\blimit\b|quota|rate.?limit|\b429\b|credit|too many requests|overloaded|resource.?exhausted/i
 
 // The answer that "fallback" names (providers/answers.js), when one of
 // yours has that keyword: { keyword, title }, else null.
@@ -382,7 +383,8 @@ var provider = {
                       data: direct ? { id: direct.id, question: q } : null }]
       var agentFallback = fallbackAgentOf(ctx)
       if (agentFallback) failed.push({ key: "ask:agent-fallback", title: "Ask " + agentFallback.name + " instead: " + q,
-                                      subtitle: who + " could not answer; prepare it for " + agentFallback.name,
+                                      subtitle: (LIMITED.test(a.error) ? who + " hit a limit" : who + " could not answer")
+                                                + "; prepare it for " + agentFallback.name,
                                       icon: "󰚩", score: 100, copy: q, nodi: "askAgentFallback", actionLabel: "Prepare",
                                       remember: false, data: { id: agentFallback.id, question: q, message: fallbackMessage(a),
                                                                context: a.context === "window" ? "" : String(a.context || ""),

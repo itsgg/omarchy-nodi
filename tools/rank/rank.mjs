@@ -51,7 +51,12 @@ const svc = services({ apps: c.apps, history: {}, picks: {}, omarchyCommands: c.
                        // One emoji, so the picker's row is there with Omarchy's list or without it (CI).
                        emojis: [{ e: "🔥", k: "fire burn hot flame" }] });
 const rows = q => Engine.run(q, config, svc);
-const rankOf = (list, want) => { const i = list.findIndex(r => want.indexOf(r.key) !== -1); return i === -1 ? 0 : i + 1; };
+// A menu row is named by Menu.key: Omarchy 4.5 split toggles into -on and
+// -off rows and moved others under appearance., so the corpus's older ids
+// answer for this machine's menu as the bar's own lookups do.
+const Menu = load("lib/Menu.js");
+const same = k => k.startsWith("menu:") ? "menu:" + Menu.key(k.slice(5)) : k;
+const rankOf = (list, want) => { const w = want.map(same); const i = list.findIndex(r => w.indexOf(same(r.key)) !== -1); return i === -1 ? 0 : i + 1; };
 // An app's open window answers for the app: the bar puts it first, so
 // Enter goes to the window instead of starting another.
 function answers(key) {

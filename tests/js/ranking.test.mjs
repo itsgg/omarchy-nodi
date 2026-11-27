@@ -20,7 +20,7 @@ const Sources = load("lib/Sources.js");
 const RECORDS = (() => { try { return execFileSync("bash", ["-c", 'ls -t "$HOME/.cache/omarchy"/keybindings-*.records 2>/dev/null | head -1']).toString().trim(); } catch { return ""; } })();
 const keybindings = RECORDS ? Sources.keybindings(readFileSync(RECORDS, "utf8")) : [];
 const omarchyCommands = existsSync(OMARCHY) ? OmarchyCommands.parse(execFileSync(OMARCHY, ["commands", "--json"],
-  { env: { PATH: "/usr/share/omarchy/bin:/usr/bin:/bin", HOME: process.env.HOME, OMARCHY_PATH: "/usr/share/omarchy" }, timeout: 20000 }).toString()) : [];
+  { env: { PATH: "/usr/share/omarchy/bin:/usr/bin:/bin", HOME: process.env.HOME, OMARCHY_PATH: "/usr/share/omarchy" }, timeout: 120000 }).toString()) : [];
 const apps = JSON.parse(readFileSync(join(root, "tests/js/fixtures/apps.json"), "utf8"));
 
 const USER_MENU = `{

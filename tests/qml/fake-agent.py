@@ -31,10 +31,12 @@
 #   say a lot                  streams 100-byte chunks until it is told
 #                              session/cancel (at most 200), then ends the
 #                              turn cancelled, as an agent does
+#   echo the message ...       answers "got: " and the text it was sent
 # argv[1] names the session's agent ("claude", with _meta; "plain"
 # without); argv[2], "auth", makes session/new ask for a sign-in,
-# "authhang" one that never finishes, and "installing" says on stderr that
-# an adapter is installing, as the launch script does.
+# "authhang" one that never finishes, "installing" says on stderr that
+# an adapter is installing, as the launch script does, and "limited" fails
+# every prompt as claude-agent-acp does at a plan's usage limit.
 import json, os, subprocess, sys, time
 
 KIND = sys.argv[1] if len(sys.argv) > 1 else "claude"
@@ -204,6 +206,14 @@ while True:
     def end(text=None):
         answer(text if text is not None else ("ok" if not bad else "fail: " + "; ".join(bad)), SID)
         send({"jsonrpc": "2.0", "id": pid, "result": {"stopReason": "end_turn"}})
+
+    if MODE == "limited":
+        send({"jsonrpc": "2.0", "id": pid, "error": {"code": -32603, "message": "Internal error: You've hit your 5-hour limit, resets 3pm"}})
+        continue
+
+    if question.startswith("echo the message"):
+        end("got: " + question)
+        continue
 
     if question == "wait before words":
         time.sleep(1)

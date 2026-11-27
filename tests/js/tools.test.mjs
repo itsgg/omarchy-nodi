@@ -17,7 +17,12 @@ test("Quickshell tests stay off the live desktop", () => {
   assert.match(script, /Xvfb -displayfd/);
   assert.match(script, /QT_QPA_PLATFORM=xcb/);
   assert.match(script, /env -u WAYLAND_DISPLAY/);
-  assert.doesNotMatch(script, /\b(?:sway|private-wayland)\b/);
+  // Nodi's own window needs layer-shell: a private headless sway, in a
+  // runtime directory of the run's own, never the user's compositor.
+  assert.match(script, /env -u WAYLAND_DISPLAY -u DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE[^\n]*\\\n\s*XDG_RUNTIME_DIR="\$work\/wl" WLR_BACKENDS=headless /);
+  assert.match(script, /xwayland disable/);
+  assert.match(script, /WAYLAND_DISPLAY="\$socket" QT_QPA_PLATFORM=wayland XDG_RUNTIME_DIR="\$work\/wl"/);
+  assert.doesNotMatch(script, /private-wayland/);
 });
 
 const clipboard = [

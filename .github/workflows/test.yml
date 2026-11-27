@@ -71,11 +71,16 @@ jobs:
           # Omarchy's own Quickshell build, as Omarchy installs it: Arch's
           # release lags it (Tray.qml reads a model's values, which 0.3.2
           # lacks), with the key bin/omarchy-update-keyring trusts.
+          # Arch's packages from Omarchy's pinned mirror, as an Omarchy
+          # machine has them: from the live mirrors, Qt ran ahead of the Qt
+          # Omarchy's Quickshell was built against, and Quickshell warned of
+          # it. The image may be newer than the mirror: -Syuu downgrades.
+          echo 'Server = https://stable-mirror.omarchy.org/$repo/os/$arch' >/etc/pacman.d/mirrorlist
           pacman-key --init
           pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
           pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
           sed -i 's|^\[core\]$|[omarchy]\nServer = https://pkgs.omarchy.org/stable/$arch\n\n[core]|' /etc/pacman.conf
-          pacman -Syu --noconfirm --needed git omarchy/quickshell qt6-declarative qt6-svg qt6-wayland \
+          pacman -Syuu --noconfirm --needed git omarchy/quickshell qt6-declarative qt6-svg qt6-wayland \
             xorg-server-xvfb sway nodejs npm python python-gobject gdk-pixbuf2 librsvg gtk3 at-spi2-core dbus \
             pipewire wireplumber make fd ripgrep bat poppler lua jq rsync diffutils ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
           useradd -m -u 1000 nodi
@@ -91,7 +96,9 @@ jobs:
       - name: qmllint
         run: make lint
       # tests/qml/DesktopTest.qml reads the session's audio outputs: PipeWire
-      # with one null sink stands in for a desktop's.
+      # with one null sink stands in for a desktop's. The tests that make
+      # Nodi's own window run on a private headless sway that
+      # tools/qs-test.sh starts itself.
       - name: QML integration tests
         run: |
           dbus-run-session -- bash -ec '
