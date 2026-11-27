@@ -21,7 +21,7 @@ Item {
     when: windowShown
 
     function init() {
-      fake.reducedMotion = false
+      fake.desktop.reducedMotion = false
       fake.opens = true
       fake.typed = "ask how do I list open ports"
       fake.rows = [Rows.normalize({ key: "ask:wait", title: "Asking Claude...", subtitle: "how do I list open ports", copy: "" }, { id: "ask", name: "Ask" }, 0, 0)]
@@ -45,7 +45,7 @@ Item {
     }
 
     function test_still_under_reduced_motion() {
-      fake.reducedMotion = true
+      fake.desktop.reducedMotion = true
       wait(50)
       var s = findChild(card, "askSpinner")
       verify(s && s.visible, "still shown")

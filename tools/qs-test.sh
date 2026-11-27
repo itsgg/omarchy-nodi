@@ -196,6 +196,13 @@ for f in "${skipped[@]}"; do echo "skip $f (sway not installed)"; done
 [[ -z ${NODI_TEST_ALL:-} ]] || cat "$work/out"
 # A binding loop fails the run too: Qt only warns, and goes on with the
 # property's last value (components/PaneRead.qml, 2026-10-07).
+# So does a value QML could not assign: it warns, and the property keeps
+# its last value (components/ActionPalette.qml read a missing title,
+# 2026-11-27).
+if grep -q "Unable to assign \[undefined\]" "$work/out"; then
+  echo "qs-test: an undefined assigned:"; grep "Unable to assign \[undefined\]" "$work/out" | sed "s#^.*\(file://\)#\1#" | sort -u
+  exit 1
+fi
 if grep -q "Binding loop detected" "$work/out"; then
   echo "qs-test: a binding loop:"; grep "Binding loop detected" "$work/out" | sed "s#^.*\(QML\)#\1#" | sort -u
   exit 1

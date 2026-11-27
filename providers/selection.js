@@ -45,7 +45,7 @@ function language(config) {
 }
 
 // What the text is called and where it came from: selected, or copied
-// with Ctrl+C (Nodi.qml readSelection). A copy is not selected in the
+// with Ctrl+C (components/SelectionReads.qml readSelection). A copy is not selected in the
 // window, so Claude's answer pastes where the cursor is (providers/ask.js).
 // `word` is what the home row types to list its actions.
 function about(sel) {

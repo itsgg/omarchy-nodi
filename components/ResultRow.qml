@@ -64,7 +64,7 @@ Item {
 
     // The selected row's mark where the fill would be all (item 72).
     Rectangle {
-      visible: rowItem.selected && nodi.selectionBar && nodi.reducedMotion
+      visible: rowItem.selected && nodi.selectionBar && nodi.desktop.reducedMotion
       anchors.left: parent.left
       anchors.leftMargin: Style.spacing.xs + nodi.rowInsetLeft
       anchors.verticalCenter: parent.verticalCenter

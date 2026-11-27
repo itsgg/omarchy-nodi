@@ -66,9 +66,9 @@ BorderSurface {
   clip: true
   // The card and its result/detail split move together. None under reduced
   // motion (ROADMAP 73).
-  Behavior on x { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-  Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
-  Behavior on height { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+  Behavior on x { enabled: card.animated && !nodi.desktop.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+  Behavior on width { enabled: card.animated && !nodi.desktop.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+  Behavior on height { enabled: card.animated && !nodi.desktop.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
   MouseArea { anchors.fill: parent; onClicked: {} }
 
@@ -329,7 +329,7 @@ BorderSurface {
             // From the modifiers too, so a Ctrl already down when the bar opens counts.
             nodi.ctrlHeld = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
             if (event.matches(StandardKey.Paste)) {
-              nodi.pasteInput("input")
+              nodi.selections.pasteInput("input")
               event.accepted = true
               return
             }
@@ -412,7 +412,7 @@ BorderSurface {
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
             if (event.matches(StandardKey.Paste)) {
-              nodi.pasteInput("palette")
+              nodi.selections.pasteInput("palette")
               event.accepted = true
               return
             }
@@ -578,7 +578,7 @@ BorderSurface {
         anchors.top: parent.top
         width: nodi.preview && nodi.twoColumn ? nodi.listColumn : parent.width
         heightLimit: nodi.preview && !nodi.twoColumn ? body.stackPrimaryHeight : 0
-        Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        Behavior on width { enabled: card.animated && !nodi.desktop.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
         visible: nodi.paletteOpen
       }
 
@@ -593,7 +593,7 @@ BorderSurface {
         height: nodi.preview && !nodi.twoColumn ? body.stackPrimaryHeight
           : (nodi.preview ? Math.max(nodi.listHeight, nodi.paneMin) : nodi.listHeight)
         width: nodi.preview && nodi.twoColumn ? nodi.listColumn : parent.width
-        Behavior on width { enabled: card.animated && !nodi.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        Behavior on width { enabled: card.animated && !nodi.desktop.reducedMotion; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
         ListView {
           id: list
@@ -617,7 +617,7 @@ BorderSurface {
           Rectangle {
             objectName: "selectionPill"
             parent: list.contentItem
-            visible: list.count > 0 && list.currentItem !== null && !nodi.reducedMotion && nodi.selectionBar
+            visible: list.count > 0 && list.currentItem !== null && !nodi.desktop.reducedMotion && nodi.selectionBar
             z: 2
             width: nodi.barWidth
             radius: width / 2
@@ -639,11 +639,11 @@ BorderSurface {
             height: targetHeight
 
             Behavior on y {
-              enabled: card.animated && !nodi.reducedMotion
+              enabled: card.animated && !nodi.desktop.reducedMotion
               NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
             }
             Behavior on height {
-              enabled: card.animated && !nodi.reducedMotion
+              enabled: card.animated && !nodi.desktop.reducedMotion
               NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
             }
           }
@@ -683,7 +683,7 @@ BorderSurface {
         visible: !!nodi.preview
         opacity: visible ? 1 : 0
         Behavior on opacity {
-          enabled: !nodi.reducedMotion
+          enabled: !nodi.desktop.reducedMotion
           NumberAnimation { duration: 100; easing.type: Easing.OutCubic }
         }
         nodi: card.nodi

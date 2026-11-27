@@ -19,8 +19,6 @@ QtObject {
   readonly property var selectedBorderSpec: look.selectedBorderSpec
   readonly property real rowInsetLeft: look.rowInsetLeft
   readonly property bool selectionBar: look.selectionBar
-  // Set by a test (tests/ui/tst_spinner.qml); the renders keep motion.
-  property bool reducedMotion: false
   readonly property int barWidth: look.barWidth
   readonly property int barInset: look.barInset
   readonly property real rowInsetRight: look.rowInsetRight
@@ -61,8 +59,13 @@ QtObject {
                              armed: !!paletteArmed && !!paletteActions[paletteIndex] && paletteArmed === paletteActions[paletteIndex].label } : null,
     row: selectedRow, armed: !!selectedRow && armedKey === selectedRow.key, anyPreview: anyPreview
   }))
-  // The theme's sixteen colours, as Nodi.qml reads them.
-  readonly property var themeColours: Ansi.paletteFrom(Theme.theme.colorsToml)
+  // What Nodi reads of the desktop (components/DesktopSources.qml), as the
+  // card reads it: the theme's sixteen colours, and reduced motion, set by
+  // a test (tests/ui/tst_spinner.qml); the renders keep motion.
+  readonly property QtObject desktop: QtObject {
+    readonly property var themeColours: Ansi.paletteFrom(Theme.theme.colorsToml)
+    property bool reducedMotion: false
+  }
   // A scene's `reads` stand in for the reader: path -> what file-head gives.
   property var reads: ({})
   function readPreview(p) {
@@ -121,7 +124,10 @@ QtObject {
   function activate(index) { fake.note("activate", [index]) }
   function openLink(url) { fake.note("openLink", [url]) }
   function toast(title, body) { fake.note("toast", [title, body]) }
-  function pasteInput(target) { fake.note("pasteInput", [target]) }
+  // The paste keys' reader (components/SelectionReads.qml).
+  readonly property QtObject selections: QtObject {
+    function pasteInput(target) { fake.note("pasteInput", [target]) }
+  }
   function openPalette() { fake.note("openPalette", [fake.selectedIndex]); return fake.opens }
   // What openPalette answers: whether the row had actions to open.
   property bool opens: true

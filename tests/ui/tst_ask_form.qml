@@ -22,7 +22,7 @@ Item {
     property color selectedText: "white"
     property string fontFamily: "sans"
     property real cornerRadius: 8
-    function pasteInput() {}
+    property QtObject selections: QtObject { function pasteInput() {} }
     function submitAskForm() { root.submits++ }
     function setAskFormField(name, value) {
       root.formState = {
