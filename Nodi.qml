@@ -1569,11 +1569,14 @@ Item {
     } else if (row.nodi === "ask") {
       var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
       if (q && !askSession.busy() && !windowShot.active) {
-        root.dispatchAsk(q, q, "", "ask")
+        if (root.preparedAsk(q)) root.sendPreparedAsk("", q)
+        else root.dispatchAsk(q, q, "", "ask")
       }
     } else if (row.nodi === "askAs" && row.data) {
-      if (!askSession.busy() && !windowShot.active)
-        root.dispatchAsk(row.data.question, row.data.question, "", "ask", undefined, undefined, undefined, row.data.id)
+      if (!askSession.busy() && !windowShot.active) {
+        if (root.preparedAsk(row.data.question)) root.sendPreparedAsk(row.data.id, row.data.question)
+        else root.dispatchAsk(row.data.question, row.data.question, "", "ask", undefined, undefined, undefined, row.data.id)
+      }
     } else if (row.nodi === "runWord" && root.wordAsk) {
       if (root.queryNow().trim() !== root.wordAsk.word) return
       var w = root.wordAsk
@@ -2322,6 +2325,21 @@ Item {
   function askRoute(qText, agentId) {
     return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.config.answers, root.cameFrom), agentId: agentId || "",
                                     busy: askSession.busy(), shooting: windowShot.active })
+  }
+
+  // A turn an agent fallback prepared (askAgentFallback, Ask.qml prepare):
+  // idle, on the question still in the field. Enter sends the message the
+  // failed turn effectively sent, as it was, with its context: it was
+  // expanded when first asked, and expanding it again would read mentions
+  // from text he did not type (PromptContext.mentionSource).
+  function preparedAsk(question) {
+    var q = String(question || "")
+    return q !== "" && askSession.phase === "idle" && askSession.question === q
+  }
+  function sendPreparedAsk(agentId, question) {
+    root.askRows = ({ turn: "", rows: ({}) })
+    // No message: Ask.send asked again on its question keeps the prepared one.
+    root.startAsk(agentId || "", question)
   }
 
   // An Ask, its context expanded (window, clipboard, selection and files),
