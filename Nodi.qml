@@ -2989,7 +2989,6 @@ Item {
   // GTK resolves named icons through this theme. Keep their rasters until
   // the catalog or theme changes; a settings edit starts a new cache epoch.
   FileView {
-    id: gtkIconSettings
     path: root.home + "/.config/gtk-3.0/settings.ini"
     watchChanges: true
     printErrors: false

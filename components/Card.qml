@@ -615,7 +615,6 @@ BorderSurface {
           // it: in the unclipped box beside the list, a row wheeled out of
           // view left it floating over the field or the footer.
           Rectangle {
-            id: selectionPill
             objectName: "selectionPill"
             parent: list.contentItem
             visible: list.count > 0 && list.currentItem !== null && !nodi.reducedMotion && nodi.selectionBar
