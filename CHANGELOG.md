@@ -79,6 +79,10 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   "in 2 hours" work and dates follow `time.home`. Calendar events that
   repeat hourly or by hour, and changes to this and future events, show.
 - A failed read says why in its row.
+- After an agent hits a usage limit, the fallback agent's row and Enter send the
+  question as it was asked; the row says the agent hit a limit. An agent
+  installed or removed shows at the next open. An Ask that waited on the
+  window's directory no longer stays pending and blocks the next one.
 
 
 ## 0.5.0 (2026-10-14)
