@@ -27,7 +27,7 @@ Column {
     bottomPadding: Style.spacing.xs
     textFormat: Text.PlainText
     objectName: "paletteTitle"
-    text: nodi.paletteRow ? nodi.paletteRow.title : ""
+    text: nodi.paletteRow && nodi.paletteRow.title ? String(nodi.paletteRow.title) : ""
     horizontalAlignment: Text.AlignLeft
     color: nodi.secondary
     font.family: nodi.fontFamily
@@ -91,7 +91,7 @@ Column {
       readonly property int index: actionCell.index
       readonly property var modelData: actionCell.modelData
       readonly property bool selected: index === nodi.paletteIndex
-      readonly property bool armed: modelData.confirm && nodi.paletteArmed === modelData.label
+      readonly property bool armed: !!modelData.confirm && nodi.paletteArmed === modelData.label
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.bottom: parent.bottom
