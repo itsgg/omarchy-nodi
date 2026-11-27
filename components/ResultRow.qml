@@ -74,6 +74,9 @@ Item {
       color: nodi.foreground
     }
 
+    // Its picture, read again only when its own raster changes.
+    IconRef { id: picture; nodi: rowItem.nodi; value: rowItem.row.image || "" }
+
     IconTile {
       id: tile
       anchors.left: parent.left
@@ -81,7 +84,7 @@ Item {
       anchors.verticalCenter: parent.verticalCenter
       glyph: rowItem.row.icon || ""
       glyphFont: rowItem.row.iconFont || ""
-      imageSource: rowItem.row.image ? nodi.iconSource(rowItem.row.image) : ""
+      imageSource: picture.url
       fill: !!rowItem.row.imageFill
       swatch: rowItem.row.swatch || ""
       selected: rowItem.selected

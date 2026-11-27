@@ -250,6 +250,9 @@ Rectangle {
     elide: Text.ElideRight
   }
 
+  // The picture's source, read again only when its own raster changes.
+  IconRef { id: paneImage; nodi: pane.nodi; value: pane.hasImage ? String(pane.p.image) : ""; large: true }
+
   Image {
     visible: pane.hasImage
     anchors.left: parent.left
@@ -266,7 +269,7 @@ Rectangle {
     // and follows the rows, it re-decoded the picture on every frame.
     sourceSize.width: Style.space(1000)
     sourceSize.height: Style.space(600)
-    source: pane.hasImage ? nodi.iconSource(pane.p.image, true) : ""
+    source: paneImage.url
   }
 
   Loader {

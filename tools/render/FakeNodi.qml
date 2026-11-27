@@ -104,7 +104,12 @@ QtObject {
   readonly property real listHeight: look.listHeight(rows, showingHelp)
 
   function rowSize(row) { return look.rowSize(row) }
-  function iconSource(icon) { return icon ? "file://" + String(icon).split("/").map(encodeURIComponent).join("/") : "" }
+  signal rasterChanged(string key)
+  function iconKey(icon, large) { return String(icon) + (large ? "\n1000" : "") }
+  // How often each picture's source was read (tests/ui/tst_icons.qml),
+  // counted in place so the count itself notifies nothing.
+  property var iconReads: ({})
+  function iconSource(icon) { fake.iconReads[String(icon)] = (fake.iconReads[String(icon)] || 0) + 1; return icon ? "file://" + String(icon).split("/").map(encodeURIComponent).join("/") : "" }
   function paletteContext() { return { activeWorkspace: 1, knows: function() { return true } } }
   // What the query reads as the bar is told it changed: a test sets
   // `probe` to read it as Nodi would (card.composedNow).

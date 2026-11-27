@@ -5,7 +5,7 @@ import { mkdtempSync, writeFileSync, rmSync, truncateSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync, inflateSync, crc32 } from "node:zlib";
-import { load, root } from "./load.mjs";
+import { load, root, plain } from "./load.mjs";
 
 const I = load("lib/Images.js");
 function chunk(type, data) {
@@ -245,4 +245,32 @@ test("a rescan that returns the same app entries keeps every raster", () => {
   assert.equal(I.catalogChanged(s, apps.concat([{ id: "new.desktop", icon: "new", keywords: [] }])), true, "an added entry is");
   assert.equal(I.catalogChanged(s, apps), true, "and so is its removal");
   assert.equal(I.catalogChanged(s, [{ ...apps[0], icon: "firefox-nightly" }, apps[1]]), true, "and a changed icon name");
+});
+
+test("a job dropped from a full queue is named once, to be asked for again", () => {
+  const s = I.create();
+  const warm = Array.from({ length: I.MAX_QUEUE }, (_, n) => I.key("/warm-" + n + ".png", false));
+  warm.forEach(key => I.get(s, key, 0, true));
+  I.get(s, I.key("/visible.png", false), 1);
+  const last = warm[warm.length - 1];
+  assert.deepEqual(plain(I.takeDropped(s)), [last]);
+  assert.deepEqual(plain(I.takeDropped(s)), [], "told once");
+  I.get(s, I.key("/visible-2.png", false), 2);
+  const next = warm[warm.length - 2];
+  I.next(s);
+  I.get(s, next, 3, true);
+  assert.equal(s.pending[next], true, "with room again it is queued");
+  assert.deepEqual(plain(I.takeDropped(s)), [], "asked for again, it is no longer dropped");
+});
+
+test("an open asks again only for the rasters that are stale", () => {
+  const s = I.create(), value = "data:image/png;base64,iVBORw0KGgo=";
+  const file = I.key("/preview.png", false), app = I.key("firefox", false), bad = I.key("/bad.png", false), fresh = I.key("/fresh.png", false);
+  I.finish(s, file, value, 0);
+  I.finish(s, app, value, 0);
+  I.finish(s, bad, "", 0);
+  I.finish(s, fresh, value, I.MAX_AGE);
+  assert.deepEqual(plain(I.stale(s, I.MAX_AGE - 1)), []);
+  assert.deepEqual(plain(I.stale(s, Math.max(I.MAX_AGE, I.FAILURE_RETRY_MS))).sort(), [bad, file].sort(),
+                   "a file past its quiet period and a failure past its cooldown; not a named icon, not a fresh file");
 });

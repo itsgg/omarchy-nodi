@@ -272,6 +272,8 @@ Item {
     root.readAhead(true)
     launchFeedback.opened()
     root.opens++
+    // A reopen refreshes the pictures whose rasters went stale, each alone.
+    images.refreshStale()
     // Made once a shell: again at an open only until they are.
     if (!root.cacheReady) root.makeFolders()
     root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
@@ -3017,17 +3019,22 @@ Item {
       model: root.warmIcons
       Item {
         required property string modelData
-        IconTile { imageSource: root.iconSource(modelData, false, true); size: root.tileSize }
-        IconTile { imageSource: root.iconSource(modelData, false, true); size: Math.round(root.tileSize * 1.4) }
+        IconRef { id: warm; nodi: root; value: modelData; background: true }
+        IconTile { imageSource: warm.url; size: root.tileSize }
+        IconTile { imageSource: warm.url; size: Math.round(root.tileSize * 1.4) }
       }
     }
   }
 
-  Images { id: images; pluginDir: decodeURIComponent(root.pluginDir) }
+  Images { id: images; pluginDir: decodeURIComponent(root.pluginDir); onRasterChanged: function(key) { root.rasterChanged(key) } }
 
+  // A picture's raster landed or went, by its key ("" for all): each
+  // IconRef reads its own source again on its own key alone.
+  signal rasterChanged(string key)
+  function iconKey(icon, large) { return images.keyOf(String(icon || "") || "application-x-executable", large) }
+  // Called by an IconRef's binding, which says when to call it again; an
+  // open asks again for the stale ones (images.refreshStale).
   function iconSource(icon, large, background) {
-    // Depend on completed reads and on a reopen, which refreshes old images.
-    var revision = images.revision + root.opens
     var value = String(icon || "")
     return images.source(value || "application-x-executable", !!large, !!background, !!root.appIcons[value])
   }
