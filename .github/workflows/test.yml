@@ -91,7 +91,9 @@ jobs:
       - name: qmllint
         run: make lint
       # tests/qml/DesktopTest.qml reads the session's audio outputs: PipeWire
-      # with one null sink stands in for a desktop's.
+      # with one null sink stands in for a desktop's. The tests that make
+      # Nodi's own window run on a private headless sway that
+      # tools/qs-test.sh starts itself.
       - name: QML integration tests
         run: |
           dbus-run-session -- bash -ec '

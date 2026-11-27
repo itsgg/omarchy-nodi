@@ -294,9 +294,12 @@ Item {
     }
   }
 
+  // Thirteen Asks, each a cwd read and a turn: on a loaded machine under
+  // software rendering one took two seconds (measured 2026-11-27, load 59),
+  // so 25 s ended a run that was still going. A hang still ends here.
   Timer {
     id: deadline
-    interval: 25000
+    interval: 90000
     onTriggered: {
       var ask = nodi.services().ask
       test.failures.push("timed out at " + ask.phase + "/" + ask.status)
