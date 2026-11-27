@@ -504,28 +504,20 @@ Item {
         } else if (root.opened && had) root.recompute()
         return
       }
-      var both = Sources.selections(text)
-      var now = Date.now()
-      // Seen as read; the field's own text is then no text to act on, but
-      // still seen, so it does not come back as new (Fable 2026-10-06).
-      if (both.primary !== root.lastSelection) root.selectionSeenAt = now
-      if (both.clipboard !== root.lastCopied) root.copiedSeenAt = now
-      root.lastSelection = both.primary
-      root.lastCopied = both.clipboard
-      var got = both.primary === input.text ? "" : both.primary
-      var copied = both.clipboard === input.text ? "" : both.clipboard
-      var fresh = got !== "" && now - root.selectionSeenAt < root.keepQueryMs
-      var copiedFresh = copied !== "" && now - root.copiedSeenAt < root.keepQueryMs
-      // The newer of a fresh selection and a fresh copy, the copy on a tie
-      // (both first seen at this read): a copy is deliberate, a primary
-      // selection often a double-click's (Fable 2026-10-06: the copy he
-      // reported lost to a stale word). Then a stale selection, which
-      // `rewrite`, `case` and `tr <language>` still take.
-      var copyFirst = copiedFresh && (!fresh || root.copiedSeenAt >= root.selectionSeenAt)
-      root.selectionSource = copyFirst ? "clipboard" : "selection"
-      root.selection = root.selectionSource === "clipboard" ? copied : got
-      root.selectionFresh = fresh || copiedFresh
-      got = root.selection
+      // Which leads, the selection or the copy (lib/Sources.js selectionRead).
+      var r = Sources.selectionRead(Sources.selections(text), {
+        field: input.text, lastSelection: root.lastSelection, lastCopied: root.lastCopied,
+        selectionSeenAt: root.selectionSeenAt, copiedSeenAt: root.copiedSeenAt,
+        now: Date.now(), keepMs: root.keepQueryMs
+      })
+      root.selectionSeenAt = r.selectionSeenAt
+      root.copiedSeenAt = r.copiedSeenAt
+      root.lastSelection = r.lastSelection
+      root.lastCopied = r.lastCopied
+      root.selectionSource = r.source
+      root.selection = r.selection
+      root.selectionFresh = r.fresh
+      var got = root.selection
       // Held, the rows are drawn once, now that it is read; a query on show
       // meanwhile (a payload's) is answered with it at once (Cursor
       // 2026-10-07: it waited for the hold).

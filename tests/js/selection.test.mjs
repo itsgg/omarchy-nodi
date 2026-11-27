@@ -213,3 +213,23 @@ test("each Claude row names its purpose by the action, not by parsing its prose"
   assert.ok(run("rewrite ", stale("x")).every(r => r.ask.purpose === "rewrite"), "the presets too");
   assert.equal(top("copied ", { selection: { text: "x", fresh: true, source: "clipboard" } }).ask.purpose, "fix", "a copy is the same purpose");
 });
+
+test("of a fresh selection and a fresh copy the newer leads, the copy on a tie", () => {
+  const held = (over = {}) => ({ field: "", lastSelection: "", lastCopied: "", selectionSeenAt: 0, copiedSeenAt: 0,
+                                 now: 1000000, keepMs: 120000, ...over });
+  const read = (both, over) => plain(Sources.selectionRead(both, held(over)));
+  const tie = read({ primary: "word", clipboard: "copied" });
+  assert.deepEqual(tie, { selectionSeenAt: 1000000, copiedSeenAt: 1000000, lastSelection: "word", lastCopied: "copied",
+                          source: "clipboard", selection: "copied", fresh: true });
+  // Selected after the copy was seen: the selection is the newer.
+  const newer = read({ primary: "word", clipboard: "copied" }, { lastCopied: "copied", copiedSeenAt: 990000 });
+  assert.deepEqual([newer.source, newer.selection, newer.copiedSeenAt], ["selection", "word", 990000]);
+  // A copy seen long ago is stale, and a stale selection still leads after it.
+  const stale = read({ primary: "word", clipboard: "copied" },
+    { lastSelection: "word", lastCopied: "copied", selectionSeenAt: 1, copiedSeenAt: 2 });
+  assert.deepEqual([stale.source, stale.selection, stale.fresh], ["selection", "word", false]);
+  // The field's own text is seen, never acted on.
+  const own = read({ primary: "typed", clipboard: "" }, { field: "typed" });
+  assert.deepEqual([own.selection, own.fresh, own.lastSelection, own.selectionSeenAt], ["", false, "typed", 1000000]);
+  assert.equal(read({ primary: "", clipboard: "c" }).source, "clipboard");
+});
