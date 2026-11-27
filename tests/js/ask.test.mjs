@@ -1636,6 +1636,31 @@ test("fallbackAgent takes precedence, preserves the effective message, and waits
     ["ask:agent-fallback"], "one fallback agent is not offered twice through two routes");
 });
 
+test("an agent's usage limit, in any agent's words, puts the fallback agent first and says so", async () => {
+  const { config } = await import("./fixtures.mjs");
+  const Jsonc = load("lib/Jsonc.js");
+  const cfg = Jsonc.merge(config, { ask: { fallbackAgent: "pi" } });
+  const agents = [
+    { id: "claude", name: "Claude", model: "", missing: "", current: true },
+    { id: "pi", name: "Pi", model: "", missing: "", current: false }
+  ];
+  const failed = error => plain(run("ask what is uv", { ask: {
+    phase: "error", question: "what is uv", message: "what is uv", context: "", error, agent: "Claude", agents
+  } }, cfg));
+  for (const error of ["Internal error: You've hit your 5-hour limit, resets 3pm", "Claude AI usage limit reached",
+                       "You exceeded your current quota", "Rate limited, try later", "429 Too Many Requests",
+                       "Codex: out of credits", "RESOURCE_EXHAUSTED: quota", "Resource exhausted"]) {
+    const rows = failed(error);
+    assert.deepEqual(rows.slice(0, 2).map(r => r.key), ["ask:agent-fallback", "ask:error"], error);
+    assert.equal(rows[0].subtitle, "Claude hit a limit; prepare it for Pi", error);
+    assert.equal(rows[1].title, "Could not ask: " + error, "the error is shown as the agent said it");
+    assert.deepEqual(rows[0].data, { id: "pi", question: "what is uv", message: "what is uv", context: "", direct: false });
+  }
+  const other = failed("Claude stopped: exit 1");
+  assert.equal(other[0].key, "ask:agent-fallback");
+  assert.equal(other[0].subtitle, "Claude could not answer; prepare it for Pi");
+});
+
 test("disabled Nodi-owned actions survive normalization and cannot be activated", () => {
   const row = Rows.normalize({ title: "Ask", actions: [
     { label: "Use Codex", nodi: "askAgent", data: { id: "codex" }, disabled: true, reason: "codex is missing" }
