@@ -2255,10 +2255,17 @@ Item {
   // Dispatches an ask query after expanding context (window, clipboard, selection, and files)
   // so that configured answer providers (e.g. Arivu) and ACP agents receive the exact same
   // fully resolved question and context.
+  function askRoute(qText) {
+    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.config.answers, root.cameFrom),
+                                    busy: askSession.busy(), shooting: windowShot.active })
+  }
+
   function dispatchAsk(question, rawMessage, context, purpose, extraEnv, image, filePath, agentId, answerFresh, commandQuery) {
+    var qText = commandQuery || ("ask " + question)
+    // Busy: nothing of this Ask is done, the field left as he has it.
+    if (root.askRoute(qText) === "busy") return
     root.pendingFileAsk = null
     if (askFileReader.active) askFileReader.cancel()
-    var qText = commandQuery || ("ask " + question)
     if (input.text !== qText) {
       input.text = qText
       input.cursorPosition = input.text.length
@@ -2290,13 +2297,15 @@ Item {
   function finishDispatchAsk(question, rawMessage, context, purpose, extraEnv, image, snapshot, agentId, answerFresh, commandQuery) {
     var qText = commandQuery || ("ask " + question)
     var expanded = PromptContext.expandFor(context, question, rawMessage, snapshot)
-    var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
-    if (ansSpec) {
+    // Again after a file read: the agent may have taken another question since.
+    var route = root.askRoute(qText)
+    if (route === "busy") return
+    if (route === "answer") {
+      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
       if (answerFresh) ansSpec.fresh = true
       answerSession.start(ansSpec)
       return
     }
-    if (askSession.busy() || windowShot.active) return
     root.askRows = ({ turn: "", rows: ({}) })
     root.startAsk(agentId || "", question, expanded, context, image, purpose, { snapshot: snapshot, address: String(root.cameFrom.address || "") })
   }

@@ -326,3 +326,12 @@ test("a pending Ask is sent to its agent, waits a bounded while, or is dropped",
   assert.equal(step, "drop");
   assert.ok(turns <= P.FLUSH_TRIES, String(turns));
 });
+
+test("a busy agent refuses an Ask before anything is done for it; an answer of his is not the agent's", () => {
+  assert.equal(P.askRoute({}), "agent");
+  assert.equal(P.askRoute({ busy: true }), "busy");
+  assert.equal(P.askRoute({ shooting: true }), "busy", "a window's picture is being taken");
+  assert.equal(P.askRoute({ answered: true, busy: true }), "answer", "an answers filter does not wait on the agent");
+  assert.equal(P.askRoute({ answered: true }), "answer");
+  assert.equal(P.askRoute(null), "agent");
+});
