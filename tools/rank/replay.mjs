@@ -34,6 +34,7 @@ const PickLog = load("lib/PickLog.js");
 // them just before the log; that looks ahead when they came later.
 // Without a seed the first pick of a query he had long used ranked as if
 // new: "fil" and "fi" were picked for Files in October.
+const CAPPED = 1000;
 export function seed(saved, log, assumeEarlier) {
   const start = log.length ? log[0].at : 0;
   const ran = Object.create(null), picked = Object.create(null);
@@ -46,7 +47,9 @@ export function seed(saved, log, assumeEarlier) {
   const unknown = { runs: 0, picks: 0 };
   const before = (entry, n, what) => {
     if (entry.t < start) return { n: entry.n, t: entry.t, f: typeof entry.f === "number" ? entry.f : entry.n };
-    const left = entry.n - n;
+    // A count at Score.bump's cap stopped counting: the log's runs may be
+    // past it, and taking them off would make it less than it was.
+    const left = entry.n >= CAPPED ? entry.n : entry.n - n;
     if (left <= 0) return null;
     unknown[what] += left;
     return assumeEarlier ? { n: left, t: start - 1, f: left } : null;

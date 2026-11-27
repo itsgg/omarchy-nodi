@@ -56,6 +56,14 @@ test("the seed is what was learned before the log: entries untouched since kept 
   assert.deepEqual({ ...a.picks.fire["app:firefox"] }, { n: 2, t: t - 1, f: 2 });
 });
 
+test("a count at its cap is not taken down by the log's runs, which may be past it", () => {
+  const log = [{ at: t, query: "fire", key: "app:firefox", rank: 1 }];
+  const saved = { rows: { "app:firefox": { n: 1000, t: t + 60000 } }, picks: { fire: { "app:firefox": { n: 1000, t: t + 60000 } } } };
+  const a = seed(saved, log, true);
+  assert.deepEqual([a.history["app:firefox"].n, a.picks.fire["app:firefox"].n], [1000, 1000]);
+  assert.deepEqual(seed(saved, log).unknown, { runs: 1000, picks: 1000 });
+});
+
 test("a pick the log did not record, made after it began, does not lift the log's first pick", () => {
   const log = [{ at: t, query: "f", key: "app:firefox", rank: 2 }];
   const saved = { rows: { "app:firefox": { n: 2, t: t + 86400000 } }, picks: { f: { "app:firefox": { n: 2, t: t + 86400000 } } } };
