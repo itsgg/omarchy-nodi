@@ -5,7 +5,7 @@ What changed in each version of Nodi, newest first. A version is a tag
 follows the main branch, not the tags: it shows the diff from the commit
 you have and asks before pulling. ROADMAP.md has each item's detail.
 
-## Unreleased (2026-10-18)
+## Unreleased (2026-11-27)
 
 - Decode file, clipboard, theme, app and extension images in a worker with
   memory, CPU, file-size and time limits. Only a new PNG without source
@@ -54,8 +54,32 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
 - Open the card with a short fade and scale (none under reduced motion),
   crossfade the preview pane, and glide the selection between rows. The
   card no longer shows the bare field for a frame before its rows.
+- Work with Omarchy 4.5's menu: toggles split into on and off rows and
+  moved under Appearance get their ON/OFF badge, flip and search words
+  again ("caffeine", "dnd", "dark mode"), and Do Not Disturb is read with
+  `isDnd`. Tests now check every menu id and `omarchy-shell` call Nodi
+  names against the installed Omarchy, and CI checks them against
+  Omarchy's own tree.
+- Read `@f`, `@c`, `@s` and `@w` only from what is typed, never from the
+  selected or copied text a question is about. `@f:~/...` attaches the
+  file, trailing punctuation is not part of a path, a link is named with
+  its target, at most eight files go with a question and an unread one is
+  named in the prompt.
+- An agent's screen recording, lock, suspend and power rows wait for
+  Enter. An answers filter with `argument: true` gets only the typed query
+  in its arguments. An explicit agent choice is not overridden by an
+  `ask` answers filter. A direct ask that cannot reach its agent gives up
+  with a message instead of blocking later asks.
+- Keep result rows across keystrokes instead of rebuilding them, redraw
+  only the row whose icon decoded, cache the agent probe, watch the theme
+  and stream socket rows without copying them. The selection pill stays
+  inside the list. Unused icons leave the disk cache after 30 days.
+- Unknown time zones say so instead of showing UTC. "monday to friday"
+  runs forward, month and year sums stay in the month, "in 30 min" and
+  "in 2 hours" work and dates follow `time.home`. Calendar events that
+  repeat hourly or by hour, and changes to this and future events, show.
+- A failed read says why in its row.
 
-<!-- Fixes in progress land here, above 0.5.0. -->
 
 ## 0.5.0 (2026-10-14)
 
