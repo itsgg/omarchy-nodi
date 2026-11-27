@@ -29,13 +29,20 @@ test("install hides scratch folders and __pycache__, deletes an older install's 
     writeFileSync(join(dest, ".superpowers/sdd/report.md"), "stale");
     mkdirSync(join(dest, "lib/__pycache__"), { recursive: true });
     writeFileSync(join(dest, "lib/__pycache__/ics.cpython-314.pyc"), "stale");
+    // Not read at run time: an older install's copy goes too.
+    writeFileSync(join(dest, "PLAN.md"), "stale");
+    mkdirSync(join(dest, "tools"));
+    writeFileSync(join(dest, "tools/qmllint.sh"), "stale");
     mkdirSync(join(dest, ".git"));
     writeFileSync(join(dest, ".git/HEAD"), "ref: refs/heads/main\n");
     execFileSync("rsync", [...flags, root + "/", dest + "/"]);
     for (const x of hidden) assert.ok(!existsSync(join(dest, x)) && !existsSync(join(dest, "lib", x)),
                                      "an older installed " + x + " is gone");
     assert.ok(existsSync(join(dest, ".git/HEAD")), "an excluded .git is left alone");
-    assert.ok(existsSync(join(dest, "Nodi.qml")));
+    for (const x of ["PLAN.md", "ROADMAP.md", "CHANGELOG.md", "Makefile", "tools", "preview.png"])
+      assert.ok(!existsSync(join(dest, x)), "make install leaves out " + x);
+    for (const x of ["Nodi.qml", "manifest.json", "config.default.json", "bin/nodi", "lib/ics.py", "contrib/README.md", "LICENSE"])
+      assert.ok(existsSync(join(dest, x)), "make install copies " + x);
     const check = () => spawnSync("/usr/bin/bash", [join(root, "tools/installed.sh"), dest], { encoding: "utf8" });
     // Made after the copy, as Python or an agent would: not counted.
     mkdirSync(join(dest, "lib/__pycache__"), { recursive: true });
