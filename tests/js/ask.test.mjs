@@ -1234,12 +1234,13 @@ test("what the agent writes is bounded before the shell reads it: a long line br
   assert.notEqual(lot.status, 0, "the agent was stopped");
   // One that writes too much, then waits: stopped, not left running with
   // nothing reading it (codex's review, 2026-10-09).
-  const quiet = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "--bounds", "100", "100", "exec", "/usr/bin/bash", "-c", 'head -c 1000 /dev/zero | tr "\\0" a; echo; exec sleep 20'],
+  const quiet = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "--bounds", "100", "100", "exec", "/usr/bin/bash", "-c", 'head -c 1000 /dev/zero | tr "\\0" a; echo; exec sleep 60'],
                       { env: { PATH: "/usr/bin:/bin" } });
   quiet.stdout.resume(); quiet.stderr.resume();
   const t0 = Date.now();
   const how = await new Promise(r => quiet.on("exit", (code, signal) => r({ code, signal, ms: Date.now() - t0 })));
-  assert.ok(how.ms < 10000, "stopped in " + how.ms + " ms, not after its sleep");
+  // Measured against its own 60 s sleep, so a busy machine has slack.
+  assert.ok(how.ms < 30000, "stopped in " + how.ms + " ms, not after its sleep");
   assert.equal(how.signal, "SIGTERM");
   assert.equal(go(null, "head -c 5000000 /dev/zero | tr '\\0' a", { NODI_LINE_MAX: "100000000", NODI_OUT_MAX: "100000000" }).stdout.split("\n")[0].length, 4194304,
                "the environment moves no bound");
@@ -1634,6 +1635,31 @@ test("fallbackAgent takes precedence, preserves the effective message, and waits
   })));
   assert.deepEqual(duplicate.filter(r => /^ask:(?:agent-)?fallback$/.test(r.key)).map(r => r.key),
     ["ask:agent-fallback"], "one fallback agent is not offered twice through two routes");
+});
+
+test("an agent's usage limit, in any agent's words, puts the fallback agent first and says so", async () => {
+  const { config } = await import("./fixtures.mjs");
+  const Jsonc = load("lib/Jsonc.js");
+  const cfg = Jsonc.merge(config, { ask: { fallbackAgent: "pi" } });
+  const agents = [
+    { id: "claude", name: "Claude", model: "", missing: "", current: true },
+    { id: "pi", name: "Pi", model: "", missing: "", current: false }
+  ];
+  const failed = error => plain(run("ask what is uv", { ask: {
+    phase: "error", question: "what is uv", message: "what is uv", context: "", error, agent: "Claude", agents
+  } }, cfg));
+  for (const error of ["Internal error: You've hit your 5-hour limit, resets 3pm", "Claude AI usage limit reached",
+                       "You exceeded your current quota", "Rate limited, try later", "429 Too Many Requests",
+                       "Codex: out of credits", "RESOURCE_EXHAUSTED: quota", "Resource exhausted"]) {
+    const rows = failed(error);
+    assert.deepEqual(rows.slice(0, 2).map(r => r.key), ["ask:agent-fallback", "ask:error"], error);
+    assert.equal(rows[0].subtitle, "Claude hit a limit; prepare it for Pi", error);
+    assert.equal(rows[1].title, "Could not ask: " + error, "the error is shown as the agent said it");
+    assert.deepEqual(rows[0].data, { id: "pi", question: "what is uv", message: "what is uv", context: "", direct: false });
+  }
+  const other = failed("Claude stopped: exit 1");
+  assert.equal(other[0].key, "ask:agent-fallback");
+  assert.equal(other[0].subtitle, "Claude could not answer; prepare it for Pi");
 });
 
 test("disabled Nodi-owned actions survive normalization and cannot be activated", () => {

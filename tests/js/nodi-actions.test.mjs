@@ -97,6 +97,18 @@ test("ask and askAs send only while Ask is free", () => {
   assert.deepEqual(steps(decide({ nodi: "askAs", data: { question: "q", id: "codex" } }, { shooting: true })), ["recompute"]);
 });
 
+test("a turn a fallback prepared on the question is sent as prepared, not asked anew", () => {
+  const prepared = q => q === "why";
+  const a = decide({ nodi: "ask" }, { query: "ask why", prepared });
+  assert.equal(a[0].fn, "sendPreparedAsk");
+  assert.deepEqual(a[0].args, ["", "why"]);
+  assert.equal(decide({ nodi: "ask" }, { query: "ask other", prepared })[0].fn, "dispatchAsk");
+  const as = decide({ nodi: "askAs", data: { question: "why", id: "pi" } }, { prepared });
+  assert.equal(as[0].fn, "sendPreparedAsk");
+  assert.deepEqual(as[0].args, ["pi", "why"]);
+  assert.deepEqual(steps(decide({ nodi: "ask" }, { query: "ask why", prepared, askBusy: true })), ["recompute"]);
+});
+
 test("a confirm word runs its row only when typed exactly, the query given back", () => {
   const word = { word: "send", query: "mail", run: { kind: "exec", argv: ["x"] }, toggle: "", key: "k", snap: null, title: "Send", undoable: false };
   assert.deepEqual(decide({ nodi: "runWord" }, { wordAsk: word, query: "sen" }), []);

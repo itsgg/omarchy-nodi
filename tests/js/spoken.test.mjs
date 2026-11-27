@@ -2,6 +2,7 @@
 // without Markdown's marks.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { runInContext } from "node:vm";
 import { load } from "./load.mjs";
 
 const M = load("lib/Markdown.js");
@@ -22,8 +23,15 @@ test("spoken: an answer's words, the marks gone, snake_case kept", () => {
   assert.equal(M.spoken("Use `ls | wc -l` to count."), "Use ls | wc -l to count.");
   assert.equal(M.spoken("a || b"), "a || b");
   assert.equal(M.spoken("Port | Process\n--- | ---\n5173 | node"), "Port, Process. 5173, node.", "a table without edge pipes, by its rule");
-  // Long input costs what a short one does.
-  const started = Date.now();
-  M.spoken(" ".repeat(100000) + "x" + "\t".repeat(100000) + "[".repeat(100000), 600);
-  assert.ok(Date.now() - started < 1000, "100 KB of spaces, tabs and brackets in under a second");
+  // Long input costs what a short one does: it is cut before any pattern
+  // runs. Counted, not timed, as a wall-clock bound failed on a busy
+  // machine: no split or replace in spoken() sees more than the cut keeps.
+  const proto = runInContext("String.prototype", M), real = { split: proto.split, replace: proto.replace };
+  let longest = 0;
+  for (const name of Object.keys(real))
+    proto[name] = function(...a) { longest = Math.max(longest, this.length); return real[name].apply(this, a) };
+  try { M.spoken(" ".repeat(100000) + "x" + "\t".repeat(100000) + "[".repeat(100000), 600); }
+  finally { Object.assign(proto, real); }
+  assert.ok(longest > 0, "the patterns ran");
+  assert.ok(longest <= 600 * 4, "300 KB of spaces, tabs and brackets, cut to " + longest + " characters before its patterns");
 });

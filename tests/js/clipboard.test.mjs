@@ -152,11 +152,15 @@ test("the OCR script reads each image once, keeps a failure as nothing, and pinn
   const h = ocrHome(["a.png", "bad.png", "missing.png"]);
   try {
     writeFileSync(join(h.dir, "img/p.png"), "");
-    const v = h.read(join(h.dir, "img/p.png"));
+    // A read spends 3 s and leaves the rest to the next; on a busy machine
+    // three stub reads can take longer, so read on until nothing is left.
+    // Each image is still read once, counted across the reads.
+    let v = h.read(join(h.dir, "img/p.png"));
+    for (let n = 0; v.left > 0 && n < 20; n++) v = h.read(join(h.dir, "img/p.png"));
     const at = n => join(h.dir, "img", n);
     assert.deepEqual(plain(v.texts), { [at("a.png")]: "words of a.png", [at("bad.png")]: "", [at("p.png")]: "words of p.png" });
     assert.equal(v.left, 0);
-    assert.equal(h.ran(), 3, "the missing file is not read");
+    assert.equal(h.ran(), 3, "the missing file is not read, and no image twice");
     h.read();
     assert.equal(h.ran(), 3, "the cache answers the second read");
   } finally { rmSync(h.dir, { recursive: true, force: true }); }

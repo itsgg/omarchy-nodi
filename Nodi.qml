@@ -290,11 +290,11 @@ Item {
     // of one with an error too, and one that broke it stops the saves
     // before any writes over it (codex's review, 2026-10-09).
     if (root.prefsLoaded) prefsFile.reload()
-    // The registry's programs are looked for again when that look is old,
-    // or what it asked changed (lib/Probes.js): an installed remembered
-    // agent can recover precedence, and a removed non-current one is
-    // disabled before it is selected.
-    root.lookForAgents()
+    // The registry's programs are looked for again at every open, on the
+    // login PATH learnt (agentProbe.look): an installed remembered agent
+    // can recover precedence, and a removed non-current one is disabled
+    // before it is selected.
+    agentProbe.look()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -335,15 +335,10 @@ Item {
   property real togglesAt: 0
   property real appearanceAt: 0
   property real themesAt: 0
+  // The last login shell's PATH, { at, key, path } (lib/Probes.js): the
+  // agents are looked for on it at every open without a login shell.
   property var agentsSeen: null
   function agentsKey(tag) { return tag + "\n" + (Quickshell.env("PATH") || "") }
-  function lookForAgents() {
-    if (Probes.agentsDue(root.agentsSeen, Date.now(), root.agentsKey(agentProbe.probeTag()))) agentProbe.look()
-  }
-  Connections {
-    target: agentProbe
-    function onFinished(text, ok, tag) { if (ok && tag === agentProbe.probeTag()) root.agentsSeen = { at: Date.now(), key: root.agentsKey(tag) } }
-  }
   Connections { target: togglesReader; function onFinished(text, ok) { if (ok) root.togglesAt = Date.now() } }
   Connections { target: appearanceReader; function onFinished(text, ok) { if (ok) root.appearanceAt = Date.now() } }
   Connections { target: themesReader; function onFinished(text, ok) { if (ok) root.themesAt = Date.now() } }
@@ -1456,6 +1451,7 @@ Item {
       cameFrom: root.cameFrom, answers: root.config.answers, conversations: root.conversations,
       pickSession: root.pickSession, askBusy: askSession.busy(), proposal: askSession.proposal,
       shooting: windowShot.active,
+      prepared: function(q) { return root.preparedAsk(q) },
       resultAction: function(index) { return askSession.resultAction(index) },
       answer: { message: answerSession.message, keyword: answerSession.keyword,
                 question: answerSession.question, conversation: answerSession.conversation },
@@ -2069,6 +2065,21 @@ Item {
                                     busy: askSession.busy(), shooting: windowShot.active })
   }
 
+  // A turn an agent fallback prepared (askAgentFallback, Ask.qml prepare):
+  // idle, on the question still in the field. Enter sends the message the
+  // failed turn effectively sent, as it was, with its context: it was
+  // expanded when first asked, and expanding it again would read mentions
+  // from text he did not type (PromptContext.mentionSource).
+  function preparedAsk(question) {
+    var q = String(question || "")
+    return q !== "" && askSession.phase === "idle" && askSession.question === q
+  }
+  function sendPreparedAsk(agentId, question) {
+    root.askRows = ({ turn: "", rows: ({}) })
+    // No message: Ask.send asked again on its question keeps the prepared one.
+    root.startAsk(agentId || "", question)
+  }
+
   // An Ask, its context expanded (window, clipboard, selection and files),
   // so that an answers filter of his and an ACP agent get the same question.
   function dispatchAsk(question, rawMessage, context, purpose, extraEnv, image, filePath, agentId, answerFresh, commandQuery) {
@@ -2145,7 +2156,8 @@ Item {
     var env = Sources.cwdEnv(pid)
     if (env && Sources.sameWindow(root.windows, address, pid)) {
       root.pendingAsk.cwdWait = true
-      windowCwdReader.run(Sources.cwdArgv(), { pending: root.pendingAsk, pid: pid, address: address, env: env })
+      root.pendingAsk.token = Math.random()
+      windowCwdReader.run(Sources.cwdArgv(), { token: root.pendingAsk.token, pid: pid, address: address, env: env })
       return true
     }
     if (direct ? askSession.agent === target : askSession.agent === root.resolvedAgent)
@@ -2165,8 +2177,11 @@ Item {
     timeoutMs: 1000
     maxBytes: 8192
     onFinished: function(text, ok, tag) {
-      var pending = tag ? tag.pending : null
-      if (!pending || root.pendingAsk !== pending) return
+      // Matched by token: an object in a `var` signal argument arrives as a
+      // copy (Qt 6.12), never the pending Ask itself, so an identity test
+      // never matched and the Ask waited for good (NodiAskStatusTest.qml).
+      var pending = root.pendingAsk
+      if (!tag || !pending || pending.token !== tag.token) return
       var cwd = ok && Sources.sameWindow(root.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
       if (cwd) pending.snapshot.window.cwd = cwd
       pending.cwdWait = false
@@ -2249,10 +2264,19 @@ Item {
       if (!root.resolvedAgentId && root.resolvedAgentProgram) all.push(["__legacy__", root.resolvedAgentProgram])
       return JSON.stringify(all)
     }
+    // Every look asks for each program on the login shell's PATH. Only a
+    // look that finds that PATH old, or the programs or the session's PATH
+    // changed (lib/Probes.js agentsDue), starts the login shell to learn it
+    // again; the others are a plain shell given the PATH learnt, so an
+    // agent installed or removed shows at the next open without a login
+    // shell's cost at each one.
+    readonly property string lookScript: 'while [ "$#" -ge 2 ]; do id=$1 p=$2; shift 2; command -v -- "$p" >/dev/null 2>&1 && printf "%s\\tyes\\n" "$id" || printf "%s\\tno\\n" "$id"; done'
     function look() {
-      var argv = ["/usr/bin/bash", "-lc",
-        'while [ "$#" -ge 2 ]; do id=$1 p=$2; shift 2; command -v -- "$p" >/dev/null 2>&1 && printf "%s\\tyes\\n" "$id" || printf "%s\\tno\\n" "$id"; done',
-        "nodi-agent-probe"]
+      var tag = probeTag()
+      var seen = root.agentsSeen
+      var argv = Probes.agentsDue(seen, Date.now(), root.agentsKey(tag))
+        ? ["/usr/bin/bash", "-lc", lookScript + '; printf "@path\\t%s\\n" "$PATH"', "nodi-agent-probe"]
+        : ["/usr/bin/bash", "--norc", "--noprofile", "-c", 'PATH=$1; shift; ' + lookScript, "nodi-agent-probe", seen.path]
       for (var i = 0; i < root.askRegistry.length; i++)
         argv.push(root.askRegistry[i].id, Agents.disabledReason(root.askRegistry[i].id) ? ""
                                                    : Agents.program(root.askRegistry[i].id, root.askRegistry))
@@ -2265,7 +2289,8 @@ Item {
       var lines = String(text || "").trim().split("\n")
       for (var i = 0; i < lines.length; i++) {
         var pair = lines[i].split("\t")
-        if (pair.length === 2) found[pair[0]] = pair[1] === "yes"
+        if (pair[0] === "@path") root.agentsSeen = { at: Date.now(), key: root.agentsKey(tag), path: pair.slice(1).join("\t") }
+        else if (pair.length === 2) found[pair[0]] = pair[1] === "yes"
       }
       root.agentAvailability = found
       if (root.opened) root.recompute()

@@ -297,7 +297,10 @@ test("ics: a local calendar FIFO is rejected without blocking", () => {
     const got = py([
       "os.mkfifo(sys.argv[2])",
       "print(json.dumps(ics.fetch(sys.argv[2], sys.argv[3], 1)))"],
-      [fifo, join(dir, "cache")], {}, { timeout: 3000 });
+      // A blocking open waits for a writer that never comes, so any
+      // deadline tells the two apart; a long one leaves a busy machine
+      // the time Python takes to start.
+      [fifo, join(dir, "cache")], {}, { timeout: 30000 });
     assert.deepEqual(got, [null, { ok: false, error: "not a regular file" }]);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
