@@ -4,6 +4,7 @@ import Quickshell.Io
 import "../lib/Acp.js" as Acp
 import "../lib/AskTools.js" as AskTools
 import "../lib/AskActions.js" as AskActions
+import "../lib/AskOrigin.js" as AskOrigin
 import "../lib/Agents.js" as Agents
 import "../lib/PromptContext.js" as PromptContext
 import "../lib/AskInteraction.js" as AskInteraction
@@ -622,18 +623,8 @@ Item {
     })
   }
 
-  function stableActionInput(value) {
-    if (!value || typeof value !== "object") return value
-    if (Array.isArray(value)) return value.map(ask.stableActionInput)
-    var out = Object.create(null)
-    Object.keys(value).sort().forEach(function(key) {
-      out[key] = ask.stableActionInput(value[key])
-    })
-    return out
-  }
-
   function actionInputKey(input) {
-    return JSON.stringify(ask.stableActionInput(input && typeof input === "object" ? input : {}))
+    return AskOrigin.inputKey(input)
   }
 
   function setReadActivity(operation, text, status) {
@@ -687,174 +678,41 @@ Item {
     ask.thoughtActivity = ""
   }
 
-  function identityField(object, key) {
-    if (!object || typeof object !== "object"
-        || !Object.prototype.hasOwnProperty.call(object, key))
-      return { marker: "missing" }
-    var value = object[key]
-    if (value === null) return { marker: "null" }
-    return { marker: "value", type: typeof value, value: ask.stableActionInput(value) }
+  // Ask's session state as lib/AskOrigin.js reads it, and what a check
+  // there returns applied: a binding kept, or a limit reached, which ends
+  // the session.
+  function originState() {
+    return {
+      agent: ask.agent, program: ask.program, spec: ask.spec,
+      sessionId: ask.sessionId, token: ask.token, channel: ask.channel,
+      actionTurn: ask.actionTurn, turnOpen: ask.turn !== null,
+      shown: ask.shown, proposal: ask.proposal, cut: ask.cut,
+      actionServer: ask.actionServer, runBindings: ask.runBindings,
+      codexTurns: ask.codexTurns, claudeTurns: ask.claudeTurns,
+      actionBook: ask.actionBook, originRejections: ask.originRejections,
+      runBindingLimit: ask.runBindingLimit,
+      providerTurnBindingLimit: ask.providerTurnBindingLimit
+    }
+  }
+
+  function applyOrigin(r) {
+    if (r.runBindings) ask.runBindings = r.runBindings
+    if (r.codexTurns) ask.codexTurns = r.codexTurns
+    if (r.claudeTurns) ask.claudeTurns = r.claudeTurns
+    if (r.capacity) return ask.sessionCapacityExceeded(r.capacity)
+    return r.value
   }
 
   function relayOrigin(message, requestId) {
-    var params = message && message.params && typeof message.params === "object"
-      ? message.params : {}
-    var requestInputKey = JSON.stringify(ask.identityField(params, "arguments"))
-    var managedCodex = ask.agent === "codex" && ask.spec
-    var managedClaude = ask.agent === "claude" && !ask.program && ask.spec
-      && ask.spec.policy === "strict"
-    if (!managedCodex && !managedClaude) {
-      return {
-        valid: true, callId: String(requestId), providerTurn: "",
-        requestInputKey: requestInputKey,
-        adapterKey: JSON.stringify({
-          adapter: "acp", requestId: {
-            type: typeof requestId, value: ask.stableActionInput(requestId)
-          }
-        })
-      }
-    }
-    var meta = params._meta && typeof params._meta === "object"
-      ? params._meta : {}
-    if (managedClaude) {
-      var claudeCallId = typeof meta["claudecode/toolUseId"] === "string"
-        && meta["claudecode/toolUseId"] ? meta["claudecode/toolUseId"] : ""
-      var claudeProviderTurn = ask.claudeRelayProviderTurn(claudeCallId,
-                                                           requestId)
-      return {
-        valid: !!claudeCallId && !!claudeProviderTurn,
-        callId: claudeCallId,
-        providerTurn: claudeProviderTurn,
-        requestInputKey: requestInputKey,
-        adapterKey: JSON.stringify({
-          adapter: "claude",
-          meta: ask.identityField(params, "_meta"),
-          callId: ask.identityField(meta, "claudecode/toolUseId")
-        })
-      }
-    }
-    var turn = meta["x-codex-turn-metadata"]
-    var turnObject = turn && typeof turn === "object" ? turn : {}
-    var callId = typeof meta.callId === "string" && meta.callId ? meta.callId : ""
-    var providerTurn = typeof turnObject.turn_id === "string" && turnObject.turn_id
-      ? turnObject.turn_id : ""
-    var adapterKey = JSON.stringify({
-      adapter: "codex",
-      meta: ask.identityField(params, "_meta"),
-      turnMetadata: ask.identityField(meta, "x-codex-turn-metadata"),
-      sessionId: ask.identityField(turnObject, "session_id"),
-      threadId: ask.identityField(turnObject, "thread_id"),
-      providerTurn: ask.identityField(turnObject, "turn_id"),
-      callId: ask.identityField(meta, "callId")
-    })
-    return {
-      valid: !!turn && typeof turn === "object"
-        && turnObject.session_id === ask.sessionId
-        && turnObject.thread_id === ask.sessionId
-        && !!providerTurn && !!callId,
-      callId: callId, providerTurn: providerTurn,
-      requestInputKey: requestInputKey, adapterKey: adapterKey
-    }
+    return AskOrigin.relayOrigin(ask.originState(), message, requestId)
   }
 
   function bindCodexProviderTurn(update) {
-    if (ask.agent !== "codex" || !ask.spec
-        || !update || update.sessionUpdate !== "session_info_update"
-        || !update._meta || update._meta.nodi_codex_turn_started !== true
-        || typeof update._meta.nodi_codex_turn_id !== "string"
-        || !update._meta.nodi_codex_turn_id
-        || ask.turn === null || !ask.actionTurn)
-      return false
-    var providerTurn = update._meta.nodi_codex_turn_id
-    var turns = ask.codexTurns.slice()
-    for (var i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].providerTurn !== providerTurn) continue
-      return turns[i].session === ask.token
-        && turns[i].channel === ask.channel
-        && turns[i].turn === ask.actionTurn
-    }
-    if (turns.length >= ask.providerTurnBindingLimit)
-      return ask.sessionCapacityExceeded("Codex turn bindings")
-    turns.push({
-      providerTurn: providerTurn, session: ask.token,
-      channel: ask.channel, turn: ask.actionTurn
-    })
-    ask.codexTurns = turns
-    return true
-  }
-
-  function codexTurnOrigin(providerTurn) {
-    for (var i = ask.codexTurns.length - 1; i >= 0; i--) {
-      var turn = ask.codexTurns[i]
-      if (turn.providerTurn === providerTurn) return turn
-    }
-    return null
+    return ask.applyOrigin(AskOrigin.bindProviderTurn(ask.originState(), "codex", update))
   }
 
   function bindClaudeProviderTurn(update) {
-    if (ask.agent !== "claude" || ask.program || !ask.spec
-        || ask.spec.policy !== "strict"
-        || !update || update.sessionUpdate !== "session_info_update"
-        || !update._meta || update._meta.nodi_claude_turn_started !== true
-        || typeof update._meta.nodi_claude_turn_id !== "string"
-        || !update._meta.nodi_claude_turn_id
-        || ask.turn === null || !ask.actionTurn)
-      return false
-    var providerTurn = update._meta.nodi_claude_turn_id
-    var turns = ask.claudeTurns.slice()
-    for (var i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].providerTurn !== providerTurn) continue
-      return turns[i].session === ask.token
-        && turns[i].channel === ask.channel
-        && turns[i].turn === ask.actionTurn
-    }
-    if (turns.length >= ask.providerTurnBindingLimit)
-      return ask.sessionCapacityExceeded("Claude turn bindings")
-    turns.push({
-      providerTurn: providerTurn, session: ask.token,
-      channel: ask.channel, turn: ask.actionTurn
-    })
-    ask.claudeTurns = turns
-    return true
-  }
-
-  function claudeTurnOrigin(providerTurn) {
-    for (var i = ask.claudeTurns.length - 1; i >= 0; i--) {
-      var turn = ask.claudeTurns[i]
-      if (turn.providerTurn === providerTurn) return turn
-    }
-    return null
-  }
-
-  function claudeRelayProviderTurn(callId, requestId) {
-    if (!callId) return ""
-    var found = ""
-    for (var i = ask.runBindings.length - 1; i >= 0; i--) {
-      var binding = ask.runBindings[i]
-      if (binding.adapter !== "claude" || binding.callId !== callId) continue
-      if (found && found !== binding.providerTurn) return ""
-      found = binding.providerTurn
-    }
-    if (found) return found
-    var record = ask.actionRequest(requestId)
-    return record && record.callId === callId ? record.providerTurn : ""
-  }
-
-  function rejectionOrigin(requestId, input, server, relay) {
-    return {
-      id: requestId, session: ask.token, channel: ask.channel,
-      turn: ask.actionTurn,
-      inputKey: relay.requestInputKey === undefined
-        ? ask.actionInputKey(input) : relay.requestInputKey,
-      server: String(server), adapterKey: relay.adapterKey
-    }
-  }
-
-  function sameRejectedOrigin(record, origin) {
-    return record && record.id === origin.id
-      && record.session === origin.session && record.channel === origin.channel
-      && record.turn === origin.turn && record.inputKey === origin.inputKey
-      && record.server === origin.server && record.adapterKey === origin.adapterKey
+    return ask.applyOrigin(AskOrigin.bindProviderTurn(ask.originState(), "claude", update))
   }
 
   function rememberOriginRejection(requestId, input, server, relay) {
@@ -863,146 +721,19 @@ Item {
     if (Object.prototype.hasOwnProperty.call(records, key)) return true
     if (ask.originRejectionCount >= ask.rejectionLimit)
       return ask.sessionCapacityExceeded("action rejection records")
-    records[key] = ask.rejectionOrigin(requestId, input, server, relay)
+    records[key] = AskOrigin.rejectionOrigin(ask.originState(), requestId, input, server, relay)
     ask.originRejectionCount++
     ask.originRejectionsChanged()
     return true
   }
 
-  function rejectedOrigin(requestId) {
-    var key = ask.toolRequestKey(requestId)
-    return Object.prototype.hasOwnProperty.call(ask.originRejections, key)
-      ? ask.originRejections[key] : null
-  }
-
   function bindRunOrigin(permissionId, callId, input, allowed, call) {
-    if (typeof callId !== "string" || !callId) return false
-    var bindings = ask.runBindings.slice()
-    var codexOrigin = null
-    for (var i = bindings.length - 1; i >= 0; i--) {
-      if (bindings[i].adapter !== "codex" || bindings[i].callId !== callId)
-        continue
-      var same = bindings[i].session === ask.token
-        && bindings[i].channel === ask.channel
-        && bindings[i].turn === ask.actionTurn
-        && bindings[i].operation === callId
-        && bindings[i].server === ask.actionServer
-        && bindings[i].inputKey === ask.actionInputKey(input)
-        && bindings[i].allowed === (allowed === true)
-      codexOrigin = same ? bindings[i] : null
-      bindings.splice(i, 1)
-      if (!same) {
-        ask.runBindings = bindings
-        return false
-      }
-    }
-    if (ask.agent === "codex" && ask.spec
-        && !codexOrigin)
-      return false
-    var managedClaude = ask.agent === "claude" && !ask.program && ask.spec
-      && ask.spec.policy === "strict"
-    var claudeOrigin = null
-    if (managedClaude) {
-      var meta = call && call._meta && typeof call._meta === "object"
-        ? call._meta : {}
-      var evidence = meta.nodi_claude_action_origin
-      var server = evidence && evidence.server
-      var provider = evidence && typeof evidence.providerTurn === "string"
-        ? ask.claudeTurnOrigin(evidence.providerTurn) : null
-      var hasInput = evidence && Object.prototype.hasOwnProperty.call(evidence,
-                                                                       "input")
-      if (!evidence || typeof evidence !== "object"
-          || evidence.version !== 1 || evidence.adapter !== "claude"
-          || evidence.acpSessionId !== ask.sessionId
-          || evidence.callId !== callId
-          || !server || typeof server !== "object"
-          || server.name !== ask.actionServer || server.source !== "dynamic"
-          || !hasInput
-          || ask.actionInputKey(evidence.input) !== ask.actionInputKey(input)
-          || AskTools.barTool(call, ask.actionServer) !== "run"
-          || !provider || provider.session !== ask.token
-          || provider.channel !== ask.channel
-          || provider.turn !== ask.actionTurn)
-        return false
-      claudeOrigin = evidence
-      for (var ci = bindings.length - 1; ci >= 0; ci--) {
-        if (bindings[ci].adapter !== "claude"
-            || bindings[ci].callId !== callId) continue
-        var exact = bindings[ci].session === ask.token
-          && bindings[ci].channel === ask.channel
-          && bindings[ci].turn === ask.actionTurn
-          && bindings[ci].permissionId === String(permissionId)
-          && bindings[ci].server === ask.actionServer
-          && bindings[ci].inputKey === ask.actionInputKey(input)
-          && bindings[ci].allowed === (allowed === true)
-          && bindings[ci].providerTurn === evidence.providerTurn
-        if (exact) return true
-        bindings.splice(ci, 1)
-        ask.runBindings = bindings
-        return false
-      }
-    }
-    if (bindings.length >= ask.runBindingLimit)
-      return ask.sessionCapacityExceeded("run origin bindings")
-    bindings.push({
-      session: ask.token, channel: ask.channel, turn: ask.actionTurn,
-      callId: callId,
-      operation: callId,
-      permissionId: String(permissionId),
-      server: ask.actionServer,
-      inputKey: ask.actionInputKey(input), allowed: allowed === true,
-      providerTurn: codexOrigin ? codexOrigin.providerTurn
-        : claudeOrigin ? claudeOrigin.providerTurn : "",
-      adapter: codexOrigin ? "codex" : claudeOrigin ? "claude" : "acp"
-    })
-    ask.runBindings = bindings
-    return true
+    return ask.applyOrigin(AskOrigin.bindRunOrigin(ask.originState(),
+      permissionId, callId, input, allowed, call))
   }
 
-  // Codex's pinned adapter publishes the app-server's structured mcpToolCall
-  // start, with its generated call ID, before the MCP relay request. Bind only
-  // that exact current-session event. This also covers adapter versions which
-  // omit ACP permission; when permission is present bindRunOrigin replaces
-  // this provisional binding. The relay must carry the same generated ID.
   function bindCodexRunOrigin(update) {
-    if (ask.agent !== "codex" || !ask.spec
-        || !update || update.sessionUpdate !== "tool_call"
-        || typeof update.toolCallId !== "string" || !update.toolCallId
-        || !update._meta || update._meta.is_mcp_tool_call !== true
-        || AskTools.barTool(update, ask.actionServer) !== "run"
-        || ask.turn === null || !ask.actionTurn || !ask.shown || ask.proposal)
-      return false
-    var input = AskTools.input(update)
-    if (!AskTools.runInput(input).ok) return false
-    var providerTurn = update._meta.nodi_codex_turn_id
-    if (typeof providerTurn !== "string" || !providerTurn) return false
-    var providerOrigin = ask.codexTurnOrigin(providerTurn)
-    if (!providerOrigin || providerOrigin.session !== ask.token
-        || providerOrigin.channel !== ask.channel
-        || providerOrigin.turn !== ask.actionTurn)
-      return false
-    var bindings = ask.runBindings.slice()
-    for (var i = bindings.length - 1; i >= 0; i--) {
-      if (bindings[i].adapter === "codex"
-          && bindings[i].callId === update.toolCallId) {
-        bindings.splice(i, 1)
-        ask.runBindings = bindings
-        return false
-      }
-    }
-    if (bindings.length >= ask.runBindingLimit)
-      return ask.sessionCapacityExceeded("run origin bindings")
-    bindings.push({
-      session: ask.token, channel: ask.channel, turn: ask.actionTurn,
-      callId: update.toolCallId,
-      operation: update.toolCallId,
-      permissionId: "",
-      server: ask.actionServer,
-      inputKey: ask.actionInputKey(input), allowed: true,
-      adapter: "codex", providerTurn: providerTurn
-    })
-    ask.runBindings = bindings
-    return true
+    return ask.applyOrigin(AskOrigin.bindCodexRunOrigin(ask.originState(), update))
   }
 
   function actionRequest(requestId) {
@@ -1011,121 +742,13 @@ Item {
   }
 
   function validateRunReplay(requestId, input, server, relay) {
-    relay = relay && typeof relay === "object" ? relay
-      : { valid: false, callId: String(relay || ""), providerTurn: "", adapterKey: "" }
-    var rejected = ask.rejectedOrigin(requestId)
-    if (rejected) {
-      var replayedRejection = ask.rejectionOrigin(requestId, input, server, relay)
-      return ask.sameRejectedOrigin(rejected, replayedRejection)
-        ? { ok: true }
-        : { ok: false, error: "The action replay does not match its recorded rejection origin" }
-    }
-    var record = ask.actionRequest(requestId)
-    if (!record) return { ok: true }
-    var managedOrigin = ask.spec && (ask.agent === "codex"
-      || (ask.agent === "claude" && !ask.program
-          && ask.spec.policy === "strict"))
-    if (managedOrigin && !relay.valid)
-      return { ok: false, error: "The action replay has no trusted call origin" }
-    var trustedCallId = managedOrigin ? relay.callId : String(requestId)
-    var parsed = AskTools.runInput(input)
-    var kind = parsed.ok ? parsed.kind : "invalid"
-    var value = parsed.ok ? parsed.value : null
-    if (record.id !== requestId
-        || record.session !== ask.token || record.channel !== ask.channel
-        || typeof record.turn !== "string" || !record.turn
-        || record.callId !== trustedCallId
-        || record.providerTurn !== relay.providerTurn
-        || record.adapterKey !== relay.adapterKey
-        || record.inputKey !== ask.actionInputKey(input)
-        || record.operation !== trustedCallId
-        || record.server !== String(server)
-        || record.kind !== kind || record.value !== value)
-      return { ok: false, error: "The action replay does not match its recorded origin" }
-    return { ok: true }
+    return AskOrigin.validateRunReplay(ask.originState(), requestId, input, server, relay)
   }
 
-  // A duplicate is owned by its original request record. A first delivery
-  // consumes the permission-time or structured-adapter binding with the
-  // same exact input. More than one is ambiguous and therefore cannot be
-  // promoted to "current".
   function takeRunOrigin(requestId, input, server, relay) {
-    relay = relay && typeof relay === "object" ? relay
-      : { valid: false, callId: String(relay || ""), providerTurn: "", adapterKey: "" }
-    var record = ask.actionRequest(requestId)
-    var key = ask.actionInputKey(input)
-    var bindings = ask.runBindings.slice()
-    var managedOrigin = ask.spec && (ask.agent === "codex"
-      || (ask.agent === "claude" && !ask.program
-          && ask.spec.policy === "strict"))
-    var unmanagedDelivery = ask.spec && ask.spec.policy === "unmanaged"
-      && ask.agent !== "codex"
-    if (managedOrigin && !relay.valid)
-      return { ok: false, error: "The action request has no trusted call origin" }
-    var trustedCallId = managedOrigin ? relay.callId : String(requestId)
-    if (record) {
-      if (record.callId !== trustedCallId || record.inputKey !== key
-          || record.server !== String(server)
-          || record.providerTurn !== relay.providerTurn
-          || record.adapterKey !== relay.adapterKey)
-        return { ok: false, error: "The action request does not match its permission-bound origin" }
-      for (var ri = bindings.length - 1; ri >= 0; ri--) {
-        if (bindings[ri].callId === String(requestId)
-            && bindings[ri].inputKey === key
-            && bindings[ri].server === String(server)) {
-          bindings.splice(ri, 1)
-          break
-        }
-      }
-      ask.runBindings = bindings
-      return { ok: true, origin: {
-        session: record.session, channel: record.channel, turn: record.turn,
-        callId: record.callId, inputKey: record.inputKey,
-        operation: record.operation, server: record.server, allowed: true,
-        providerTurn: record.providerTurn, adapterKey: record.adapterKey
-      } }
-    }
-    // OpenCode and custom ACP agents do not necessarily identify an MCP
-    // server in permission metadata. Their weaker origin is the authenticated
-    // relay itself, accepted only during this visible Nodi turn. It still
-    // enters runTool's immutable proposal lifecycle and always waits for the
-    // separate Nodi action card.
-    if (unmanagedDelivery) {
-      if (ask.turn === null || !ask.actionTurn
-          || ask.actionBook.session !== ask.token
-          || ask.actionBook.channel !== ask.channel
-          || ask.actionBook.turn !== ask.actionTurn)
-        return { ok: false, error: "The unmanaged action request is from an old turn" }
-      if (!ask.shown)
-        return { ok: false, error: "The unmanaged action request arrived while the bar is closed" }
-      return { ok: true, origin: {
-        session: ask.token, channel: ask.channel, turn: ask.actionTurn,
-        callId: String(requestId), inputKey: key,
-        operation: String(requestId), server: String(server), allowed: true,
-        providerTurn: "", adapterKey: relay.adapterKey
-      } }
-    }
-    var matches = []
-    for (var i = 0; i < bindings.length; i++)
-      if (bindings[i].callId === trustedCallId
-          && bindings[i].inputKey === key
-          && bindings[i].session === ask.token
-          && bindings[i].channel === ask.channel
-          && bindings[i].turn === ask.actionTurn
-          && bindings[i].providerTurn === relay.providerTurn
-          && bindings[i].operation === trustedCallId
-          && bindings[i].server === String(server)) matches.push(i)
-    if (matches.length !== 1) {
-      for (var mi = matches.length - 1; mi >= 0; mi--) bindings.splice(matches[mi], 1)
-      ask.runBindings = bindings
-      return { ok: false, error: matches.length
-        ? "The action request origin is ambiguous"
-        : "The action request has no permission-bound origin" }
-    }
-    var origin = bindings.splice(matches[0], 1)[0]
-    origin.adapterKey = relay.adapterKey
-    ask.runBindings = bindings
-    return { ok: true, origin: origin }
+    var r = AskOrigin.takeRunOrigin(ask.originState(), requestId, input, server, relay)
+    if (r.runBindings) ask.runBindings = r.runBindings
+    return r.ok ? { ok: true, origin: r.origin } : { ok: false, error: r.error }
   }
 
   function actionResponse(requestId, outcome, isError) {
@@ -2064,14 +1687,7 @@ Item {
   }
 
   function proposalGate(origin) {
-    if (!origin.allowed) return "The action permission was refused"
-    if (ask.turn === null || !ask.actionTurn) return "The action request has no active turn"
-    if (origin.session !== ask.token || origin.channel !== ask.channel
-        || origin.turn !== ask.actionTurn) return "The action request is from an old turn"
-    if (!ask.shown) return "The bar is closed"
-    if (ask.cut) return "The answer was cancelled"
-    if (ask.proposal) return "Another confirmation is already shown"
-    return ""
+    return AskOrigin.proposalGate(ask.originState(), origin)
   }
 
   function runTool(requestId, input, origin) {
