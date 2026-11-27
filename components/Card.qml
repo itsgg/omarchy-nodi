@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "../lib/Scroll.js" as Scroll
+import "../lib/ListSync.js" as ListSync
 
 // The bar itself: the search field, the results or Ctrl+K's actions, and
 // the footer. Everything it shows and does comes from `nodi`, the Nodi
@@ -73,6 +74,44 @@ BorderSurface {
 
   // The pane beside the list, by lines or pages, from the keyboard.
   function scrollPane(lines, pages) { pane.scroll(lines, pages) }
+
+  // The rows as the list draws them, kept in step by key (lib/ListSync.js):
+  // a row still there keeps its delegate, moved where it now ranks, and is
+  // told again only when what it draws changed. Bound to the rows array,
+  // the list made every visible row again at each keystroke. Each entry is
+  // { uid, rev }; the row itself is read from rowByUid, which is filled in
+  // place and so notifies nothing: a delegate reads it again when its rev
+  // moves.
+  ListModel { id: rowModel }
+  property var rowItems: []
+  property var rowByUid: ({})
+  function rowFor(uid, rev) { return card.rowByUid[uid] || ({ key: "", title: "" }) }
+  function syncRows() {
+    var rows = (nodi && nodi.rows) || []
+    var p = ListSync.plan(card.rowItems, rows)
+    var map = card.rowByUid
+    var live = {}
+    for (var i = 0; i < p.items.length; i++) { map[p.items[i].uid] = rows[i]; live[p.items[i].uid] = true }
+    for (var j = 0; j < p.ops.length; j++) {
+      var o = p.ops[j]
+      if (o.op === "remove") rowModel.remove(o.at, o.n)
+      else if (o.op === "insert") rowModel.insert(o.at, { uid: o.item.uid, rev: 0 })
+      else if (o.op === "move") rowModel.move(o.from, o.to, 1)
+      else if (o.op === "set") rowModel.setProperty(o.at, "rev", rowModel.get(o.at).rev + 1)
+    }
+    for (var uid in map) if (!live[uid]) delete map[uid]
+    card.rowItems = p.items
+    // A row put in or taken out before the current one moves the list's
+    // own currentIndex, once the list takes the changes in; it follows the
+    // selection again.
+    if (!p.ops.length) return
+    list.forceLayout()
+    if (list.currentIndex !== nodi.selectedIndex)
+      list.currentIndex = Qt.binding(function() { return nodi.selectedIndex })
+  }
+  readonly property var shownRows: nodi ? nodi.rows : []
+  onShownRowsChanged: card.syncRows()
+  Component.onCompleted: card.syncRows()
 
   // The row at `index` in view, clear of the fades (lib/Scroll.js).
   function keepVisible(index) { Scroll.keep(list, index, nodi.rowPeek, ListView.Contain) }
@@ -559,7 +598,7 @@ BorderSurface {
         ListView {
           id: list
           anchors.fill: parent
-          model: nodi.rows
+          model: rowModel
           clip: true
           Accessible.role: Accessible.List
           Accessible.name: "Results"
@@ -569,7 +608,7 @@ BorderSurface {
           boundsBehavior: Flickable.StopAtBounds
           currentIndex: nodi.selectedIndex
 
-          delegate: ResultRow { nodi: card.nodi }
+          delegate: ResultRow { nodi: card.nodi; row: card.rowFor(uid, rev) }
         }
 
         // Gliding selection pill indicator
