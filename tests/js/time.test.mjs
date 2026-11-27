@@ -29,3 +29,14 @@ test("zones: a configured zone the read left out is named unknown, not looked up
   assert.equal(timeRows("3pm to tokyo", {}, home)[0].title, "Unknown time zone: Asia/Colmbo");
   assert.equal(timeRows("3pm to tokyo", { zones: {} }, home)[0].title, "Looking up time zones...", "before the read lands");
 });
+
+const at = iso => ({ now: () => new Date(iso) });
+const top = (q, iso, cfg) => timeRows(q, iso ? at(iso) : {}, cfg)[0];
+
+test("dates: a weekday ending a range falls on or after its start", () => {
+  // Wednesday 23 September 2026.
+  assert.equal(top("monday to friday").subtitle, "Mon, 28 Sep 2026 to Fri, 2 Oct 2026");
+  assert.equal(top("friday to monday").subtitle, "Fri, 25 Sep 2026 to Mon, 28 Sep 2026");
+  assert.equal(top("dec 25 to friday").subtitle, "Fri, 25 Dec 2026 to Fri, 25 Dec 2026");
+  assert.equal(top("2026-10-01 to 2026-10-05").title, "4 days", "dates with years as given");
+});
