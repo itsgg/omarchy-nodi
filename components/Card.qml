@@ -609,35 +609,40 @@ BorderSurface {
           currentIndex: nodi.selectedIndex
 
           delegate: ResultRow { nodi: card.nodi; row: card.rowFor(uid, rev) }
-        }
 
-        // Gliding selection pill indicator
-        Rectangle {
-          id: selectionPill
-          visible: list.count > 0 && list.currentItem !== null && !nodi.reducedMotion && nodi.selectionBar
-          z: 2
-          width: nodi.barWidth
-          radius: width / 2
-          color: nodi.link
-          x: Style.spacing.xs + nodi.rowInsetLeft
+          // The selected row's mark, gliding from row to row. Inside the
+          // list's content, so it scrolls with its row and is clipped with
+          // it: in the unclipped box beside the list, a row wheeled out of
+          // view left it floating over the field or the footer.
+          Rectangle {
+            id: selectionPill
+            objectName: "selectionPill"
+            parent: list.contentItem
+            visible: list.count > 0 && list.currentItem !== null && !nodi.reducedMotion && nodi.selectionBar
+            z: 2
+            width: nodi.barWidth
+            radius: width / 2
+            color: nodi.link
+            x: Style.spacing.xs + nodi.rowInsetLeft
 
-          readonly property real targetY: list.currentItem
-            ? (list.currentItem.y - list.contentY + (list.currentItem.section !== "" ? nodi.sectionHeight : 0) + (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) / 2 - height / 2)
-            : 0
-          readonly property real targetHeight: list.currentItem
-            ? Math.max(nodi.barWidth * 3, (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) - nodi.barInset * 2)
-            : 0
+            readonly property real targetY: list.currentItem
+              ? (list.currentItem.y + (list.currentItem.section !== "" ? nodi.sectionHeight : 0) + (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) / 2 - height / 2)
+              : 0
+            readonly property real targetHeight: list.currentItem
+              ? Math.max(nodi.barWidth * 3, (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) - nodi.barInset * 2)
+              : 0
 
-          y: targetY
-          height: targetHeight
+            y: targetY
+            height: targetHeight
 
-          Behavior on y {
-            enabled: card.animated && !nodi.reducedMotion
-            NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
-          }
-          Behavior on height {
-            enabled: card.animated && !nodi.reducedMotion
-            NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+            Behavior on y {
+              enabled: card.animated && !nodi.reducedMotion
+              NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+            }
+            Behavior on height {
+              enabled: card.animated && !nodi.reducedMotion
+              NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+            }
           }
         }
 
