@@ -2252,21 +2252,22 @@ Item {
 
   property var pendingFileAsk: null
 
-  // Dispatches an ask query after expanding context (window, clipboard, selection, and files)
-  // so that configured answer providers (e.g. Arivu) and ACP agents receive the exact same
-  // fully resolved question and context.
-  function askRoute(qText) {
-    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.config.answers, root.cameFrom),
+  function askRoute(qText, agentId) {
+    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.config.answers, root.cameFrom), agentId: agentId || "",
                                     busy: askSession.busy(), shooting: windowShot.active })
   }
 
+  // An Ask, its context expanded (window, clipboard, selection and files),
+  // so that an answers filter of his and an ACP agent get the same question.
   function dispatchAsk(question, rawMessage, context, purpose, extraEnv, image, filePath, agentId, answerFresh, commandQuery) {
     var qText = commandQuery || ("ask " + question)
     // Busy: nothing of this Ask is done, the field left as he has it.
-    if (root.askRoute(qText) === "busy") return
+    if (root.askRoute(qText, agentId) === "busy") return
     root.pendingFileAsk = null
     if (askFileReader.active) askFileReader.cancel()
-    if (input.text !== qText) {
+    // An agent named in the field keeps its name there: "ask " would end
+    // the direct Ask (queryUsesDirectAgent).
+    if (!(agentId && !commandQuery) && input.text !== qText) {
       input.text = qText
       input.cursorPosition = input.text.length
     }
@@ -2296,7 +2297,7 @@ Item {
     var qText = commandQuery || ("ask " + question)
     var expanded = PromptContext.expandFor(context, question, rawMessage, snapshot)
     // Again after a file read: the agent may have taken another question since.
-    var route = root.askRoute(qText)
+    var route = root.askRoute(qText, agentId)
     if (route === "busy") return
     if (route === "answer") {
       var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)

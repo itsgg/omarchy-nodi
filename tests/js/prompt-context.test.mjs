@@ -421,3 +421,9 @@ test("a file read through a link is named with the file it leads to", async () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("an agent he names is asked over ACP even when an answers filter of his takes ask", () => {
+  assert.equal(P.askRoute({ answered: true }), "answer", "a plain ask goes to his filter");
+  assert.equal(P.askRoute({ answered: true, agentId: "codex" }), "agent");
+  assert.equal(P.askRoute({ answered: true, agentId: "codex", busy: true }), "busy");
+});
