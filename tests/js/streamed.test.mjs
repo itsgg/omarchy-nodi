@@ -27,8 +27,8 @@ test("Enter's run: the question as NODI_QUERY, last only when the answer says so
     NODI_WINDOW_TITLE: "vim", NODI_WINDOW_PID: "5438", NODI_WINDOW_WORKSPACE: "2" }, "the window's title in no argument");
   const handed = plain(A.spec("a why", [Object.assign({}, helper, { argument: true })], window, "Earlier context\n\nwhy"));
   assert.deepEqual([handed.env.NODI_QUERY, handed.argv[handed.argv.length - 1], handed.message],
-                   ["Earlier context\n\nwhy", "Earlier context\n\nwhy", "Earlier context\n\nwhy"],
-                   "a handoff keeps its displayed question while both input forms receive its full context");
+                   ["Earlier context\n\nwhy", "why", "Earlier context\n\nwhy"],
+                   "a handoff keeps its displayed question; its full context goes in the environment alone, never an argument");
   const withSelection = plain(A.spec("a why", [helper], window, "Explain this\n\ncode", { NODI_SELECTION: "code" }));
   assert.equal(withSelection.env.NODI_SELECTION, "code", "extraEnv extends the answer run's environment");
 
@@ -39,7 +39,12 @@ test("Enter's run: the question as NODI_QUERY, last only when the answer says so
   });
   const expandedSpec = plain(A.spec("a why", [Object.assign({}, helper, { argument: true })], window, expandedPrompt));
   assert.equal(expandedSpec.env.NODI_QUERY, 'explain [Active Window: "vim" (foot) in /tmp] and [Selection: "const x = 1;"]');
-  assert.equal(expandedSpec.argv[expandedSpec.argv.length - 1], 'explain [Active Window: "vim" (foot) in /tmp] and [Selection: "const x = 1;"]');
+  assert.equal(expandedSpec.argv[expandedSpec.argv.length - 1], "why", "a selection, a file or the clipboard expanded goes in no argument");
+  const filed = plain(A.spec("a explain @f:~/.ssh/id_ed25519", [Object.assign({}, helper, { argument: true })], window,
+                             'explain [File "~/.ssh/id_ed25519":\nPRIVATE KEY\n]'));
+  assert.ok(!filed.argv.some(a => /PRIVATE KEY/.test(a)), JSON.stringify(filed.argv));
+  assert.equal(filed.argv[filed.argv.length - 1], "explain @f:~/.ssh/id_ed25519", "his words as typed");
+  assert.match(filed.env.NODI_QUERY, /PRIVATE KEY/);
   assert.deepEqual([s.keyword, s.title, s.question, s.timeoutMs], ["a", "Assistant", "why is it slow", 120000]);
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 9e9 })]).timeoutMs, 600000, "ten minutes at most");
   assert.equal(A.spec("a q", [Object.assign({}, helper, { timeoutMs: 10 })]).timeoutMs, 1000);
