@@ -22,14 +22,14 @@ function stub(dir, name, body) {
 const PROBED = ["brightnessctl", "hyprctl", "nmcli", "omarchy-audio-output-sink", "omarchy-bluetooth-power",
                 "omarchy-shell", "omarchy-toggle-nightlight", "pactl", "wpctl"];
 
-function probe(setup) {
+function probe(setup, timeout = 10000) {
   const home = mkdtempSync(join(tmpdir(), "nodi-home-"));
   const bin = mkdtempSync(join(tmpdir(), "nodi-bin-"));
   try {
     for (const name of PROBED) stub(bin, name, "exit 1");
     setup(home, bin);
     const out = execFileSync("/bin/bash", ["-c", Toggles.probeScript()], {
-      env: { HOME: home, PATH: bin + ":/usr/bin:/bin", OMARCHY_PATH: "/nonexistent" }, timeout: 10000
+      env: { HOME: home, PATH: bin + ":/usr/bin:/bin", OMARCHY_PATH: "/nonexistent" }, timeout
     }).toString();
     return plain(Toggles.parse(out));
   } finally {
@@ -97,10 +97,11 @@ test("a state that cannot be read is left out, never guessed", () => {
 test("a probe that hangs costs only its own line", () => {
   const started = Date.now();
   const s = probe((home, bin) => {
-    stub(bin, "nmcli", "sleep 5; echo enabled");
+    stub(bin, "nmcli", "sleep 30; echo enabled");
     stub(bin, "omarchy-shell", "echo off");
-  });
-  assert.ok(Date.now() - started < 4000, "took " + (Date.now() - started) + " ms");
+  }, 40000);
+  // Measured against the hang's own 30 s, so a busy machine has slack.
+  assert.ok(Date.now() - started < 15000, "took " + (Date.now() - started) + " ms");
   assert.equal(s.wifi, undefined);
   assert.equal(s.notifications.on, true);
 });

@@ -124,7 +124,7 @@ test("the run mode runs a command line in a terminal, or without one", () => {
 });
 
 test("Omarchy's real command list parses", { skip: !existsSync("/usr/share/omarchy/bin/omarchy") }, () => {
-  const out = execFileSync("/usr/share/omarchy/bin/omarchy", ["commands", "--json"], { env: { PATH: "/usr/share/omarchy/bin:/usr/bin:/bin", HOME: process.env.HOME, OMARCHY_PATH: "/usr/share/omarchy" }, timeout: 20000 }).toString();
+  const out = execFileSync("/usr/share/omarchy/bin/omarchy", ["commands", "--json"], { env: { PATH: "/usr/share/omarchy/bin:/usr/bin:/bin", HOME: process.env.HOME, OMARCHY_PATH: "/usr/share/omarchy" }, timeout: 120000 }).toString();
   const all = Omarchy.parse(out);
   assert.ok(all.length > 250, "parsed " + all.length);
   assert.ok(all.every(c => /^omarchy-[a-z0-9-]+$/.test(c.binary)));

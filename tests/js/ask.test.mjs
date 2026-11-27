@@ -1234,12 +1234,13 @@ test("what the agent writes is bounded before the shell reads it: a long line br
   assert.notEqual(lot.status, 0, "the agent was stopped");
   // One that writes too much, then waits: stopped, not left running with
   // nothing reading it (codex's review, 2026-10-09).
-  const quiet = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "--bounds", "100", "100", "exec", "/usr/bin/bash", "-c", 'head -c 1000 /dev/zero | tr "\\0" a; echo; exec sleep 20'],
+  const quiet = spawn("/usr/bin/bash", ["-c", G.LAUNCH, "nodi-agent", "--bounds", "100", "100", "exec", "/usr/bin/bash", "-c", 'head -c 1000 /dev/zero | tr "\\0" a; echo; exec sleep 60'],
                       { env: { PATH: "/usr/bin:/bin" } });
   quiet.stdout.resume(); quiet.stderr.resume();
   const t0 = Date.now();
   const how = await new Promise(r => quiet.on("exit", (code, signal) => r({ code, signal, ms: Date.now() - t0 })));
-  assert.ok(how.ms < 10000, "stopped in " + how.ms + " ms, not after its sleep");
+  // Measured against its own 60 s sleep, so a busy machine has slack.
+  assert.ok(how.ms < 30000, "stopped in " + how.ms + " ms, not after its sleep");
   assert.equal(how.signal, "SIGTERM");
   assert.equal(go(null, "head -c 5000000 /dev/zero | tr '\\0' a", { NODI_LINE_MAX: "100000000", NODI_OUT_MAX: "100000000" }).stdout.split("\n")[0].length, 4194304,
                "the environment moves no bound");

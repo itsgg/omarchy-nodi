@@ -152,7 +152,7 @@ test("Omarchy's real menu parses, and its guards run in one batch", { skip: !exi
   const cache = mkdtempSync(join(tmpdir(), "nodi-cache-"));
   let out;
   try {
-    out = execFileSync("bash", ["-c", Menu.guardScript(real)], { env: { PATH: "/usr/share/omarchy/bin:/usr/bin:/bin", HOME: process.env.HOME, XDG_CACHE_HOME: cache, OMARCHY_PATH: "/usr/share/omarchy" }, timeout: 20000 }).toString();
+    out = execFileSync("bash", ["-c", Menu.guardScript(real)], { env: { PATH: "/usr/share/omarchy/bin:/usr/bin:/bin", HOME: process.env.HOME, XDG_CACHE_HOME: cache, OMARCHY_PATH: "/usr/share/omarchy" }, timeout: 120000 }).toString();
   } finally { rmSync(cache, { recursive: true, force: true }); }
   const g = Menu.parseGuards(out, real);
   assert.ok(Object.keys(g.when).length > 50, "answered " + Object.keys(g.when).length + " when: guards");
@@ -190,9 +190,15 @@ test("guards: the package list is kept until the package database changes, the r
     const pacman = answer => writeFileSync(join(bin, "pacman"), answer
       ? '#!/bin/bash\ncase "$1" in -Qq) echo gvim;; -Qi) printf "Name : gvim\\nProvides : vim=9.1 vi\\n";; *) exit 1;; esac\n'
       : "#!/bin/bash\nexit 1\n", { mode: 0o755 });
-    writeFileSync(join(bin, "omarchy-dns"), "#!/bin/bash\nsleep 0.4; echo Cloudflare\n", { mode: 0o755 });
-    writeFileSync(join(bin, "omarchy-default-browser"), "#!/bin/bash\nsleep 0.4; echo chromium\n", { mode: 0o755 });
-    writeFileSync(join(bin, "omarchy-default-terminal"), "#!/bin/bash\nsleep 0.4; echo foot\n", { mode: 0o755 });
+    // Each reader stamps its start and end, so side by side is read from
+    // the stamps themselves: every reader starts before any of them ends.
+    // A wall-clock total failed on a busy machine.
+    const stamps = join(dir, "stamps");
+    const reader = answer => "#!/bin/bash\necho \"start $(date +%s%N)\" >> '" + stamps + "'\nsleep 1\n" +
+      "echo \"end $(date +%s%N)\" >> '" + stamps + "'\necho " + answer + "\n";
+    writeFileSync(join(bin, "omarchy-dns"), reader("Cloudflare"), { mode: 0o755 });
+    writeFileSync(join(bin, "omarchy-default-browser"), reader("chromium"), { mode: 0o755 });
+    writeFileSync(join(bin, "omarchy-default-terminal"), reader("foot"), { mode: 0o755 });
     const m = Menu.merge([Menu.parseItems(JSON.stringify({
       vim: { label: "Vim", when: "omarchy-pkg-present vim", action: "true" },
       dns: { label: "DNS", checked: '[[ "$(omarchy-dns)" == "Cloudflare" ]]', action: "true" },
@@ -200,16 +206,20 @@ test("guards: the package list is kept until the package database changes, the r
       term: { label: "Term", checked: '[[ "$(omarchy-default-terminal)" == "foot" ]]', action: "true" }
     }))]);
     const runGuards = () => {
-      const started = Date.now();
       const out = execFileSync("bash", ["-c", Menu.guardScript(m)], { env: { PATH: bin + ":/usr/bin:/bin", HOME: dir, XDG_CACHE_HOME: join(dir, "elsewhere") } }).toString();
-      return { g: Menu.parseGuards(out, m), ms: Date.now() - started };
+      return { g: Menu.parseGuards(out, m) };
     };
     pacman(true);
     const first = runGuards();
     assert.equal(first.g.when.vim, true, "vim is provided by gvim");
     assert.equal(first.g.checked.dns, true); assert.equal(first.g.checked.web, true);
     assert.equal(first.g.checked.term, true);
-    assert.ok(first.ms < 1000, "three 0.4 s readers, one after another at least 1.2 s, took " + first.ms + " ms");
+    const marks = readFileSync(stamps, "utf8").trim().split("\n").map(l => l.split(" "));
+    const starts = marks.filter(x => x[0] === "start").map(x => BigInt(x[1]));
+    const ends = marks.filter(x => x[0] === "end").map(x => BigInt(x[1]));
+    assert.deepEqual([starts.length, ends.length], [3, 3], "each reader ran once");
+    const lastStart = starts.reduce((a, b) => a > b ? a : b), firstEnd = ends.reduce((a, b) => a < b ? a : b);
+    assert.ok(lastStart < firstEnd, "the readers overlap: the last started " + (lastStart - firstEnd) / 1000000n + " ms after the first ended");
     assert.equal(readdirSync(join(cache, "nodi")).filter(f => f.startsWith("packages-")).length, 1);
     assert.equal(statSync(join(cache, "nodi", readdirSync(join(cache, "nodi")).find(f => f.startsWith("packages-")))).mode & 0o777, 0o600, "his alone");
     assert.ok(!existsSync(join(dir, "elsewhere")), "not where XDG_CACHE_HOME points");

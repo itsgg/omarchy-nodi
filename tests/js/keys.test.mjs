@@ -215,10 +215,16 @@ test("a selection collapses at a letter's edge, and a move over a long paste sta
   assert.equal(K.edited("left", fire, 1, 1, 3).at, 0, "starting inside it: before it");
   assert.equal(K.edited("left", "abc", 2, 1, 2).at, 1, "at an edge already: there");
   const long = "lorem ipsum \u{1F525} dolor ".repeat(6000);
-  const t0 = Date.now();
-  let at = long.length;
-  for (let i = 0; i < 50; i++) at = K.edited("left", long, at, 0, 0).at;
-  assert.ok(Date.now() - t0 < 500, "50 moves over " + long.length + " characters took " + (Date.now() - t0) + " ms");
+  // Quick is counted, not timed: the characters split into letters, which
+  // is the whole cost of a move. A move splits a window around it, never
+  // the paste, so 50 moves split what 50 windows hold, whatever the
+  // paste's length. A wall-clock bound failed on a busy machine.
+  const G = load("lib/Graphemes.js"), split = G.split;
+  let at = long.length, work = 0;
+  G.split = s => { work += s.length; return split(s) };
+  try { for (let i = 0; i < 50; i++) at = K.edited("left", long, at, 0, 0).at; } finally { G.split = split; }
+  assert.ok(work > 0, "the moves split letters");
+  assert.ok(work <= 50 * 2 * K.NEAR, "50 moves over " + long.length + " characters split " + work);
   assert.equal(long.slice(at).length > 0 && !/^[\uDC00-\uDFFF]/.test(long.slice(at)), true, "never inside a pair");
   assert.equal(K.edited("left", "\u{1F525}", 2, 0, 0).at, 0);
 });

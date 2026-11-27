@@ -53,7 +53,7 @@ case "$2" in
             printf '%s\n' '{"nodiPending":"ticket-7"}'
             if [ "$FAKE_CALL_RESPONSE_PAUSE" = 1 ]; then
               printf ready > "$FAKE_LOG.call-response"
-              sleep 0.3
+              sleep 2
             fi
             exit 0
           elif [ "$op" = poll ]; then
@@ -111,7 +111,10 @@ function nodi(t, args, opts = {}) {
     FAKE_SEARCH: opts.search || "[]", FAKE_DESCRIBE: opts.describe || "unknown row", FAKE_RUNPROPOSED: opts.runProposed || "ok",
     FAKE_TOKEN: "t0k", FAKE_CHANNEL: "channel-0", NODI_ASK_CHANNEL: "channel-0", NODI_CARRY_KEEP: "1", ...(opts.env || {})
   };
-  const r = spawnSync(opts.program || NODI, args, { env, input: opts.input || "", timeout: opts.timeout || 15000 });
+  // A guard against a hang, not a bound on speed: past it nodi is sent
+  // SIGTERM, which a pick reads as being ended. 15 s cut an 8 MB pick
+  // short on a busy machine.
+  const r = spawnSync(opts.program || NODI, args, { env, input: opts.input || "", timeout: opts.timeout || 60000 });
   const read = f => { try { return readFileSync(join(t, f), "utf8") } catch (e) { return "" } };
   return { status: r.status, out: r.stdout.toString(), err: r.stderr.toString(), log: read("log"), calls: read("log.calls") };
 }
@@ -195,11 +198,11 @@ test("pick with --json says so; Escape is exit 1 with nothing printed", () => {
 test("a bar that closes without answering ends the wait; a shell that is down is exit 3, a refusal 2", () => {
   const t = setup();
   try {
-    const started = Date.now();
+    // Counted, not timed: the first check that finds the bar closed ends
+    // the wait. A wall-clock bound failed on a busy machine.
     let r = nodi(t, ["pick"], { input: "a\n", pick: "none", alive: "no" });
     assert.equal(r.status, 1);
-    assert.ok(Date.now() - started < 6000, "within a check or two");
-    assert.match(r.log, /pickAlive/);
+    assert.equal((r.log.match(/ pickAlive /g) || []).length, 1, "one check: " + r.log);
     r = nodi(t, ["pick"], { input: "a\n", down: true });
     assert.equal(r.status, 3, "unreachable, not refused (a check 2026-10-05)");
     r = nodi(t, ["hello"], { down: true });
@@ -249,7 +252,9 @@ function askEnvelopes(t) {
   }
 }
 
-async function waitFor(predicate, message, timeout = 2500) {
+// Waits for what must happen; a long deadline costs nothing when it does,
+// and leaves a busy machine time when it is slow to.
+async function waitFor(predicate, message, timeout = 20000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     if (predicate()) return;
@@ -412,13 +417,12 @@ test("nodi mcp: ended while a question waits in the bar, it takes the question a
                   FAKE_ALIVE: "yes", FAKE_RUNROW: "ok", FAKE_DOWN: "0" };
     const p = spawn(NODI, ["mcp"], { env });
     p.stdin.write(JSON.stringify(call(1, "approve", { tool_name: "Bash", input: { command: "true" } })) + "\n");
-    await new Promise(r => setTimeout(r, 1500));
+    const request = () => { try { return JSON.parse(readFileSync(join(t, "log.req"), "utf8")) } catch (e) { return null } };
+    await waitFor(() => request(), "the question did not reach the bar");
     p.kill("SIGTERM");
     await new Promise(r => p.on("exit", r));
-    await new Promise(r => setTimeout(r, 500));
-    const log = readFileSync(join(t, "log"), "utf8");
-    const id = JSON.parse(readFileSync(join(t, "log.req"), "utf8")).id;
-    assert.match(log, new RegExp("call io\\.github\\.itsgg\\.nodi cancelPick " + id + "\\n"), "the bar is told");
+    const told = new RegExp("call io\\.github\\.itsgg\\.nodi cancelPick " + request().id + "\\n");
+    await waitFor(() => told.test(readFileSync(join(t, "log"), "utf8")), "the bar is told");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 
@@ -561,7 +565,7 @@ test("nodi mcp --ask cancels once and exits promptly when stdin closes during po
     relay.process.stdin.end();
     await Promise.race([
       exited,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("relay did not exit after stdin EOF")), 1000))
+      new Promise((_, reject) => setTimeout(() => reject(new Error("relay did not exit after stdin EOF")), 10000))
     ]);
     const envelopes = askEnvelopes(t);
     assert.equal(envelopes.filter(x => x.op === "cancel").length, 1);
@@ -660,7 +664,7 @@ test("nodi mcp --ask bounds retained exact retransmissions", async () => {
     relay = askRelay(t);
     relay.process.stdin.write(Array(18).fill(request).join("\n") + "\n");
     await waitFor(() => relay.stdout().includes("Too many duplicate requests are already waiting"),
-                  "duplicate overflow did not receive an immediate bounded error", 6000);
+                  "duplicate overflow did not receive an immediate bounded error");
     const replies = relay.stdout().trim().split("\n").map(JSON.parse);
     assert.deepEqual(replies, [{
       jsonrpc: "2.0", id: 7,
@@ -879,7 +883,7 @@ test("nodi mcp --ask best-effort cancels its pending ticket once when terminated
     p.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
     const callsPath = join(t, "log.ask-calls");
     let sawPoll = false;
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 1000; i++) {
       let calls = "";
       try { calls = readFileSync(callsPath, "utf8"); } catch (e) {}
       if (calls.includes('"op":"poll"')) { sawPoll = true; break; }
@@ -909,7 +913,7 @@ test("nodi mcp --ask publishes a returned pending ticket before honoring termina
     p.stdin.write(JSON.stringify(call(7, "run", { query: "lock" })) + "\n");
     const marker = join(t, "log.call-response");
     let returned = false;
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 2000; i++) {
       if (existsSync(marker)) { returned = true; break; }
       await new Promise(resolve => setTimeout(resolve, 10));
     }
@@ -944,7 +948,7 @@ test("nodi mcp --ask defers signals at every cancellation ticket-capture window"
       relay.process.stdin.end();
       await Promise.race([
         exited,
-        new Promise((_, reject) => setTimeout(() => reject(new Error(stage + ": relay did not exit")), 1500))
+        new Promise((_, reject) => setTimeout(() => reject(new Error(stage + ": relay did not exit")), 10000))
       ]);
       assert.equal(readFileSync(marker, "utf8"), stage, stage + ": deterministic hook was not reached");
       const envelopes = askEnvelopes(t);
@@ -1019,8 +1023,7 @@ test("a summon's payload outlives the call, for a bar that reads it once Nodi ha
     assert.equal(r.status, 0, r.err);
     const path = r.log.match(/@file:(\S+)/)[1];
     assert.equal(readFileSync(path, "utf8"), '{"query":"hello"}', "still there when nodi has returned");
-    await new Promise(res => setTimeout(res, 3500));
-    assert.deepEqual(readdirSync(join(t, "run")).filter(f => f.startsWith("nodi-ipc.")), [], "gone after its time");
+    await waitFor(() => readdirSync(join(t, "run")).every(f => !f.startsWith("nodi-ipc.")), "gone after its time");
   } finally { rmSync(t, { recursive: true, force: true }); }
 });
 

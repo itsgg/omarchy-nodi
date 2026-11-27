@@ -129,13 +129,16 @@ test("a region's text opens the bar only when it copied something; a colour open
 
 test("the folder is a shell child's, and nothing for a window with no shell in it", async () => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "nodi-cwd-")));
-  const parent = spawn("/usr/bin/bash", ["-c", 'cd "$0" && bash -c "sleep 3; true" & wait', dir]);
+  const parent = spawn("/usr/bin/bash", ["-c", 'cd "$0" && bash -c "sleep 30; true" & wait', dir], { detached: true });
   try {
-    await new Promise(r => setTimeout(r, 300));
-    const got = execFileSync("/usr/bin/bash", ["-c", H.CWD, "nodi", String(parent.pid)]).toString();
+    // The child is asked for until it is there, not after a fixed 300 ms,
+    // which a busy machine did not start it in.
+    const cwd = () => execFileSync("/usr/bin/bash", ["-c", H.CWD, "nodi", String(parent.pid)]).toString();
+    let got = cwd();
+    for (let n = 0; got !== dir && n < 200; n++) { await new Promise(r => setTimeout(r, 100)); got = cwd(); }
     assert.equal(got, dir);
     assert.equal(execFileSync("/usr/bin/bash", ["-c", H.CWD, "nodi", "999999"]).toString(), "", "no such window: nothing");
-  } finally { parent.kill(); rmSync(dir, { recursive: true, force: true }); }
+  } finally { process.kill(-parent.pid); rmSync(dir, { recursive: true, force: true }); }
 });
 
 // Omarchy's own capture rows lead their words, these come next (Sonnet
