@@ -289,11 +289,11 @@ Item {
     // of one with an error too, and one that broke it stops the saves
     // before any writes over it (codex's review, 2026-10-09).
     if (root.prefsLoaded) prefsFile.reload()
-    // The registry's programs are looked for again when that look is old,
-    // or what it asked changed (lib/Probes.js): an installed remembered
-    // agent can recover precedence, and a removed non-current one is
-    // disabled before it is selected.
-    root.lookForAgents()
+    // The registry's programs are looked for again at every open, on the
+    // login PATH learnt (agentProbe.look): an installed remembered agent
+    // can recover precedence, and a removed non-current one is disabled
+    // before it is selected.
+    agentProbe.look()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -334,15 +334,10 @@ Item {
   property real togglesAt: 0
   property real appearanceAt: 0
   property real themesAt: 0
+  // The last login shell's PATH, { at, key, path } (lib/Probes.js): the
+  // agents are looked for on it at every open without a login shell.
   property var agentsSeen: null
   function agentsKey(tag) { return tag + "\n" + (Quickshell.env("PATH") || "") }
-  function lookForAgents() {
-    if (Probes.agentsDue(root.agentsSeen, Date.now(), root.agentsKey(agentProbe.probeTag()))) agentProbe.look()
-  }
-  Connections {
-    target: agentProbe
-    function onFinished(text, ok, tag) { if (ok && tag === agentProbe.probeTag()) root.agentsSeen = { at: Date.now(), key: root.agentsKey(tag) } }
-  }
   Connections { target: togglesReader; function onFinished(text, ok) { if (ok) root.togglesAt = Date.now() } }
   Connections { target: appearanceReader; function onFinished(text, ok) { if (ok) root.appearanceAt = Date.now() } }
   Connections { target: themesReader; function onFinished(text, ok) { if (ok) root.themesAt = Date.now() } }
@@ -2509,10 +2504,19 @@ Item {
       if (!root.resolvedAgentId && root.resolvedAgentProgram) all.push(["__legacy__", root.resolvedAgentProgram])
       return JSON.stringify(all)
     }
+    // Every look asks for each program on the login shell's PATH. Only a
+    // look that finds that PATH old, or the programs or the session's PATH
+    // changed (lib/Probes.js agentsDue), starts the login shell to learn it
+    // again; the others are a plain shell given the PATH learnt, so an
+    // agent installed or removed shows at the next open without a login
+    // shell's cost at each one.
+    readonly property string lookScript: 'while [ "$#" -ge 2 ]; do id=$1 p=$2; shift 2; command -v -- "$p" >/dev/null 2>&1 && printf "%s\\tyes\\n" "$id" || printf "%s\\tno\\n" "$id"; done'
     function look() {
-      var argv = ["/usr/bin/bash", "-lc",
-        'while [ "$#" -ge 2 ]; do id=$1 p=$2; shift 2; command -v -- "$p" >/dev/null 2>&1 && printf "%s\\tyes\\n" "$id" || printf "%s\\tno\\n" "$id"; done',
-        "nodi-agent-probe"]
+      var tag = probeTag()
+      var seen = root.agentsSeen
+      var argv = Probes.agentsDue(seen, Date.now(), root.agentsKey(tag))
+        ? ["/usr/bin/bash", "-lc", lookScript + '; printf "@path\\t%s\\n" "$PATH"', "nodi-agent-probe"]
+        : ["/usr/bin/bash", "--norc", "--noprofile", "-c", 'PATH=$1; shift; ' + lookScript, "nodi-agent-probe", seen.path]
       for (var i = 0; i < root.askRegistry.length; i++)
         argv.push(root.askRegistry[i].id, Agents.disabledReason(root.askRegistry[i].id) ? ""
                                                    : Agents.program(root.askRegistry[i].id, root.askRegistry))
@@ -2525,7 +2529,8 @@ Item {
       var lines = String(text || "").trim().split("\n")
       for (var i = 0; i < lines.length; i++) {
         var pair = lines[i].split("\t")
-        if (pair.length === 2) found[pair[0]] = pair[1] === "yes"
+        if (pair[0] === "@path") root.agentsSeen = { at: Date.now(), key: root.agentsKey(tag), path: pair.slice(1).join("\t") }
+        else if (pair.length === 2) found[pair[0]] = pair[1] === "yes"
       }
       root.agentAvailability = found
       if (root.opened) root.recompute()
