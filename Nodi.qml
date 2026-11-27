@@ -39,6 +39,8 @@ import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
 import "lib/HomeSources.js" as HomeParser
 import "lib/PromptContext.js" as PromptContext
+import "lib/NodiActions.js" as NodiActions
+import "lib/NodiMcp.js" as NodiMcp
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -103,7 +105,6 @@ Item {
   property var userConfig: ({})
   property bool userConfigGood: false   // a nodi.json has parsed since load
   property string configWarned: ""      // the error last notified, so each is said once
-  property string hotkeyWarned: ""
   readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir,
                                               { home: root.home, runtimeDir: root.runtimeDir })
 
@@ -497,28 +498,20 @@ Item {
         } else if (root.opened && had) root.recompute()
         return
       }
-      var both = Sources.selections(text)
-      var now = Date.now()
-      // Seen as read; the field's own text is then no text to act on, but
-      // still seen, so it does not come back as new (Fable 2026-10-06).
-      if (both.primary !== root.lastSelection) root.selectionSeenAt = now
-      if (both.clipboard !== root.lastCopied) root.copiedSeenAt = now
-      root.lastSelection = both.primary
-      root.lastCopied = both.clipboard
-      var got = both.primary === input.text ? "" : both.primary
-      var copied = both.clipboard === input.text ? "" : both.clipboard
-      var fresh = got !== "" && now - root.selectionSeenAt < root.keepQueryMs
-      var copiedFresh = copied !== "" && now - root.copiedSeenAt < root.keepQueryMs
-      // The newer of a fresh selection and a fresh copy, the copy on a tie
-      // (both first seen at this read): a copy is deliberate, a primary
-      // selection often a double-click's (Fable 2026-10-06: the copy he
-      // reported lost to a stale word). Then a stale selection, which
-      // `rewrite`, `case` and `tr <language>` still take.
-      var copyFirst = copiedFresh && (!fresh || root.copiedSeenAt >= root.selectionSeenAt)
-      root.selectionSource = copyFirst ? "clipboard" : "selection"
-      root.selection = root.selectionSource === "clipboard" ? copied : got
-      root.selectionFresh = fresh || copiedFresh
-      got = root.selection
+      // Which leads, the selection or the copy (lib/Sources.js selectionRead).
+      var r = Sources.selectionRead(Sources.selections(text), {
+        field: input.text, lastSelection: root.lastSelection, lastCopied: root.lastCopied,
+        selectionSeenAt: root.selectionSeenAt, copiedSeenAt: root.copiedSeenAt,
+        now: Date.now(), keepMs: root.keepQueryMs
+      })
+      root.selectionSeenAt = r.selectionSeenAt
+      root.copiedSeenAt = r.copiedSeenAt
+      root.lastSelection = r.lastSelection
+      root.lastCopied = r.lastCopied
+      root.selectionSource = r.source
+      root.selection = r.selection
+      root.selectionFresh = r.fresh
+      var got = root.selection
       // Held, the rows are drawn once, now that it is read; a query on show
       // meanwhile (a payload's) is answered with it at once (Cursor
       // 2026-10-07: it waited for the hold).
@@ -1325,16 +1318,12 @@ Item {
   // ---------------------------------------------------------------- nodi mcp
 
   // Rows another agent found through `nodi mcp` (bin/nodi, ROADMAP 45), by
-  // key, with when: a run names one no hotkey or history holds, for ten
-  // minutes, the last 64.
+  // key, with when (lib/NodiMcp.js keepFound).
   property var foundRows: ({})
   property var foundOrder: []
-  readonly property int foundMs: 10 * 60 * 1000
+  readonly property int foundMs: NodiMcp.FOUND_MS
 
-  function foundRow(key) {
-    var f = root.foundRows[String(key || "")]
-    return f && Date.now() - f.at < root.foundMs ? f.row : null
-  }
+  function foundRow(key) { return NodiMcp.foundRow(root.foundRows, key, Date.now()) }
 
   // What bin/nodi carries in a file, never an IPC argument (Carried.qml):
   // an agent's search, a row's key, Ask's tool server's messages. A path
@@ -1346,44 +1335,20 @@ Item {
     var query = carried.read(carriedQuery)
     if (query === null) return "[]"
     var rows = root.agentRows(query)
-    var found = {}
-    var order = root.foundOrder.slice()
-    var now = Date.now()
-    for (var k in root.foundRows) found[k] = root.foundRows[k]
-    for (var i = 0; i < rows.length; i++) {
-      if (!found[rows[i].key]) order.push(rows[i].key)
-      found[rows[i].key] = { row: rows[i], at: now }
-    }
-    while (order.length > 64) delete found[order.shift()]
-    root.foundRows = found
-    root.foundOrder = order
-    return JSON.stringify(rows.map(function(r) {
-      var d = root.agentData(r)
-      d.command = root.oneLine(Run.describe(r.run))
-      if (r.risk) d.risk = r.risk
-      return d
-    }))
+    var kept = NodiMcp.keepFound(root.foundRows, root.foundOrder, rows, Date.now())
+    root.foundRows = kept.rows
+    root.foundOrder = kept.order
+    return NodiMcp.searchReply(rows)
   }
 
-  // What a run does, said on one line: a copy keeps its text, a script its
-  // arguments (Fable 2026-10-06: the first line alone lost both).
-  function oneLine(text) {
-    var t = String(text || "").replace(/\s*\n+\s*/g, " ").trim()
-    return t.length > 300 ? t.slice(0, 297) + "..." : t
-  }
+  function oneLine(text) { return NodiMcp.oneLine(text) }
 
-  // What a key runs: { s: its snapshot, remember }, or null. With `agent`,
-  // a row `nodi mcp`'s search found runs as found, the fresher of the two,
-  // a moment's row (a kill) included, as Claude's run would, and is
-  // remembered only if its provider says so; else the saved row, as its
-  // provider gives it now (lib/Engine.js resolve), never a moment's.
+  // What a key runs (lib/NodiMcp.js keySnapshot): with `agent`, a row
+  // `nodi mcp`'s search found first; else the saved row as its provider
+  // gives it now.
   function keySnapshot(k, agent) {
-    var found = agent ? root.foundRow(k) : null
-    if (found) return { s: History.snapshot(found), remember: !!found.remember }
-    var saved = Prefs.snapshotFor(root.prefs, k, root.history)
-    var live = saved ? Engine.resolve(k, saved, root.config, root.services()) : null
-    var s = live ? History.snapshot(live) : saved
-    return History.replayable(s) ? { s: s, remember: true } : null
+    return NodiMcp.keySnapshot(k, agent, root.foundRows, root.prefs, root.history, Date.now(),
+      function(key, saved) { return Engine.resolve(key, saved, root.config, root.services()) })
   }
 
   // Rows `nodi mcp` showed him to propose, by key, kept until his Enter
@@ -1402,12 +1367,8 @@ Item {
     if (!a || !a.s || !a.s.run) return "unknown row"
     // One that asks for a typed word is never run for an agent, so it is
     // not kept for a run (bin/nodi refuses it before asking him).
-    if (!a.s.confirmWord) root.shownRows[k] = a
-    root.shownOrder = root.shownOrder.filter(function(x) { return x !== k }).concat([k])
-    while (root.shownOrder.length > 8) delete root.shownRows[root.shownOrder.shift()]
-    var s = a.s
-    return JSON.stringify({ key: k, title: String(s.title || ""), subtitle: String(s.subtitle || ""), command: Run.describe(s.run),
-                            risk: String(s.risk || ""), asks: s.confirmWord ? "a typed word" : s.confirm ? "a second Enter" : "" })
+    root.shownOrder = NodiMcp.keepShown(root.shownRows, root.shownOrder, k, a)
+    return NodiMcp.describeReply(k, a.s)
   }
 
   // `nodi mcp`'s run: a row its search found, else a saved one; a row that
@@ -1453,32 +1414,21 @@ Item {
     root.noteWindow()
     var k = String(key || "")
     var proposed = confirmed === true && agent === true
-    // A proposed row runs only as it was shown; none kept (evicted, or the
-    // shell reloaded since) is no row (Fable 2026-10-06).
-    if (proposed && !root.shownRows[k]) return "unknown row"
-    var a = proposed ? root.shownRows[k] : root.keySnapshot(k, agent === true)
+    // A proposed row runs only as it was shown (lib/NodiMcp.js takeShown).
+    var a
     if (proposed) {
-      delete root.shownRows[k]
-      root.shownOrder = root.shownOrder.filter(function(x) { return x !== k })
-    }
-    var s = a ? a.s : null
-    var remember = a ? a.remember : false
-    // An agent's run at once takes only a row no word of its own reaches
-    // (AskTools.refusedAtOnce); any other it proposes.
-    var refused = agent === true && !proposed && s ? AskTools.refusedAtOnce(k, s.provider) : ""
-    if (refused) return refused
-    if (s && s.provider === "home" && !root.currentHomeExecutable(s.run, k, s.homeExecution))
-      return "watched row is no longer current"
-    // Watched by its title unless the Undoer runs it and says so itself,
-    // as execute() has it: the Undoer takes an argv, and a watched run is
-    // a command and its environment since its title left the arguments
-    // (2026-10-09).
-    var argv = s ? Run.command(s.run, root.appAction, s.undoable && s.run.kind === "exec" ? "" : String(s.title || "")) : null
-    if (!argv) return "unknown row"
-    // A row that asks before it runs is run from the bar only: `nodi run`
-    // names any remembered row, where a hotkey or a link is never given one.
-    if (s.confirmWord) return "it asks for a typed word; open it in the bar"
-    if (s.confirm && confirmed !== true) return "it asks before it runs; open it in the bar"
+      var taken = NodiMcp.takeShown(root.shownRows, root.shownOrder, k)
+      if (!taken) return "unknown row"
+      a = taken.a
+      root.shownOrder = taken.order
+    } else a = root.keySnapshot(k, agent === true)
+    // Whether it may run, and as what (lib/NodiMcp.js runPlan).
+    var plan = NodiMcp.runPlan({ key: k, a: a, confirmed: confirmed, agent: agent, proposed: proposed,
+                                 homeCurrent: root.currentHomeExecutable, appAction: root.appAction })
+    if (plan.refusal) return plan.refusal
+    var s = plan.s
+    var argv = plan.argv
+    var remember = plan.remember
     // The bar is not open: what is focused now is what a launch replaces,
     // not what was focused when the bar last opened (codex 2026-10-04).
     if (s.run.kind === "app") launchFeedback.opened()
@@ -1492,198 +1442,58 @@ Item {
     return "ok"
   }
 
-  // Enter on a row whose action is Nodi's own.
+  // Enter on a row whose action is Nodi's own: what it does is
+  // lib/NodiActions.js decide, its effects applied here in order.
   function doNodi(row) {
-    if (row.nodi === "saveAlias" && root.aliasRow) {
-      var next = Prefs.withAlias(root.prefs, root.queryNow(), root.aliasRow.key, History.snapshot(root.aliasRow))
-      if (next) root.savePrefs(next)
-      root.aliasRow = null
-      input.text = ""
-    } else if (row.nodi === "show") {
-      root.savePrefs(Prefs.shownRow(root.prefs, row.key))
-    } else if (row.nodi === "windowRule" && row.data) {
-      root.setWindowRule({ window: row.data.window, change: row.data.change }, row)
-    } else if (row.nodi === "askAllow") {
-      // Not in the first moment after it shows: an Enter pressed for the
-      // row that was there runs nothing (Fable 2026-10-06).
-      var shown = askSession.proposal ? Date.now() - (askSession.proposal.at || 0) : 0
-      if (shown < 400) return
-      askSession.allow()
-    } else if (row.nodi === "askDeny") {
-      askSession.deny()
-    } else if (row.nodi === "askCommand" && row.data) {
-      askSession.runCommand(row.data.name, row.data.input)
-    } else if (row.nodi === "askResume" && row.data) {
-      if (askSession.resumeRemote(row.data.index)) {
-        input.text = "ask "
-        input.cursorPosition = input.text.length
+    root.applyEffects(NodiActions.decide(row, {
+      query: root.queryNow(), now: Date.now(), prefs: root.prefs, aliasRow: root.aliasRow,
+      wordAsk: root.wordAsk, armedKey: root.armedKey, selection: root.selection,
+      cameFrom: root.cameFrom, answers: root.config.answers, conversations: root.conversations,
+      pickSession: root.pickSession, askBusy: askSession.busy(), proposal: askSession.proposal,
+      shooting: windowShot.active,
+      prepared: function(q) { return root.preparedAsk(q) },
+      resultAction: function(index) { return askSession.resultAction(index) },
+      answer: { message: answerSession.message, keyword: answerSession.keyword,
+                question: answerSession.question, conversation: answerSession.conversation },
+      screens: function() { return { focused: Hyprland.focusedMonitor, all: Hyprland.monitors.values || [] } }
+    }))
+  }
+
+  // The effects lib/NodiActions.js returns, in order: a call that `need`s a
+  // result ends them without one, and its `then` runs only with one.
+  function applyEffects(effects) {
+    for (var i = 0; i < effects.length; i++) {
+      var e = effects[i]
+      if (e.do === "set") root[e.key] = e.value
+      else if (e.do === "text") {
+        input.text = e.text
+        if (e.cursor) input.cursorPosition = input.text.length
+      } else if (e.do === "recompute") root.recompute()
+      else if (e.do === "call") {
+        var target = e.on === "ask" ? askSession : e.on === "answer" ? answerSession
+          : e.on === "tray" ? trayMenus : e.on === "shot" ? windowShot : root
+        var result = target[e.fn].apply(target, e.args)
+        if (e.need && !result) return
+        if (e.then && result) root.applyEffects(e.then)
       }
-    } else if (row.nodi === "askResult" && row.data) {
-      var resultItem = askSession.resultAction(row.data.index)
-      if (!resultItem) return
-      var resultAction = resultItem.action || {}
-      if (resultAction.exec !== undefined || resultAction.copy !== undefined
-          || resultAction.paste !== undefined) {
-        askSession.proposeResultAction(row.data.index)
-      } else if (resultAction.open !== undefined) {
-        root.openLink(resultAction.open, { ask: true, turn: resultItem.turn })
-      } else if (resultAction.query !== undefined) {
-        input.text = String(resultAction.query)
-        input.cursorPosition = input.text.length
-      } else if (resultAction.prompt !== undefined) {
-        input.text = "ask " + String(resultAction.prompt)
-        input.cursorPosition = input.text.length
-        root.dispatchAsk(String(resultAction.prompt), String(resultAction.prompt), "", "ask")
-      }
-    } else if (row.nodi === "askWith" && row.ask) {
-      var extraEnv = row.ask.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
-      root.dispatchAsk(row.ask.question, row.ask.message, row.ask.context, row.ask.purpose, extraEnv, undefined, row.ask.file)
-    } else if (row.nodi === "askNew") {
-      if (askSession.busy()) return
-      askSession.recycle()
-      if (row.data && row.data.prefix) input.text = row.data.prefix + " "
-      else {
-        root.directAskAgent = ""
-        input.text = "ask "
-      }
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "askWindow" && row.ask) {
-      // The window the bar opened over, captured from its own buffer by
-      // its ext-foreign-toplevel handle (grim -T), so the bar on top is not
-      // in it; 1280 pixels wide at most (ROADMAP 43).
-      var w = root.cameFrom
-      if (askSession.busy() || windowShot.active || !w.stableId) return
-      root.askRows = ({ turn: "", rows: ({}) })
-      root.shotAsk = Object.assign({}, row.ask, { captured: root.askCapture(row.ask.message, row.ask.context, row.ask.purpose) })
-      // grim scales the window's buffer, which is its layout width times
-      // its own monitor's scale (Fable 2026-10-06), else the focused one's.
-      var mon = Hyprland.focusedMonitor
-      var mons = Hyprland.monitors.values || []
-      for (var mi = 0; mi < mons.length; mi++) if (mons[mi].id === w.monitor) mon = mons[mi]
-      var ms = mon && mon.lastIpcObject && Number(mon.lastIpcObject.scale) > 0 ? Number(mon.lastIpcObject.scale) : 1
-      var px = w.width * ms
-      var scale = px > 1280 ? (1280 / px).toFixed(3) : "1"
-      windowShot.run(["/usr/bin/bash", "-c", 'set -o pipefail; grim -T "$1" -s "$2" -t jpeg -q 80 - | base64 -w0', "nodi-shot", w.stableId, scale])
-      input.text = "ask " + row.ask.question
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "ask") {
-      var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
-      if (q && !askSession.busy() && !windowShot.active) {
-        if (root.preparedAsk(q)) root.sendPreparedAsk("", q)
-        else root.dispatchAsk(q, q, "", "ask")
-      }
-    } else if (row.nodi === "askAs" && row.data) {
-      if (!askSession.busy() && !windowShot.active) {
-        if (root.preparedAsk(row.data.question)) root.sendPreparedAsk(row.data.id, row.data.question)
-        else root.dispatchAsk(row.data.question, row.data.question, "", "ask", undefined, undefined, undefined, row.data.id)
-      }
-    } else if (row.nodi === "runWord" && root.wordAsk) {
-      if (root.queryNow().trim() !== root.wordAsk.word) return
-      var w = root.wordAsk
-      root.wordAsk = null
-      // The query is what the row was picked for, not the word (Fable
-      // 2026-10-05: typing "send" later lifted the row).
-      input.text = w.query
-      root.execute(w.run, w.toggle, w.key, w.snap, w.title, w.undoable)
-      return
-    } else if (row.nodi === "undo") {
-      // Enter twice: the empty bar opens on it, and one Enter there is too
-      // easily the Enter for the row under it.
-      if (root.armedKey !== row.key) { root.armedKey = row.key; return }
-      root.armedKey = ""
-      var u = undoer.take(row.key)
-      if (u) root.execute(u.run, "", "", null, u.title, false)
-      return
-    } else if (row.nodi === "answer" || row.nodi === "answerFresh") {
-      var retryMessage = Answers.retryMessage(root.queryNow(), root.config.answers, answerSession)
-      var spec = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom, retryMessage)
-      if (spec) {
-        if (spec.keyword === "ask" || (PromptContext.hasMentions && PromptContext.hasMentions(spec.question))) {
-          root.dispatchAsk(spec.question, retryMessage || spec.question, "", "ask", undefined, undefined, undefined, undefined, row.nodi === "answerFresh", root.queryNow())
-          return
-        }
-        spec.fresh = row.nodi === "answerFresh"
-        answerSession.start(spec)
-      }
-    } else if (row.nodi === "askFallback" && row.data) {
-      // The failed question, asked of the answer "fallback" names: the field
-      // on its keyword, so its rows and its pane are that answer's.
-      input.text = row.data.keyword + " " + row.data.question
-      input.cursorPosition = input.text.length
-      var fbSpec = Answers.spec(input.text, root.config.answers, root.cameFrom, row.data.message)
-      if (fbSpec) { fbSpec.fresh = row.data.fresh === true; answerSession.start(fbSpec) }
-    } else if (row.nodi === "askAgentFallback" && row.data) {
-      // Switch and preserve what the failed turn effectively sent, but keep
-      // it idle: Enter on the prepared Ask row is the first thing that sends.
-      if (row.data.direct) {
-        if (!root.prepareDirectAsk(row.data.id, row.data.question, row.data.message, row.data.context)) return
-        input.text = row.data.id + " " + row.data.question
-      } else {
-        if (!root.selectAskAgent(row.data.id)) return
-        askSession.prepare(row.data.question, row.data.message, row.data.context)
-        input.text = "ask " + row.data.question
-      }
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "answerResume" && row.data) {
-      // A kept conversation, reopened in the pane: the field on its keyword,
-      // a follow-up continuing it.
-      var kept = Conversations.find(root.conversations, row.data.id)
-      if (!kept) return
-      answerSession.resume(kept, Answers.freshFor(root.config.answers, kept.keyword))
-      input.text = kept.keyword + " "
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "answerChat" && row.data && row.data.run) {
-      // Carried on in a terminal, for good: marked so it reopens there, and
-      // let go here, its later turns being the terminal's.
-      root.conversations = Conversations.moved(root.conversations, row.data.id)
-      root.saveConversations()
-      if (answerSession.conversation === row.data.id) answerSession.reset()
-      root.execute(row.data.run, "", row.key, null, row.title, false)
-      return
-    } else if (row.nodi === "answerNew") {
-      // The conversation forgotten, the field left on its keyword for the
-      // next question.
-      var kw = answerSession.keyword
-      answerSession.reset()
-      if (kw) { input.text = kw + " "; input.cursorPosition = input.text.length }
-    } else if (row.nodi === "filterNext" && row.next) {
-      root.stepInto(row.next)
-      return
-    } else if (row.nodi === "filterDone") {
-      root.finish()
-      return
-    } else if (row.nodi === "saveDesktop" && row.data) {
-      var saved = Prefs.withDesktop(root.prefs, row.data.name, row.data.apps, Date.now())
-      if (saved) root.savePrefs(saved)
-      root.toast("Desktop \"" + row.data.name + "\" saved", row.subtitle)
-      root.finish()
-      return
-    } else if (row.nodi === "remindSet" && row.data) {
-      root.setReminder(row.data)
-      root.finish()
-      return
-    } else if (row.nodi === "remindClear") {
-      // Enter twice, as Omarchy's own clear asked.
-      if (root.armedKey !== row.key) { root.armedKey = row.key; return }
-      root.armedKey = ""
-      root.clearReminders()
-      root.finish()
-      return
-    } else if (row.nodi === "forgetDesktop" && row.data) {
-      root.savePrefs(Prefs.withoutDesktop(root.prefs, row.data.name))
-      input.text = ""
-    } else if (row.nodi === "tray") {
-      // As a click in the tray's own menu; the bar goes first, as for a run.
-      if (trayMenus.trigger(row.key)) root.finish()
-      return
-    } else if (row.nodi === "pick" && root.pickSession) {
-      var line = Pick.lineOf(row.key)
-      if (line < 0) return
-      root.endPick("pick " + line)
-      root.dismiss()
-      return
     }
-    root.recompute()
+  }
+
+  // A question about the window, held with what it is about until its
+  // picture is taken (askWindow, windowShot).
+  function holdShotAsk(a) {
+    root.shotAsk = Object.assign({}, a, { captured: root.askCapture(a.message, a.context, a.purpose) })
+  }
+
+  function runUndo(key) {
+    var u = undoer.take(key)
+    if (u) root.execute(u.run, "", "", null, u.title, false)
+  }
+
+  // The answer "fallback" names, asked of what the field now holds.
+  function startFallbackAnswer(data) {
+    var fbSpec = Answers.spec(input.text, root.config.answers, root.cameFrom, data.message)
+    if (fbSpec) { fbSpec.fresh = data.fresh === true; answerSession.start(fbSpec) }
   }
 
   // ---------------------------------------------------------------- steps
@@ -1934,24 +1744,12 @@ Item {
 
   // ---------------------------------------------------------------- hotkey
 
-  // Nodi binds its own hotkey in the running Hyprland (hyprctl eval): no
-  // config file is edited. Hyprland drops runtime binds when its config
-  // reloads, so this runs again after every reload, after a config change,
-  // and at startup. A key something else holds is left alone, asked again
-  // once in case the holder is unloading (the old bar on the swap).
+  // Nodi's hotkey and the rows' hotkeys, bound in the running Hyprland
+  // (components/HotkeyBinder.qml): asked again after every reload, after a
+  // config change, and at startup.
   property bool configsLoaded: false
-  property string boundHotkey: ""
-  property string warnedConflict: ""
-  property bool conflictRetried: false
   property bool defaultConfigSeen: false
   property bool userConfigSeen: false
-
-  // One reconcile at a time: a read of the binds, then the eval it plans,
-  // finished before the next read, so two reconciles cannot both see the key
-  // unbound and bind it twice (codex 2026-10-02). A request during one runs
-  // once after it.
-  property bool hotkeyQueued: false
-  property bool hotkeyFresh: true         // this Nodi has not bound its key yet
 
   // The hotkey, straight from Hyprland: no process is started for a press.
   GlobalShortcut {
@@ -1960,74 +1758,23 @@ Item {
     description: "Open or close Nodi"
     onPressed: { root.openBy = root.opened ? "" : "key"; root.toggle() }
   }
-  property string lastBinds: "[]"         // the binds as last read, for checking a chord being set
-  property var boundRows: ({})            // combo -> the row key this Nodi bound it to
-  property var rowConflictsWarned: ({})
 
-  function ensureHotkey() {
-    if (!root.configsLoaded) return
-    if (bindsReader.busy || evalReader.busy) { root.hotkeyQueued = true; return }
-    bindsReader.run(["/usr/bin/hyprctl", "binds", "-j"])
+  HotkeyBinder {
+    id: hotkeys
+    ready: root.configsLoaded
+    hotkey: String(root.config.hotkey || "").trim()
+    rowHotkeys: root.prefs.hotkeys
+    pluginId: root.pluginId
+    toggleShortcut: root.toggleShortcut
+    scrimAlpha: root.scrim.a
+    cardAlpha: root.background.a
+    onWarn: function(title, body) { root.toast(title, body) }
   }
+  readonly property alias boundHotkey: hotkeys.boundHotkey
+  readonly property alias lastBinds: hotkeys.lastBinds
+  readonly property alias boundRows: hotkeys.boundRows
 
-  // Deferred: `finished` is emitted while the reader's process may still
-  // count as running, and a request made then would queue with nothing left
-  // to start it (Fable 2026-10-02).
-  function hotkeyIdle() {
-    if (!root.hotkeyQueued) return
-    root.hotkeyQueued = false
-    Qt.callLater(root.ensureHotkey)
-  }
-
-  function reconcileHotkey(bindsJson) {
-    var hotkey = String(root.config.hotkey || "").trim()
-    if (hotkey && !Hotkey.parseCombo(hotkey) && root.hotkeyWarned !== hotkey) {
-      root.hotkeyWarned = hotkey
-      root.toast("Nodi has no hotkey",
-        "\"" + hotkey + "\" is not a key combination. Write it as \"SUPER + SPACE\" in ~/.config/omarchy/extensions/nodi.json.")
-    }
-    root.lastBinds = bindsJson
-    var p = Hotkey.plan(bindsJson, hotkey, root.toggleShortcut, { scrim: root.scrim.a, card: root.background.a }, root.hotkeyFresh)
-    if (p.bound) root.hotkeyFresh = false
-    // The rows' hotkeys (Ctrl+K, lib/Prefs.js) in the same eval.
-    var rows = Hotkey.planRows(bindsJson, root.prefs.hotkeys, root.pluginId, root.boundRows)
-    root.boundRows = rows.bound
-    for (var c = 0; c < rows.conflicts.length; c++) {
-      if (root.rowConflictsWarned[rows.conflicts[c]]) continue
-      root.rowConflictsWarned[rows.conflicts[c]] = true
-      root.toast("A row's hotkey is taken", rows.conflicts[c] + " is bound to something else now; set the row another one from Ctrl+K.")
-    }
-    var lua = p.lua.concat(rows.lua)
-    if (lua.length > 0) evalReader.run(["/usr/bin/hyprctl", "eval", lua.join("\n")])
-    else root.hotkeyIdle()
-    root.boundHotkey = p.bound ? hotkey : ""
-    if (p.conflict && !root.conflictRetried) {
-      root.conflictRetried = true
-      hotkeyRetry.start()
-      return
-    }
-    if (p.conflict && root.warnedConflict !== hotkey) {
-      root.warnedConflict = hotkey
-      console.warn("nodi: " + hotkey + " is already used by \"" + p.conflict + "\"; not binding it")
-      root.toast("Nodi has no hotkey",
-        hotkey + " already opens \"" + p.conflict + "\". Set another \"hotkey\" in ~/.config/omarchy/extensions/nodi.json.")
-    }
-    if (!p.conflict) root.conflictRetried = false
-  }
-
-  Reader {
-    id: bindsReader
-    timeoutMs: 3000
-    onFinished: function(text, ok) { if (ok) root.reconcileHotkey(text); else root.hotkeyIdle() }
-  }
-
-  Reader {
-    id: evalReader
-    timeoutMs: 3000
-    onFinished: root.hotkeyIdle()
-  }
-
-  Timer { id: hotkeyRetry; interval: 3000; onTriggered: root.ensureHotkey() }
+  function ensureHotkey() { hotkeys.ensure() }
 
   Connections {
     target: Hyprland
@@ -2057,19 +1804,10 @@ Item {
     if (root.defaultConfigSeen && root.userConfigSeen && !root.configsLoaded) {
       root.configsLoaded = true
       root.readAhead(false)
-      hotkeyStart.start()
-      hotkeyRecheck.start()
+      hotkeys.start()
       if (root.configPending) { var e = root.configPending; root.configPending = ""; root.configError(e) }
     }
   }
-
-  Timer { id: hotkeyStart; interval: 600; onTriggered: root.ensureHotkey() }
-
-  // A second look once a reload has settled: whatever an earlier instance
-  // did to the key while this one read the binds, the key is bound after.
-  // Released keys wait for no successor (Component.onDestruction), so this
-  // is the belt for a successor slower to load than that wait.
-  Timer { id: hotkeyRecheck; interval: 5000; onTriggered: root.ensureHotkey() }
 
   // ---------------------------------------------------------------- config
 
@@ -2681,10 +2419,7 @@ Item {
   function agentTop(q) { return Engine.agentTop(q, root.config, root.services()) }
 
   // A row as an agent reads it; a row that asks says how.
-  function agentData(r) {
-    return { key: r.key, title: r.title, subtitle: r.subtitle, kind: r.kind,
-             asks: r.confirmWord ? "a typed word" : r.confirm ? "a second Enter" : "" }
-  }
+  function agentData(r) { return NodiMcp.agentData(r) }
 
   // The agent's exploratory search: as data, with its live rows scoped to
   // the prompt turn that requested them.
@@ -2804,24 +2539,13 @@ Item {
     }
   }
 
+  // A direct Ask's query, and the question a query asks (lib/Agents.js).
   function queryUsesDirectAgent(query) {
-    if (!root.directAskAgent) return null
-    var direct = String(query || "").match(/^\s*(\S+)(?:\s+(.*))?$/)
-    var agent = Agents.byId(root.askRegistry, root.directAskAgent)
-    if (!direct || !agent) return false
-    var token = direct[1].toLowerCase()
-    if (token !== String(agent.id).toLowerCase()
-        && token !== String(agent.name || "").toLowerCase()) return false
-    return true
+    return Agents.usesDirect(query, root.askRegistry, root.directAskAgent)
   }
 
   function askQuestion(query) {
-    var text = String(query || "")
-    var ordinary = text.match(/^\s*ask\s+(.*)$/i)
-    if (ordinary) return ordinary[1].trim()
-    if (!root.queryUsesDirectAgent(text)) return null
-    var direct = text.match(/^\s*(\S+)(?:\s+(.*))?$/)
-    return String(direct[2] || "").trim()
+    return Agents.askQuestion(query, root.askRegistry, root.directAskAgent)
   }
 
   // The answer the card shows, while the query is the question it answers:

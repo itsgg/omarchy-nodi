@@ -363,9 +363,12 @@ Item {
     }
   }
 
+  // Its fake agent's turns and the bar's timers run late on a loaded
+  // machine: at a load average of 20 to 30 a run that was still passing
+  // every step reached 15 s. A hang still ends here.
   Timer {
     id: deadline
-    interval: 15000
+    interval: 90000
     onTriggered: {
       test.failures.push("timed out: availability " + JSON.stringify(nodi.agentAvailability) + ", resolved " + nodi.resolvedAgent)
       cleanup.running = true

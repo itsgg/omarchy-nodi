@@ -4,6 +4,10 @@ import Quickshell.Io
 import "../lib/Acp.js" as Acp
 import "../lib/AskTools.js" as AskTools
 import "../lib/AskActions.js" as AskActions
+import "../lib/AskOrigin.js" as AskOrigin
+import "../lib/AskServe.js" as AskServe
+import "../lib/AskMailbox.js" as AskMailbox
+import "../lib/AskAnswers.js" as AskAnswers
 import "../lib/Agents.js" as Agents
 import "../lib/PromptContext.js" as PromptContext
 import "../lib/AskInteraction.js" as AskInteraction
@@ -622,18 +626,8 @@ Item {
     })
   }
 
-  function stableActionInput(value) {
-    if (!value || typeof value !== "object") return value
-    if (Array.isArray(value)) return value.map(ask.stableActionInput)
-    var out = Object.create(null)
-    Object.keys(value).sort().forEach(function(key) {
-      out[key] = ask.stableActionInput(value[key])
-    })
-    return out
-  }
-
   function actionInputKey(input) {
-    return JSON.stringify(ask.stableActionInput(input && typeof input === "object" ? input : {}))
+    return AskOrigin.inputKey(input)
   }
 
   function setReadActivity(operation, text, status) {
@@ -687,174 +681,41 @@ Item {
     ask.thoughtActivity = ""
   }
 
-  function identityField(object, key) {
-    if (!object || typeof object !== "object"
-        || !Object.prototype.hasOwnProperty.call(object, key))
-      return { marker: "missing" }
-    var value = object[key]
-    if (value === null) return { marker: "null" }
-    return { marker: "value", type: typeof value, value: ask.stableActionInput(value) }
+  // Ask's session state as lib/AskOrigin.js reads it, and what a check
+  // there returns applied: a binding kept, or a limit reached, which ends
+  // the session.
+  function originState() {
+    return {
+      agent: ask.agent, program: ask.program, spec: ask.spec,
+      sessionId: ask.sessionId, token: ask.token, channel: ask.channel,
+      actionTurn: ask.actionTurn, turnOpen: ask.turn !== null,
+      shown: ask.shown, proposal: ask.proposal, cut: ask.cut,
+      actionServer: ask.actionServer, runBindings: ask.runBindings,
+      codexTurns: ask.codexTurns, claudeTurns: ask.claudeTurns,
+      actionBook: ask.actionBook, originRejections: ask.originRejections,
+      runBindingLimit: ask.runBindingLimit,
+      providerTurnBindingLimit: ask.providerTurnBindingLimit
+    }
+  }
+
+  function applyOrigin(r) {
+    if (r.runBindings) ask.runBindings = r.runBindings
+    if (r.codexTurns) ask.codexTurns = r.codexTurns
+    if (r.claudeTurns) ask.claudeTurns = r.claudeTurns
+    if (r.capacity) return ask.sessionCapacityExceeded(r.capacity)
+    return r.value
   }
 
   function relayOrigin(message, requestId) {
-    var params = message && message.params && typeof message.params === "object"
-      ? message.params : {}
-    var requestInputKey = JSON.stringify(ask.identityField(params, "arguments"))
-    var managedCodex = ask.agent === "codex" && ask.spec
-    var managedClaude = ask.agent === "claude" && !ask.program && ask.spec
-      && ask.spec.policy === "strict"
-    if (!managedCodex && !managedClaude) {
-      return {
-        valid: true, callId: String(requestId), providerTurn: "",
-        requestInputKey: requestInputKey,
-        adapterKey: JSON.stringify({
-          adapter: "acp", requestId: {
-            type: typeof requestId, value: ask.stableActionInput(requestId)
-          }
-        })
-      }
-    }
-    var meta = params._meta && typeof params._meta === "object"
-      ? params._meta : {}
-    if (managedClaude) {
-      var claudeCallId = typeof meta["claudecode/toolUseId"] === "string"
-        && meta["claudecode/toolUseId"] ? meta["claudecode/toolUseId"] : ""
-      var claudeProviderTurn = ask.claudeRelayProviderTurn(claudeCallId,
-                                                           requestId)
-      return {
-        valid: !!claudeCallId && !!claudeProviderTurn,
-        callId: claudeCallId,
-        providerTurn: claudeProviderTurn,
-        requestInputKey: requestInputKey,
-        adapterKey: JSON.stringify({
-          adapter: "claude",
-          meta: ask.identityField(params, "_meta"),
-          callId: ask.identityField(meta, "claudecode/toolUseId")
-        })
-      }
-    }
-    var turn = meta["x-codex-turn-metadata"]
-    var turnObject = turn && typeof turn === "object" ? turn : {}
-    var callId = typeof meta.callId === "string" && meta.callId ? meta.callId : ""
-    var providerTurn = typeof turnObject.turn_id === "string" && turnObject.turn_id
-      ? turnObject.turn_id : ""
-    var adapterKey = JSON.stringify({
-      adapter: "codex",
-      meta: ask.identityField(params, "_meta"),
-      turnMetadata: ask.identityField(meta, "x-codex-turn-metadata"),
-      sessionId: ask.identityField(turnObject, "session_id"),
-      threadId: ask.identityField(turnObject, "thread_id"),
-      providerTurn: ask.identityField(turnObject, "turn_id"),
-      callId: ask.identityField(meta, "callId")
-    })
-    return {
-      valid: !!turn && typeof turn === "object"
-        && turnObject.session_id === ask.sessionId
-        && turnObject.thread_id === ask.sessionId
-        && !!providerTurn && !!callId,
-      callId: callId, providerTurn: providerTurn,
-      requestInputKey: requestInputKey, adapterKey: adapterKey
-    }
+    return AskOrigin.relayOrigin(ask.originState(), message, requestId)
   }
 
   function bindCodexProviderTurn(update) {
-    if (ask.agent !== "codex" || !ask.spec
-        || !update || update.sessionUpdate !== "session_info_update"
-        || !update._meta || update._meta.nodi_codex_turn_started !== true
-        || typeof update._meta.nodi_codex_turn_id !== "string"
-        || !update._meta.nodi_codex_turn_id
-        || ask.turn === null || !ask.actionTurn)
-      return false
-    var providerTurn = update._meta.nodi_codex_turn_id
-    var turns = ask.codexTurns.slice()
-    for (var i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].providerTurn !== providerTurn) continue
-      return turns[i].session === ask.token
-        && turns[i].channel === ask.channel
-        && turns[i].turn === ask.actionTurn
-    }
-    if (turns.length >= ask.providerTurnBindingLimit)
-      return ask.sessionCapacityExceeded("Codex turn bindings")
-    turns.push({
-      providerTurn: providerTurn, session: ask.token,
-      channel: ask.channel, turn: ask.actionTurn
-    })
-    ask.codexTurns = turns
-    return true
-  }
-
-  function codexTurnOrigin(providerTurn) {
-    for (var i = ask.codexTurns.length - 1; i >= 0; i--) {
-      var turn = ask.codexTurns[i]
-      if (turn.providerTurn === providerTurn) return turn
-    }
-    return null
+    return ask.applyOrigin(AskOrigin.bindProviderTurn(ask.originState(), "codex", update))
   }
 
   function bindClaudeProviderTurn(update) {
-    if (ask.agent !== "claude" || ask.program || !ask.spec
-        || ask.spec.policy !== "strict"
-        || !update || update.sessionUpdate !== "session_info_update"
-        || !update._meta || update._meta.nodi_claude_turn_started !== true
-        || typeof update._meta.nodi_claude_turn_id !== "string"
-        || !update._meta.nodi_claude_turn_id
-        || ask.turn === null || !ask.actionTurn)
-      return false
-    var providerTurn = update._meta.nodi_claude_turn_id
-    var turns = ask.claudeTurns.slice()
-    for (var i = turns.length - 1; i >= 0; i--) {
-      if (turns[i].providerTurn !== providerTurn) continue
-      return turns[i].session === ask.token
-        && turns[i].channel === ask.channel
-        && turns[i].turn === ask.actionTurn
-    }
-    if (turns.length >= ask.providerTurnBindingLimit)
-      return ask.sessionCapacityExceeded("Claude turn bindings")
-    turns.push({
-      providerTurn: providerTurn, session: ask.token,
-      channel: ask.channel, turn: ask.actionTurn
-    })
-    ask.claudeTurns = turns
-    return true
-  }
-
-  function claudeTurnOrigin(providerTurn) {
-    for (var i = ask.claudeTurns.length - 1; i >= 0; i--) {
-      var turn = ask.claudeTurns[i]
-      if (turn.providerTurn === providerTurn) return turn
-    }
-    return null
-  }
-
-  function claudeRelayProviderTurn(callId, requestId) {
-    if (!callId) return ""
-    var found = ""
-    for (var i = ask.runBindings.length - 1; i >= 0; i--) {
-      var binding = ask.runBindings[i]
-      if (binding.adapter !== "claude" || binding.callId !== callId) continue
-      if (found && found !== binding.providerTurn) return ""
-      found = binding.providerTurn
-    }
-    if (found) return found
-    var record = ask.actionRequest(requestId)
-    return record && record.callId === callId ? record.providerTurn : ""
-  }
-
-  function rejectionOrigin(requestId, input, server, relay) {
-    return {
-      id: requestId, session: ask.token, channel: ask.channel,
-      turn: ask.actionTurn,
-      inputKey: relay.requestInputKey === undefined
-        ? ask.actionInputKey(input) : relay.requestInputKey,
-      server: String(server), adapterKey: relay.adapterKey
-    }
-  }
-
-  function sameRejectedOrigin(record, origin) {
-    return record && record.id === origin.id
-      && record.session === origin.session && record.channel === origin.channel
-      && record.turn === origin.turn && record.inputKey === origin.inputKey
-      && record.server === origin.server && record.adapterKey === origin.adapterKey
+    return ask.applyOrigin(AskOrigin.bindProviderTurn(ask.originState(), "claude", update))
   }
 
   function rememberOriginRejection(requestId, input, server, relay) {
@@ -863,146 +724,19 @@ Item {
     if (Object.prototype.hasOwnProperty.call(records, key)) return true
     if (ask.originRejectionCount >= ask.rejectionLimit)
       return ask.sessionCapacityExceeded("action rejection records")
-    records[key] = ask.rejectionOrigin(requestId, input, server, relay)
+    records[key] = AskOrigin.rejectionOrigin(ask.originState(), requestId, input, server, relay)
     ask.originRejectionCount++
     ask.originRejectionsChanged()
     return true
   }
 
-  function rejectedOrigin(requestId) {
-    var key = ask.toolRequestKey(requestId)
-    return Object.prototype.hasOwnProperty.call(ask.originRejections, key)
-      ? ask.originRejections[key] : null
-  }
-
   function bindRunOrigin(permissionId, callId, input, allowed, call) {
-    if (typeof callId !== "string" || !callId) return false
-    var bindings = ask.runBindings.slice()
-    var codexOrigin = null
-    for (var i = bindings.length - 1; i >= 0; i--) {
-      if (bindings[i].adapter !== "codex" || bindings[i].callId !== callId)
-        continue
-      var same = bindings[i].session === ask.token
-        && bindings[i].channel === ask.channel
-        && bindings[i].turn === ask.actionTurn
-        && bindings[i].operation === callId
-        && bindings[i].server === ask.actionServer
-        && bindings[i].inputKey === ask.actionInputKey(input)
-        && bindings[i].allowed === (allowed === true)
-      codexOrigin = same ? bindings[i] : null
-      bindings.splice(i, 1)
-      if (!same) {
-        ask.runBindings = bindings
-        return false
-      }
-    }
-    if (ask.agent === "codex" && ask.spec
-        && !codexOrigin)
-      return false
-    var managedClaude = ask.agent === "claude" && !ask.program && ask.spec
-      && ask.spec.policy === "strict"
-    var claudeOrigin = null
-    if (managedClaude) {
-      var meta = call && call._meta && typeof call._meta === "object"
-        ? call._meta : {}
-      var evidence = meta.nodi_claude_action_origin
-      var server = evidence && evidence.server
-      var provider = evidence && typeof evidence.providerTurn === "string"
-        ? ask.claudeTurnOrigin(evidence.providerTurn) : null
-      var hasInput = evidence && Object.prototype.hasOwnProperty.call(evidence,
-                                                                       "input")
-      if (!evidence || typeof evidence !== "object"
-          || evidence.version !== 1 || evidence.adapter !== "claude"
-          || evidence.acpSessionId !== ask.sessionId
-          || evidence.callId !== callId
-          || !server || typeof server !== "object"
-          || server.name !== ask.actionServer || server.source !== "dynamic"
-          || !hasInput
-          || ask.actionInputKey(evidence.input) !== ask.actionInputKey(input)
-          || AskTools.barTool(call, ask.actionServer) !== "run"
-          || !provider || provider.session !== ask.token
-          || provider.channel !== ask.channel
-          || provider.turn !== ask.actionTurn)
-        return false
-      claudeOrigin = evidence
-      for (var ci = bindings.length - 1; ci >= 0; ci--) {
-        if (bindings[ci].adapter !== "claude"
-            || bindings[ci].callId !== callId) continue
-        var exact = bindings[ci].session === ask.token
-          && bindings[ci].channel === ask.channel
-          && bindings[ci].turn === ask.actionTurn
-          && bindings[ci].permissionId === String(permissionId)
-          && bindings[ci].server === ask.actionServer
-          && bindings[ci].inputKey === ask.actionInputKey(input)
-          && bindings[ci].allowed === (allowed === true)
-          && bindings[ci].providerTurn === evidence.providerTurn
-        if (exact) return true
-        bindings.splice(ci, 1)
-        ask.runBindings = bindings
-        return false
-      }
-    }
-    if (bindings.length >= ask.runBindingLimit)
-      return ask.sessionCapacityExceeded("run origin bindings")
-    bindings.push({
-      session: ask.token, channel: ask.channel, turn: ask.actionTurn,
-      callId: callId,
-      operation: callId,
-      permissionId: String(permissionId),
-      server: ask.actionServer,
-      inputKey: ask.actionInputKey(input), allowed: allowed === true,
-      providerTurn: codexOrigin ? codexOrigin.providerTurn
-        : claudeOrigin ? claudeOrigin.providerTurn : "",
-      adapter: codexOrigin ? "codex" : claudeOrigin ? "claude" : "acp"
-    })
-    ask.runBindings = bindings
-    return true
+    return ask.applyOrigin(AskOrigin.bindRunOrigin(ask.originState(),
+      permissionId, callId, input, allowed, call))
   }
 
-  // Codex's pinned adapter publishes the app-server's structured mcpToolCall
-  // start, with its generated call ID, before the MCP relay request. Bind only
-  // that exact current-session event. This also covers adapter versions which
-  // omit ACP permission; when permission is present bindRunOrigin replaces
-  // this provisional binding. The relay must carry the same generated ID.
   function bindCodexRunOrigin(update) {
-    if (ask.agent !== "codex" || !ask.spec
-        || !update || update.sessionUpdate !== "tool_call"
-        || typeof update.toolCallId !== "string" || !update.toolCallId
-        || !update._meta || update._meta.is_mcp_tool_call !== true
-        || AskTools.barTool(update, ask.actionServer) !== "run"
-        || ask.turn === null || !ask.actionTurn || !ask.shown || ask.proposal)
-      return false
-    var input = AskTools.input(update)
-    if (!AskTools.runInput(input).ok) return false
-    var providerTurn = update._meta.nodi_codex_turn_id
-    if (typeof providerTurn !== "string" || !providerTurn) return false
-    var providerOrigin = ask.codexTurnOrigin(providerTurn)
-    if (!providerOrigin || providerOrigin.session !== ask.token
-        || providerOrigin.channel !== ask.channel
-        || providerOrigin.turn !== ask.actionTurn)
-      return false
-    var bindings = ask.runBindings.slice()
-    for (var i = bindings.length - 1; i >= 0; i--) {
-      if (bindings[i].adapter === "codex"
-          && bindings[i].callId === update.toolCallId) {
-        bindings.splice(i, 1)
-        ask.runBindings = bindings
-        return false
-      }
-    }
-    if (bindings.length >= ask.runBindingLimit)
-      return ask.sessionCapacityExceeded("run origin bindings")
-    bindings.push({
-      session: ask.token, channel: ask.channel, turn: ask.actionTurn,
-      callId: update.toolCallId,
-      operation: update.toolCallId,
-      permissionId: "",
-      server: ask.actionServer,
-      inputKey: ask.actionInputKey(input), allowed: true,
-      adapter: "codex", providerTurn: providerTurn
-    })
-    ask.runBindings = bindings
-    return true
+    return ask.applyOrigin(AskOrigin.bindCodexRunOrigin(ask.originState(), update))
   }
 
   function actionRequest(requestId) {
@@ -1011,127 +745,17 @@ Item {
   }
 
   function validateRunReplay(requestId, input, server, relay) {
-    relay = relay && typeof relay === "object" ? relay
-      : { valid: false, callId: String(relay || ""), providerTurn: "", adapterKey: "" }
-    var rejected = ask.rejectedOrigin(requestId)
-    if (rejected) {
-      var replayedRejection = ask.rejectionOrigin(requestId, input, server, relay)
-      return ask.sameRejectedOrigin(rejected, replayedRejection)
-        ? { ok: true }
-        : { ok: false, error: "The action replay does not match its recorded rejection origin" }
-    }
-    var record = ask.actionRequest(requestId)
-    if (!record) return { ok: true }
-    var managedOrigin = ask.spec && (ask.agent === "codex"
-      || (ask.agent === "claude" && !ask.program
-          && ask.spec.policy === "strict"))
-    if (managedOrigin && !relay.valid)
-      return { ok: false, error: "The action replay has no trusted call origin" }
-    var trustedCallId = managedOrigin ? relay.callId : String(requestId)
-    var parsed = AskTools.runInput(input)
-    var kind = parsed.ok ? parsed.kind : "invalid"
-    var value = parsed.ok ? parsed.value : null
-    if (record.id !== requestId
-        || record.session !== ask.token || record.channel !== ask.channel
-        || typeof record.turn !== "string" || !record.turn
-        || record.callId !== trustedCallId
-        || record.providerTurn !== relay.providerTurn
-        || record.adapterKey !== relay.adapterKey
-        || record.inputKey !== ask.actionInputKey(input)
-        || record.operation !== trustedCallId
-        || record.server !== String(server)
-        || record.kind !== kind || record.value !== value)
-      return { ok: false, error: "The action replay does not match its recorded origin" }
-    return { ok: true }
+    return AskOrigin.validateRunReplay(ask.originState(), requestId, input, server, relay)
   }
 
-  // A duplicate is owned by its original request record. A first delivery
-  // consumes the permission-time or structured-adapter binding with the
-  // same exact input. More than one is ambiguous and therefore cannot be
-  // promoted to "current".
   function takeRunOrigin(requestId, input, server, relay) {
-    relay = relay && typeof relay === "object" ? relay
-      : { valid: false, callId: String(relay || ""), providerTurn: "", adapterKey: "" }
-    var record = ask.actionRequest(requestId)
-    var key = ask.actionInputKey(input)
-    var bindings = ask.runBindings.slice()
-    var managedOrigin = ask.spec && (ask.agent === "codex"
-      || (ask.agent === "claude" && !ask.program
-          && ask.spec.policy === "strict"))
-    var unmanagedDelivery = ask.spec && ask.spec.policy === "unmanaged"
-      && ask.agent !== "codex"
-    if (managedOrigin && !relay.valid)
-      return { ok: false, error: "The action request has no trusted call origin" }
-    var trustedCallId = managedOrigin ? relay.callId : String(requestId)
-    if (record) {
-      if (record.callId !== trustedCallId || record.inputKey !== key
-          || record.server !== String(server)
-          || record.providerTurn !== relay.providerTurn
-          || record.adapterKey !== relay.adapterKey)
-        return { ok: false, error: "The action request does not match its permission-bound origin" }
-      for (var ri = bindings.length - 1; ri >= 0; ri--) {
-        if (bindings[ri].callId === String(requestId)
-            && bindings[ri].inputKey === key
-            && bindings[ri].server === String(server)) {
-          bindings.splice(ri, 1)
-          break
-        }
-      }
-      ask.runBindings = bindings
-      return { ok: true, origin: {
-        session: record.session, channel: record.channel, turn: record.turn,
-        callId: record.callId, inputKey: record.inputKey,
-        operation: record.operation, server: record.server, allowed: true,
-        providerTurn: record.providerTurn, adapterKey: record.adapterKey
-      } }
-    }
-    // OpenCode and custom ACP agents do not necessarily identify an MCP
-    // server in permission metadata. Their weaker origin is the authenticated
-    // relay itself, accepted only during this visible Nodi turn. It still
-    // enters runTool's immutable proposal lifecycle and always waits for the
-    // separate Nodi action card.
-    if (unmanagedDelivery) {
-      if (ask.turn === null || !ask.actionTurn
-          || ask.actionBook.session !== ask.token
-          || ask.actionBook.channel !== ask.channel
-          || ask.actionBook.turn !== ask.actionTurn)
-        return { ok: false, error: "The unmanaged action request is from an old turn" }
-      if (!ask.shown)
-        return { ok: false, error: "The unmanaged action request arrived while the bar is closed" }
-      return { ok: true, origin: {
-        session: ask.token, channel: ask.channel, turn: ask.actionTurn,
-        callId: String(requestId), inputKey: key,
-        operation: String(requestId), server: String(server), allowed: true,
-        providerTurn: "", adapterKey: relay.adapterKey
-      } }
-    }
-    var matches = []
-    for (var i = 0; i < bindings.length; i++)
-      if (bindings[i].callId === trustedCallId
-          && bindings[i].inputKey === key
-          && bindings[i].session === ask.token
-          && bindings[i].channel === ask.channel
-          && bindings[i].turn === ask.actionTurn
-          && bindings[i].providerTurn === relay.providerTurn
-          && bindings[i].operation === trustedCallId
-          && bindings[i].server === String(server)) matches.push(i)
-    if (matches.length !== 1) {
-      for (var mi = matches.length - 1; mi >= 0; mi--) bindings.splice(matches[mi], 1)
-      ask.runBindings = bindings
-      return { ok: false, error: matches.length
-        ? "The action request origin is ambiguous"
-        : "The action request has no permission-bound origin" }
-    }
-    var origin = bindings.splice(matches[0], 1)[0]
-    origin.adapterKey = relay.adapterKey
-    ask.runBindings = bindings
-    return { ok: true, origin: origin }
+    var r = AskOrigin.takeRunOrigin(ask.originState(), requestId, input, server, relay)
+    if (r.runBindings) ask.runBindings = r.runBindings
+    return r.ok ? { ok: true, origin: r.origin } : { ok: false, error: r.error }
   }
 
   function actionResponse(requestId, outcome, isError) {
-    var result = { content: [{ type: "text", text: JSON.stringify(outcome) }] }
-    if (isError) result.isError = true
-    return { jsonrpc: "2.0", id: requestId, result: result }
+    return AskMailbox.response(requestId, outcome, isError)
   }
 
   function publishAction(requestId, outcome, isError) {
@@ -1459,17 +1083,8 @@ Item {
     if (ask.proposal && ask.proposal.kind === "action")
       ask.cancelAction(why, true)
     ask.proposal = null
-    for (var key in ask.toolRequests) {
-      if (!Object.prototype.hasOwnProperty.call(ask.toolRequests, key)) continue
-      var item = ask.toolRequests[key]
-      if (!item || item.state === "ready") continue
-      var status = item.state === "committed" ? "unknown" : "error"
-      item.state = "ready"
-      item.response = JSON.stringify(ask.actionResponse(item.id, {
-        status: status, message: why
-      }, true))
-    }
-    ask.toolRequestsChanged()
+    var box = ask.mailbox()
+    ask.applyMailbox(box, AskMailbox.endAll(box, why))
     ask.terminalizeReadActivities("failed")
     ask.pending = null
     ask.allowed = ""
@@ -1532,9 +1147,10 @@ Item {
     if (catalogs) ask.toolCatalogs = catalogs
   }
 
-  // An answer to one of Nodi's requests.
+  // An answer to one of Nodi's requests; what it decides is
+  // lib/AskAnswers.js.
   function agentAnswers(kind, m) {
-    var why = m.error ? m.error.message || ("error " + m.error.code) : ""
+    var why = AskAnswers.why(m)
     if (kind === "init") {
       // An adapter that installed is up: its install is over (Fable
       // 2026-10-07: the status said "Installing" for the whole session),
@@ -1545,15 +1161,16 @@ Item {
         upGuard.since = Date.now()
         upGuard.restart()
       }
-      if (why) { ask.fail(ask.agentName + " did not start: " + why); return }
-      ask.caps = Acp.capabilities(m.result)
-      if (ask.caps.version !== Acp.VERSION) { ask.fail(ask.agentName + " speaks ACP " + ask.caps.version + "; Nodi speaks " + Acp.VERSION); return }
+      var up = AskAnswers.started(m, ask.agentName)
+      if (up.fail) { ask.fail(up.fail); return }
+      ask.caps = up.caps
       ask.agentTitle = ask.caps.name
       ask.openSession()
     } else if (kind === "session") {
-      if (m.error && m.error.code === Acp.AUTH_REQUIRED) { ask.signIn(why); return }
-      if (why || !m.result || typeof m.result.sessionId !== "string") { ask.fail(ask.agentName + " could not start a session: " + (why || "no session")); return }
-      ask.sessionId = m.result.sessionId
+      var opened = AskAnswers.opened(m, ask.agentName)
+      if (opened.signIn !== undefined) { ask.signIn(opened.signIn); return }
+      if (opened.fail) { ask.fail(opened.fail); return }
+      ask.sessionId = opened.sessionId
       ask.interactionState = AskInteraction.create(
         ask.processBinding, ask.sessionId, "")
       ask.recordRuntimeMetadata(m.result._meta)
@@ -1577,23 +1194,23 @@ Item {
     } else if (kind === "close:resume") {
       if (why) {
         ask.resumeTarget = null
-        ask.fail(ask.agentName + " could not close the current session: " + why)
+        ask.fail(AskAnswers.failure(kind, why, ask.agentName))
       } else ask.beginResume()
     } else if (kind === "resume") {
       if (why) {
         ask.resumeTarget = null
-        ask.fail(ask.agentName + " could not resume the session: " + why)
+        ask.fail(AskAnswers.failure(kind, why, ask.agentName))
         return
       }
       ask.resumeTarget = null
       ask.recordRuntimeMetadata(m.result && m.result._meta)
       ask.configureSession(m.result)
     } else if (kind.indexOf("config:") === 0) {
-      if (why) { ask.fail(ask.agentName + " could not set its " + kind.slice(7) + ": " + why); return }
+      if (why) { ask.fail(AskAnswers.failure(kind, why, ask.agentName)); return }
       if (--ask.configuring === 0) ask.sessionUp()
     } else if (kind === "auth") {
       ask.signingIn = false
-      if (why) { ask.fail("Signing in to " + ask.agentName + " failed: " + why + ask.signInHint()); return }
+      if (why) { ask.fail(AskAnswers.failure(kind, why, ask.agentName, ask.signInHint())); return }
       // Signed in: the session has its own time again to come up.
       upGuard.since = Date.now()
       upGuard.restart()
@@ -1613,16 +1230,14 @@ Item {
       ask.turn = null
       ask.terminalizeReadActivities(why ? "failed" : "completed")
       ask.lastAt = Date.now()
-      // The agent's own words, when it said why before failing (Codex says
-      // "out of credits", then fails with "Internal error").
-      if (why) { ask.fail(ask.answer.trim() ? ask.answer.trim().split("\n")[0].slice(0, 300) : why); return }
-      var stop = Acp.stopped(m.result && m.result.stopReason)
-      if (stop && !ask.answer) { ask.fail(stop); return }
-      if (stop) ask.answer += "\n\n(" + stop + ")"
-      if (ask.refused.length) ask.answer = Acp.withRefused(ask.answer, ask.refused, ask.answerMax)
+      var end = AskAnswers.ended(m, {
+        answer: ask.answer, refused: ask.refused,
+        answerMax: ask.answerMax, proposal: ask.proposal
+      })
+      if (end.fail) { ask.fail(end.fail); return }
+      if (end.answer !== ask.answer) ask.answer = end.answer
       ask.refused = []
-      // A row the bar's run showed waits for him after the answer ends.
-      ask.phase = ask.proposal ? "proposing" : "done"
+      ask.phase = end.phase
     }
   }
 
@@ -1829,231 +1444,99 @@ Item {
   // ---------------------------------------------------------------- the bar's tools
 
   function toolRequestKey(requestId) {
-    return typeof requestId + ":" + String(requestId)
+    return AskMailbox.key(requestId)
+  }
+
+  // The mailbox's state as lib/AskMailbox.js takes it, and what one of its
+  // steps did applied: the counts, the change notifications, and a limit
+  // reached, which ends the session.
+  function mailbox() {
+    return {
+      requests: ask.toolRequests, responses: ask.toolResponses,
+      retired: ask.retiredToolResponses, requestCount: ask.toolRequestCount,
+      responseCount: ask.toolResponseCount,
+      retiredCount: ask.retiredToolResponseCount, nextTicket: ask.nextTicket,
+      token: ask.token, channel: ask.channel,
+      ticketLimit: ask.mailboxTicketLimit, requestLimit: ask.actionRequestLimit,
+      retiredLimit: ask.retiredResponseLimit
+    }
+  }
+
+  function applyMailbox(box, r) {
+    ask.toolRequestCount = box.requestCount
+    ask.toolResponseCount = box.responseCount
+    ask.retiredToolResponseCount = box.retiredCount
+    ask.nextTicket = box.nextTicket
+    if (r.changed.requests) ask.toolRequestsChanged()
+    if (r.changed.responses) ask.toolResponsesChanged()
+    if (r.changed.retired) ask.retiredToolResponsesChanged()
+    if (r.capacity) ask.sessionCapacityExceeded(r.capacity)
+    return r.value
   }
 
   function pendingToolResponse(requestId) {
-    var key = ask.toolRequestKey(requestId)
-    if (ask.toolResponseCount + ask.retiredToolResponseCount
-        >= ask.mailboxTicketLimit) {
-      ask.sessionCapacityExceeded("mailbox tickets")
-      return ""
-    }
-    if (!Object.prototype.hasOwnProperty.call(ask.toolRequests, key)) {
-      if (ask.toolRequestCount >= ask.actionRequestLimit) {
-        ask.sessionCapacityExceeded("action request records")
-        return ""
-      }
-      ask.toolRequests[key] = { id: requestId, state: "pending", response: "" }
-      ask.toolRequestCount++
-      ask.toolRequestsChanged()
-    }
-    var ticket = ask.token + ":" + (++ask.nextTicket)
-    ask.toolResponses[ticket] = { requestKey: key }
-    ask.toolResponseCount++
-    ask.toolResponsesChanged()
-    return ticket
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.pending(box, requestId))
   }
 
   function markToolResponseCommitted(requestId) {
-    var item = ask.toolRequests[ask.toolRequestKey(requestId)]
-    if (!item || item.state !== "pending") return false
-    item.state = "committed"
-    ask.toolRequestsChanged()
-    return true
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.commit(box, requestId))
   }
 
   function completeToolResponse(requestId, response) {
-    var item = ask.toolRequests[ask.toolRequestKey(requestId)]
-    if (!item || item.state === "ready") return false
-    item.state = "ready"
-    item.response = String(response)
-    ask.toolRequestsChanged()
-    return true
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.complete(box, requestId, response))
   }
 
   function toolResponseFor(requestId) {
-    var item = ask.toolRequests[ask.toolRequestKey(requestId)]
-    if (!item || item.state !== "ready") return null
-    try { return JSON.parse(item.response) }
-    catch (e) { return { jsonrpc: "2.0", id: item.id, error: { code: -32603, message: "Ask produced an invalid action response" } } }
+    return AskMailbox.responseFor(ask.mailbox(), requestId)
   }
 
-  // A dead ACP session accepts no new calls, but tickets it already issued
-  // keep their authenticated terminal response until that ticket is polled.
   function retireToolResponses() {
-    if (!ask.token || !ask.channel) return
-    var retired = ask.retiredToolResponses
-    var tickets = Object.keys(ask.toolResponses)
-    for (var ti = 0; ti < tickets.length; ti++) {
-      var ticket = tickets[ti]
-      var transport = ask.toolResponses[ticket]
-      var item = transport ? ask.toolRequests[transport.requestKey] : null
-      if (item && item.state === "ready"
-          && !Object.prototype.hasOwnProperty.call(retired, ticket)) {
-        if (ask.retiredToolResponseCount >= ask.retiredResponseLimit) {
-          ask.sessionCapacityExceeded("retired action responses")
-          return
-        }
-        retired[ticket] = {
-          token: ask.token, channel: ask.channel, response: String(item.response)
-        }
-        ask.retiredToolResponseCount++
-      }
-      delete ask.toolResponses[ticket]
-    }
-    ask.toolResponseCount = 0
-    ask.toolResponsesChanged()
-    ask.retiredToolResponsesChanged()
+    var box = ask.mailbox()
+    ask.applyMailbox(box, AskMailbox.retire(box))
   }
 
   function pollToolResponse(ticket) {
-    var transport = ask.toolResponses[ticket]
-    var item = transport ? ask.toolRequests[transport.requestKey] : null
-    if (!item) return { jsonrpc: "2.0", id: null, error: { code: -32603, message: "This action response is no longer available" } }
-    if (item.state !== "ready") return { nodiPending: String(ticket) }
-    delete ask.toolResponses[ticket]
-    ask.toolResponseCount--
-    ask.toolResponsesChanged()
-    return ask.toolResponseFor(item.id)
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.poll(box, ticket))
   }
 
   function cancelToolResponse(ticket) {
-    var transport = ask.toolResponses[ticket]
-    if (!transport) return false
-    var item = ask.toolRequests[transport.requestKey]
-    delete ask.toolResponses[ticket]
-    ask.toolResponseCount--
-    ask.toolResponsesChanged()
-    if (!item || item.state !== "pending") return false
-    if (ask.proposal && ask.proposal.kind === "action"
-        && ask.toolRequestKey(ask.proposal.requestId) === transport.requestKey)
-      return ask.cancelAction("The action request was cancelled.", false)
-    return ask.completeToolResponse(item.id, JSON.stringify({
-      jsonrpc: "2.0", id: item.id,
-      result: { content: [{ type: "text", text: JSON.stringify({ status: "refused" }) }] }
-    }))
+    var box = ask.mailbox()
+    var shown = ask.proposal && ask.proposal.kind === "action"
+      ? ask.toolRequestKey(ask.proposal.requestId) : undefined
+    var r = AskMailbox.cancel(box, ticket, shown)
+    var done = ask.applyMailbox(box, r)
+    return r.cancelAction ? ask.cancelAction("The action request was cancelled.", false) : done
   }
 
   // `nodi mcp --ask`'s one carried relay envelope (Nodi.qml askMcp).
-  // Authentication happens before call, poll, or cancel is dispatched.
+  // Authentication happens before call, poll, or cancel is dispatched
+  // (lib/AskServe.js envelope).
   function serveCall(arg) {
-    var o = null
-    try { o = JSON.parse(String(arg)) } catch (e) { o = null }
-    if (!o || typeof o !== "object" || typeof o.token !== "string"
-        || typeof o.channel !== "string" || typeof o.op !== "string")
-      return JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "not a message for Ask" } })
-    if ((o.op === "poll" || o.op === "cancel") && typeof o.ticket === "string"
-        && Object.prototype.hasOwnProperty.call(ask.retiredToolResponses, o.ticket)) {
-      var retired = ask.retiredToolResponses[o.ticket]
-      if (o.token !== retired.token || o.channel !== retired.channel) return ""
-      delete ask.retiredToolResponses[o.ticket]
+    var d = AskServe.envelope(arg, ask.retiredToolResponses, {
+      token: ask.token, channel: ask.channel, recycling: ask.recycling
+    })
+    if (d.retired !== undefined) {
+      delete ask.retiredToolResponses[d.retired]
       ask.retiredToolResponseCount--
       ask.retiredToolResponsesChanged()
-      return o.op === "cancel" ? "ok" : retired.response
     }
-    if (!ask.token || o.token !== ask.token || !ask.channel
-        || o.channel !== ask.channel || ask.recycling) {
-      var staleId = null
-      var staleRequest = false
-      if (o.op === "call" && typeof o.line === "string") {
-        try {
-          var stale = JSON.parse(o.line)
-          staleRequest = !!stale && typeof stale === "object"
-            && stale.id !== undefined && typeof stale.method === "string"
-          if (staleRequest) staleId = stale.id
-        } catch (e) {}
-      }
-      return staleRequest
-        ? JSON.stringify({ jsonrpc: "2.0", id: staleId, error: { code: -32603, message: "This question's session has ended" } })
-        : ""
-    }
-    if (o.op === "poll" && typeof o.ticket === "string")
-      return JSON.stringify(ask.pollToolResponse(o.ticket))
-    if (o.op === "cancel" && typeof o.ticket === "string") {
-      ask.cancelToolResponse(o.ticket)
+    if (d.op === "poll") return JSON.stringify(ask.pollToolResponse(d.ticket))
+    if (d.op === "cancel") {
+      ask.cancelToolResponse(d.ticket)
       return "ok"
     }
-    if (o.op !== "call" || typeof o.line !== "string")
-      return JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "not a message for Ask" } })
-    return String(ask.serve(o.token, o.channel, o.line))
+    if (d.op === "call") return String(ask.serve(d.token, d.channel, d.line))
+    return d.reply
   }
 
   // One message from the agent's `nodi mcp --ask`: the answer as a line,
-  // "" for a notification. A server another session started reaches
-  // nothing.
+  // "" for a notification (lib/AskServe.js).
   function serve(token, channel, line) {
-    var m = null
-    try { m = JSON.parse(String(line)) } catch (e) { return JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }) }
-    var isRequest = !!m && typeof m === "object" && m.id !== undefined && typeof m.method === "string"
-    if (!ask.token || String(token) !== ask.token || !ask.channel
-        || String(channel) !== ask.channel || ask.recycling)
-      return isRequest ? JSON.stringify({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: "This question's session has ended" } }) : ""
-    var isRun = isRequest && m.method === "tools/call" && m.params && m.params.name === "run"
-    if (isRun) {
-      var replayRelay = ask.relayOrigin(m, m.id)
-      var replayArgs = m.params.arguments && typeof m.params.arguments === "object"
-        && !Array.isArray(m.params.arguments) ? m.params.arguments : {}
-      var pendingItem = ask.toolRequests[ask.toolRequestKey(m.id)]
-      // A live ID already owns its origin and shared mailbox. Validate a
-      // duplicate before consuming another origin or touching that mailbox.
-      if (pendingItem
-          && (pendingItem.state === "pending"
-              || pendingItem.state === "committed")) {
-        var accepted = ask.actionRequest(m.id)
-        var joined = accepted
-          ? ask.validateRunReplay(m.id, replayArgs, ask.actionServer,
-                                  replayRelay)
-          : { ok: false, error: "The pending action request has no accepted origin" }
-        if (!joined.ok)
-          return JSON.stringify(ask.actionResponse(m.id,
-            { status: "error", message: joined.error }, true))
-        var joinedTicket = ask.pendingToolResponse(m.id)
-        if (joinedTicket)
-          return JSON.stringify({ nodiPending: joinedTicket })
-        var capacityResult = ask.toolResponseFor(m.id)
-        return capacityResult ? JSON.stringify(capacityResult)
-          : JSON.stringify(ask.actionResponse(m.id, {
-              status: "error",
-              message: ask.capacityFailure || "The action session reached its capacity."
-            }, true))
-      }
-      if (ask.toolResponseFor(m.id)) {
-        var replay = ask.validateRunReplay(m.id, replayArgs, ask.actionServer,
-                                           replayRelay)
-        if (!replay.ok)
-          return JSON.stringify(ask.actionResponse(m.id,
-            { status: "error", message: replay.error }, true))
-        var replayTicket = ask.pendingToolResponse(m.id)
-        return replayTicket
-          ? JSON.stringify({ nodiPending: replayTicket })
-          : JSON.stringify(ask.toolResponseFor(m.id))
-      }
-      var args = replayArgs
-      var owned = ask.takeRunOrigin(m.id, args, ask.actionServer,
-                                    replayRelay)
-      var ticket = ask.pendingToolResponse(m.id)
-      if (!ticket) {
-        var capacityResponse = ask.toolResponseFor(m.id)
-        return capacityResponse ? JSON.stringify(capacityResponse)
-          : JSON.stringify(ask.actionResponse(m.id, {
-              status: "error",
-              message: ask.capacityFailure || "The action session reached its capacity."
-            }, true))
-      }
-      if (!owned.ok) {
-        ask.rememberOriginRejection(m.id, args, ask.actionServer, replayRelay)
-        ask.publishAction(m.id, { status: "error", message: owned.error }, true)
-        return JSON.stringify({ nodiPending: ticket })
-      }
-      ask.runTool(m.id, AskTools.runInput(args), owned.origin)
-      return JSON.stringify({ nodiPending: ticket })
-    }
-    var r = AskTools.mcp(m, {
-      search: function(q) { return ask.searcher ? ask.searcher(q, ask.actionTurn) : [] },
-      run: function(input) { return "" }
-    })
-    return r ? JSON.stringify(r) : ""
+    return AskServe.serve(ask, token, channel, line)
   }
 
   function preProposalFailure(requestId, message) {
@@ -2064,94 +1547,12 @@ Item {
   }
 
   function proposalGate(origin) {
-    if (!origin.allowed) return "The action permission was refused"
-    if (ask.turn === null || !ask.actionTurn) return "The action request has no active turn"
-    if (origin.session !== ask.token || origin.channel !== ask.channel
-        || origin.turn !== ask.actionTurn) return "The action request is from an old turn"
-    if (!ask.shown) return "The bar is closed"
-    if (ask.cut) return "The answer was cancelled"
-    if (ask.proposal) return "Another confirmation is already shown"
-    return ""
+    return AskOrigin.proposalGate(ask.originState(), origin)
   }
 
+  // lib/AskServe.js decides; the steps it takes are Ask's own.
   function runTool(requestId, input, origin) {
-    var begun = AskActions.begin(ask.actionBook, {
-      id: requestId,
-      session: origin.session,
-      turn: origin.turn,
-      channel: origin.channel,
-      callId: origin.callId,
-      providerTurn: origin.providerTurn || "",
-      adapterKey: origin.adapterKey || "",
-      inputKey: origin.inputKey,
-      operation: origin.operation || ("run:" + typeof requestId + ":" + String(requestId)),
-      server: origin.server,
-      kind: input.ok ? input.kind : "invalid",
-      value: input.ok ? input.value : null
-    })
-    ask.actionBook = begun.book
-    var effect = begun.effect || {}
-    if (effect.type === "join") return
-    if (effect.type === "replay") {
-      ask.publishAction(requestId, effect.result, effect.result.status === "error")
-      return
-    }
-    if (effect.type === "capacity") {
-      ask.sessionCapacityExceeded("action request records")
-      return
-    }
-    if (effect.type !== "resolve") {
-      ask.publishAction(requestId, {
-        status: "error", message: String(effect.error || "The action could not be started.")
-      }, true)
-      return
-    }
-    if (!input.ok) {
-      ask.preProposalFailure(requestId, input.error)
-      return
-    }
-    var gate = ask.proposalGate(origin)
-    if (gate) {
-      ask.preProposalFailure(requestId, gate)
-      return
-    }
-
-    var resolved
-    try {
-      resolved = ask.resolver ? ask.resolver(effect.kind, effect.value, origin.turn)
-                              : { ok: false, error: "The bar cannot resolve rows here." }
-    } catch (e) {
-      resolved = { ok: false, error: String(e) }
-    }
-    if (!resolved || !resolved.ok || !resolved.snapshot) {
-      ask.preProposalFailure(requestId,
-        resolved && resolved.error ? resolved.error : "No matching row")
-      return
-    }
-    gate = ask.proposalGate(origin)
-    if (gate) {
-      ask.preProposalFailure(requestId, gate)
-      return
-    }
-
-    var proposalId = ask.token + ":proposal:" + (++ask.nextProposal)
-    var snapshot = Object.assign({}, resolved.snapshot, {
-      id: proposalId,
-      session: origin.session,
-      turn: origin.turn,
-      operation: effect.operation
-    })
-    var proposed = AskActions.resolve(ask.actionBook, requestId, snapshot, proposalId)
-    ask.actionBook = proposed.book
-    if (!proposed.effect || proposed.effect.type !== "confirm") {
-      ask.publishAction(requestId, { status: "error", message: "The action request became stale." }, true)
-      return
-    }
-    ask.proposal = {
-      kind: "action", id: proposalId, requestId: requestId,
-      snapshot: ask.actionBook.proposal.snapshot, at: Date.now()
-    }
-    ask.phase = "proposing"
+    AskServe.runTool(ask, requestId, input, origin)
   }
 
   // ---------------------------------------------------------------- the process

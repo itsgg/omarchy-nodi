@@ -20,7 +20,7 @@
 //      element is a program's name, never a shell (review T5).
 //   5. An agent's search and its run at once go through what tests hold
 //      (tests/js/ask.test.mjs): Nodi.qml's agentRows is Engine.agentRows,
-//      and runKey asks AskTools.refusedAtOnce before an agent's run
+//      and runKey asks AskTools.refusedAtOnce, in lib/NodiMcp.js runPlan, before an agent's run
 //      (codex's review, 2026-10-09: removing either passed every test).
 //   6. Every Text, TextEdit, TextArea and Label in Nodi.qml and
 //      components/ says its textFormat: rich text fetches an <img> with no
@@ -33,7 +33,8 @@
 //      comment, and a command of his own that Nodi only shows as an
 //      example (providers/shell.js's `> notify-send hi`). What no test
 //      reaches in Nodi.qml is held here: its toast over IPC takes only a
-//      payload carried in a file; clearing the reminders, Nodi's own verb,
+//      payload carried in a file; clearing the reminders, Nodi's own verb
+//      (lib/NodiActions.js),
 //      asks a second Enter; a reminders.json with an error is never
 //      written over; a hotkey's bind finds its row through
 //      Prefs.rowOfHotkey; and each open makes the folders 0700 again.
@@ -141,7 +142,9 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
         // The nearest assignment above, inside the same function.
         for (let j = i - 1; j >= 0 && !/^\s*function\s|^\s*Component\.on/.test(lines[j]); j--) {
           const a = lines[j].match(/\bargv\s*=\s*(.*)$/);
-          if (a) { ok = /^(?:\w+\s*\?\s*)?(Run\.command|Hotkey\.releaseArgv|Agents\.stopArgv)\(/.test(a[1].trim()); break; }
+          // Or the argv lib/NodiMcp.js runPlan made, which is Run.command's.
+          if (a) { ok = /^(?:\w+\s*\?\s*)?(Run\.command|Hotkey\.releaseArgv|Agents\.stopArgv)\(/.test(a[1].trim())
+                     || (a[1].trim() === "plan.argv" && lines.slice(j - 8, j).some(l => /NodiMcp\.runPlan\(/.test(l))); break; }
         }
       }
       if (!ok) problems.push(`${rel}:${i + 1}: execDetached with an argv that is neither Run.command's nor a named program: ${arg.slice(0, 60)}`);
@@ -155,8 +158,11 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
   if (!/function agentRows\(q\) \{ return Engine\.agentRows\(q, root\.config, root\.services\(\)\) \}/.test(src))
     problems.push("Nodi.qml: agentRows is not Engine.agentRows");
   const body = (src.match(/function runKey\(key, confirmed, agent\) \{[\s\S]*?\n  \}\n/) || [""])[0];
-  if (!/agent === true && !proposed && s \? AskTools\.refusedAtOnce\(k, s\.provider\)/.test(body) || !/if \(refused\) return refused/.test(body))
-    problems.push("Nodi.qml: runKey does not refuse an agent's run at once through AskTools.refusedAtOnce");
+  const plan = (read("lib/NodiMcp.js").match(/function runPlan\(o\) \{[\s\S]*?\n\}\n/) || [""])[0];
+  if (!/NodiMcp\.runPlan\(/.test(body) || !/if \(plan\.refusal\) return plan\.refusal/.test(body)
+      || !/o\.agent === true && !o\.proposed && s \? AskTools\.refusedAtOnce\(k, s\.provider\)/.test(plan)
+      || !/if \(refused\) return \{ refusal: refused \}/.test(plan))
+    problems.push("Nodi.qml: runKey does not refuse an agent's run at once through AskTools.refusedAtOnce (lib/NodiMcp.js runPlan)");
 }
 
 // 6. Text formats. Scope: Nodi.qml and components/*.qml. A Text with no
@@ -192,8 +198,8 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
   const nodi = read("Nodi.qml");
   if (!/var text = a\.indexOf\("@file:"\) === 0 \? carried\.read\(a\) : null/.test(nodi))
     problems.push("Nodi.qml: toast over IPC takes more than a payload carried in a file");
-  if (!/row\.nodi === "remindClear"\) \{\s*(\/\/[^\n]*\s*)?if \(root\.armedKey !== row\.key\) \{ root\.armedKey = row\.key; return \}/.test(nodi))
-    problems.push("Nodi.qml: clearing the reminders does not ask a second Enter");
+  if (!/n === "remindClear"\) \{\s*(\/\/[^\n]*\s*)?if \(s\.armedKey !== row\.key\) return \[set\("armedKey", row\.key\)\]/.test(read("lib/NodiActions.js")))
+    problems.push("lib/NodiActions.js: clearing the reminders does not ask a second Enter");
   if (!/function saveReminders\(\) \{\s*if \(!root\.remindersLoaded\) return\s*if \(root\.remindersBroken\) return/.test(nodi))
     problems.push("Nodi.qml: saveReminders may write over a reminders.json with an error");
   // A hotkey's bind names its keys, never the row (Hotkey.planRows): runRow
