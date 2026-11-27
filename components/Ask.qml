@@ -7,6 +7,7 @@ import "../lib/AskActions.js" as AskActions
 import "../lib/AskOrigin.js" as AskOrigin
 import "../lib/AskServe.js" as AskServe
 import "../lib/AskMailbox.js" as AskMailbox
+import "../lib/AskAnswers.js" as AskAnswers
 import "../lib/Agents.js" as Agents
 import "../lib/PromptContext.js" as PromptContext
 import "../lib/AskInteraction.js" as AskInteraction
@@ -1146,9 +1147,10 @@ Item {
     if (catalogs) ask.toolCatalogs = catalogs
   }
 
-  // An answer to one of Nodi's requests.
+  // An answer to one of Nodi's requests; what it decides is
+  // lib/AskAnswers.js.
   function agentAnswers(kind, m) {
-    var why = m.error ? m.error.message || ("error " + m.error.code) : ""
+    var why = AskAnswers.why(m)
     if (kind === "init") {
       // An adapter that installed is up: its install is over (Fable
       // 2026-10-07: the status said "Installing" for the whole session),
@@ -1159,15 +1161,16 @@ Item {
         upGuard.since = Date.now()
         upGuard.restart()
       }
-      if (why) { ask.fail(ask.agentName + " did not start: " + why); return }
-      ask.caps = Acp.capabilities(m.result)
-      if (ask.caps.version !== Acp.VERSION) { ask.fail(ask.agentName + " speaks ACP " + ask.caps.version + "; Nodi speaks " + Acp.VERSION); return }
+      var up = AskAnswers.started(m, ask.agentName)
+      if (up.fail) { ask.fail(up.fail); return }
+      ask.caps = up.caps
       ask.agentTitle = ask.caps.name
       ask.openSession()
     } else if (kind === "session") {
-      if (m.error && m.error.code === Acp.AUTH_REQUIRED) { ask.signIn(why); return }
-      if (why || !m.result || typeof m.result.sessionId !== "string") { ask.fail(ask.agentName + " could not start a session: " + (why || "no session")); return }
-      ask.sessionId = m.result.sessionId
+      var opened = AskAnswers.opened(m, ask.agentName)
+      if (opened.signIn !== undefined) { ask.signIn(opened.signIn); return }
+      if (opened.fail) { ask.fail(opened.fail); return }
+      ask.sessionId = opened.sessionId
       ask.interactionState = AskInteraction.create(
         ask.processBinding, ask.sessionId, "")
       ask.recordRuntimeMetadata(m.result._meta)
@@ -1191,23 +1194,23 @@ Item {
     } else if (kind === "close:resume") {
       if (why) {
         ask.resumeTarget = null
-        ask.fail(ask.agentName + " could not close the current session: " + why)
+        ask.fail(AskAnswers.failure(kind, why, ask.agentName))
       } else ask.beginResume()
     } else if (kind === "resume") {
       if (why) {
         ask.resumeTarget = null
-        ask.fail(ask.agentName + " could not resume the session: " + why)
+        ask.fail(AskAnswers.failure(kind, why, ask.agentName))
         return
       }
       ask.resumeTarget = null
       ask.recordRuntimeMetadata(m.result && m.result._meta)
       ask.configureSession(m.result)
     } else if (kind.indexOf("config:") === 0) {
-      if (why) { ask.fail(ask.agentName + " could not set its " + kind.slice(7) + ": " + why); return }
+      if (why) { ask.fail(AskAnswers.failure(kind, why, ask.agentName)); return }
       if (--ask.configuring === 0) ask.sessionUp()
     } else if (kind === "auth") {
       ask.signingIn = false
-      if (why) { ask.fail("Signing in to " + ask.agentName + " failed: " + why + ask.signInHint()); return }
+      if (why) { ask.fail(AskAnswers.failure(kind, why, ask.agentName, ask.signInHint())); return }
       // Signed in: the session has its own time again to come up.
       upGuard.since = Date.now()
       upGuard.restart()
@@ -1227,16 +1230,14 @@ Item {
       ask.turn = null
       ask.terminalizeReadActivities(why ? "failed" : "completed")
       ask.lastAt = Date.now()
-      // The agent's own words, when it said why before failing (Codex says
-      // "out of credits", then fails with "Internal error").
-      if (why) { ask.fail(ask.answer.trim() ? ask.answer.trim().split("\n")[0].slice(0, 300) : why); return }
-      var stop = Acp.stopped(m.result && m.result.stopReason)
-      if (stop && !ask.answer) { ask.fail(stop); return }
-      if (stop) ask.answer += "\n\n(" + stop + ")"
-      if (ask.refused.length) ask.answer = Acp.withRefused(ask.answer, ask.refused, ask.answerMax)
+      var end = AskAnswers.ended(m, {
+        answer: ask.answer, refused: ask.refused,
+        answerMax: ask.answerMax, proposal: ask.proposal
+      })
+      if (end.fail) { ask.fail(end.fail); return }
+      if (end.answer !== ask.answer) ask.answer = end.answer
       ask.refused = []
-      // A row the bar's run showed waits for him after the answer ends.
-      ask.phase = ask.proposal ? "proposing" : "done"
+      ask.phase = end.phase
     }
   }
 
