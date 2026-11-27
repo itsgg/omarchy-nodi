@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
 
@@ -96,7 +97,7 @@ var provider = {
     if (!find) return []
     if (!file || !ctx.request) return []
     var got = ctx.request("notes-file", file)
-    if (!Array.isArray(got.value)) return [{ title: got.state === "error" ? "The notes could not be read" : "Reading the notes...", subtitle: tilde(file, home), icon: ICON, score: 40, copy: "", remember: false }]
+    if (!Array.isArray(got.value)) return [Rows.waiting(got, "Reading the notes...", "The notes could not be read", { subtitle: tilde(file, home), icon: ICON })]
     var lines = got.value
     if (!lines.length) return [{ title: "No notes yet", subtitle: "note <text> adds one to " + tilde(file, home), icon: ICON, score: 40, copy: "", remember: false }]
     var words = Match.fold(find[1] || "").split(/\s+/).filter(function(w) { return w })

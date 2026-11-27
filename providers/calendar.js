@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 .import "../lib/Match.js" as Match
@@ -182,7 +183,7 @@ function homeRows(ctx) {
 
 function listRows(ctx, words) {
   var got = data(ctx, true)
-  if (!got.value) return [{ title: got.state === "error" ? "The calendar could not be read" : "Reading the calendar...", subtitle: got.error || "", icon: ICON, score: 40, copy: "", remember: false }]
+  if (!got.value) return [Rows.waiting(got, "Reading the calendar...", "The calendar could not be read", { icon: ICON })]
   var nowMs = ctx.now().getTime()
   var h24 = clock24(ctx)
   var many = feedsOf(ctx.settings).length > 1

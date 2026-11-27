@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 
 // A dictionary (ROADMAP 65, L 20): `define <word>` reads Wiktionary's
@@ -100,8 +101,7 @@ var provider = {
     var got = ctx.request ? ctx.request("define", word) : { state: "pending" }
     var page = "https://en.wiktionary.org/wiki/" + encodeURIComponent(word.replace(/ /g, "_"))
     if (!Array.isArray(got.value))
-      return [{ title: got.state === "error" ? "Wiktionary did not answer" : "Looking up " + word + "...", subtitle: got.state === "error" ? String(got.error || "") : "Wiktionary",
-                icon: ICON, score: 40, copy: "", remember: false }]
+      return [Rows.waiting(got, "Looking up " + word + "...", "Wiktionary did not answer", { subtitle: "Wiktionary", icon: ICON })]
     var list = got.value
     if (!list.length) {
       var none = [{ title: "No definition of \"" + word + "\"", subtitle: "Open the page on Wiktionary", icon: ICON, score: 40, copy: "", run: Run.open(page), remember: false }]

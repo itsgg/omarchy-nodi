@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
 .import "../lib/Score.js" as Score
@@ -226,8 +227,7 @@ function bookmarkRows(q, ctx, all) {
   var got = ctx.request ? ctx.request("bookmarks") : { state: "pending" }
   // No Bookmarks file reads as none saved (the read prints {}); an error
   // is one: a file that cannot be read or does not parse (Fable 2026-10-06).
-  if (!got.value) return all ? [{ title: got.state === "error" ? "Could not read the bookmarks" : "Reading bookmarks...",
-                                  subtitle: "Bookmarks", score: 40, copy: "", remember: false }] : []
+  if (!got.value) return all ? [Rows.waiting(got, "Reading bookmarks...", "Could not read the bookmarks", { subtitle: "Bookmarks" })] : []
   var hits = []
   for (var i = 0; i < got.value.length; i++) {
     var b = got.value[i]
@@ -288,7 +288,7 @@ function hostFor(addresses) {
 
 function portRows(q, ctx) {
   var got = ctx.request ? ctx.request("ports") : { state: "pending" }
-  if (!got.value) return [{ title: got.state === "error" ? "Could not read ports" : "Reading ports...", subtitle: "Ports", score: 40, copy: "", remember: false }]
+  if (!got.value) return [Rows.waiting(got, "Reading ports...", "Could not read ports", { subtitle: "Ports" })]
   var want = q.replace(/^:/, "")
   var out = []
   for (var i = 0; i < got.value.length; i++) {
@@ -311,7 +311,7 @@ function portRows(q, ctx) {
 
 function serviceRows(q, ctx) {
   var got = ctx.request ? ctx.request("services") : { state: "pending" }
-  if (!got.value) return [{ title: got.state === "error" ? "Could not read your services" : "Reading services...", subtitle: "Services", score: 40, copy: "", remember: false }]
+  if (!got.value) return [Rows.waiting(got, "Reading services...", "Could not read your services", { subtitle: "Services" })]
   var out = []
   for (var i = 0; i < got.value.length; i++) {
     var s = got.value[i]
@@ -335,7 +335,7 @@ function serviceRows(q, ctx) {
 function historyRows(q, ctx) {
   if (!q) return [{ title: "Browser history", subtitle: "Chromium, Brave or Chrome", score: 40, copy: "", remember: false, hint: "h <words>" }]
   var got = ctx.request ? ctx.request("browser-history") : { state: "pending" }
-  if (!got.value) return [{ title: got.state === "error" ? "No browser history to read" : "Reading history...", subtitle: "Browser history", score: 40, copy: "", remember: false }]
+  if (!got.value) return [Rows.waiting(got, "Reading history...", "No browser history to read", { subtitle: "Browser history" })]
   var words = q.split(" ")
   var hits = got.value.filter(function(r) {
     var hay = Match.folded(r.title + " " + r.url)
@@ -353,9 +353,7 @@ function prRows(q, ctx) {
   var got = ctx.request ? ctx.request("prs") : { state: "pending" }
   // Said once (the parser's reason was appended to the same words); gh
   // fails this way when it is signed out or offline.
-  if (!got.value) return [got.state === "error"
-    ? { title: "gh could not search", subtitle: "Pull requests; gh auth login signs gh in", score: 40, copy: "", remember: false }
-    : { title: "Asking GitHub...", subtitle: "Pull requests", score: 40, copy: "", remember: false }]
+  if (!got.value) return [Rows.waiting(got, "Asking GitHub...", "gh could not search", { subtitle: "Pull requests" })]
   var out = []
   for (var i = 0; i < got.value.length; i++) {
     var p = got.value[i]

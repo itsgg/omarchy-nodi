@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "chooser.js" as Chooser
 .import "../lib/Match.js" as Match
@@ -133,7 +134,7 @@ function foundRows(typed, ctx, home) {
                     hint: "find [img|doc|video|audio|dir] <name>" }]
   var got = ctx.request ? ctx.request("find", findParam(k.kind, q)) : { state: "pending" }
   var list = got.value
-  if (!list) return [{ title: got.state === "error" ? "Could not search" : "Searching for " + q + "...", subtitle: "Files", score: 40, copy: "" }]
+  if (!list) return [Rows.waiting(got, "Searching for " + q + "...", "Could not search", { subtitle: "Files" })]
   if (list.length === 0) return [{ title: "No file named \"" + q + "\"", subtitle: "Files", score: 40, copy: "" }]
   var out = []
   for (var i = 0; i < list.length && i < LIMIT; i++) out.push(fileRow(list[i].path, list[i].name, list[i].dir, 97 - i * 0.01, home))
@@ -340,9 +341,7 @@ function pathRows(typed, ctx, home) {
   var listing = got.value
   // A read that failed with nothing of this folder to show says so, rather
   // than "Reading..." for ever (codex 2026-10-05).
-  if (got.state === "error" && (!listing || listing.path !== dir))
-    return [{ title: "Cannot read " + tilde(dir, home), subtitle: String(got.error || "the listing failed"), score: 40, copy: "" }]
-  if (!listing || listing.path !== dir) return [{ title: "Reading " + tilde(dir, home) + "...", subtitle: "Files", score: 40, copy: "" }]
+  if (!listing || listing.path !== dir) return [Rows.waiting(got, "Reading " + tilde(dir, home) + "...", "Cannot read " + tilde(dir, home), { subtitle: "Files" })]
   if (listing.error) return [{ title: "Cannot read " + tilde(dir, home), subtitle: listing.error, score: 40, copy: "" }]
 
   var out = []
@@ -406,7 +405,7 @@ function contentRows(q, ctx, home) {
   // None to search: ripgrep would read its input until the deadline.
   if (!dirs.length) return [{ title: "No folder to search", subtitle: "Name some under \"files\": { \"contents\": [...] }", score: 40, copy: "", remember: false }]
   var got = ctx.request ? ctx.request("contents", JSON.stringify({ q: q, dirs: dirs })) : { state: "pending" }
-  if (!Array.isArray(got.value)) return [{ title: got.state === "error" ? "The search failed" : "Searching for " + q + "...", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", "), score: 40, copy: "" }]
+  if (!Array.isArray(got.value)) return [Rows.waiting(got, "Searching for " + q + "...", "The search failed", { subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", ") })]
   if (got.value.length === 1 && got.value[0].noFolder)
     return [{ title: "No folder to search", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", ") + (dirs.length > 1 ? " are" : " is") + " not there: name others under \"files\": { \"contents\": [...] }",
               score: 40, copy: "", remember: false }]

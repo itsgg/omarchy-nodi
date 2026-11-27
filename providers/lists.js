@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
 .import "../lib/Score.js" as Score
@@ -36,7 +37,7 @@ function profileName(id) { return PROFILE_NAMES[id] || String(id).replace(/-/g, 
 function fontRows(needle, ctx) {
   var got = ctx.request ? ctx.request("fonts") : { state: "pending" }
   var data = got.value
-  if (!data) return [{ title: got.state === "error" ? "Could not list fonts" : "Reading fonts...", subtitle: "Fonts", score: 40, copy: "" }]
+  if (!data) return [Rows.waiting(got, "Reading fonts...", "Could not list fonts", { subtitle: "Fonts" })]
   var out = []
   var n = Match.fold(needle)
   for (var i = 0; i < data.list.length; i++) {
@@ -75,8 +76,7 @@ function profileRows(q, ctx, asked) {
   if (!asked && !namesProfile(q, held && held.value ? held.value.list : [])) return []
   var got = ctx.request ? ctx.request("power-profiles") : { state: "pending" }
   var data = got.value
-  if (!data) return [{ title: got.state === "error" ? "Could not read power profiles" : "Reading power profiles...", subtitle: "Power profile",
-                       score: 40, intent: asked ? "mode" : "ordinary", copy: "" }]
+  if (!data) return [Rows.waiting(got, "Reading power profiles...", "Could not read power profiles", { subtitle: "Power profile", intent: asked ? "mode" : "ordinary" })]
   var out = []
   for (var i = 0; i < data.list.length; i++) {
     var id = data.list[i]

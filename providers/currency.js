@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "math.js" as Calc
 .import "../lib/Score.js" as Score
 
@@ -179,8 +180,7 @@ var provider = {
     var rates = data && data.rates
 
     if (!rates) {
-      return [{ title: got.state === "error" ? "Could not fetch exchange rates" : "Fetching exchange rates...",
-                subtitle: got.state === "error" ? got.error : "No saved rates yet", score: 40, copy: "" }]
+      return [Rows.waiting(got, "Fetching exchange rates...", "Could not fetch exchange rates", { subtitle: "No saved rates yet" })]
     }
 
     var targets = []
