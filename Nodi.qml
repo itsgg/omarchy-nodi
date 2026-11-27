@@ -233,15 +233,23 @@ Item {
     if (root.pickSession && payload.pick !== root.pickSession.id) root.endPick("cancel")
     // So is a confirm word, before the payload's query is typed.
     root.endWord()
-    if (typeof payload.query === "string") {
-      input.text = payload.query
-      input.cursorPosition = payload.query.length
-    } else if (starting && input.text && Date.now() - root.closedAt > root.keepQueryMs) {
-      // A kept query lasts two minutes, then the bar opens on its home
-      // view (his call 2026-10-05; Raycast, PowerToys and Alfred keep one
-      // for 2 to 5 minutes). It is not kept across a restart: no file
-      // holds it since (Fable 2026-10-05).
-      input.text = ""
+    // The field set here is ranked once, below, with this open's state:
+    // ranked as it was set, the engine ran before the state was reset and
+    // again after it.
+    root.quietQuery = true
+    try {
+      if (typeof payload.query === "string") {
+        input.text = payload.query
+        input.cursorPosition = payload.query.length
+      } else if (starting && input.text && Date.now() - root.closedAt > root.keepQueryMs) {
+        // A kept query lasts two minutes, then the bar opens on its home
+        // view (his call 2026-10-05; Raycast, PowerToys and Alfred keep one
+        // for 2 to 5 minutes). It is not kept across a restart: no file
+        // holds it since (Fable 2026-10-05).
+        input.text = ""
+      }
+    } finally {
+      root.quietQuery = false
     }
     root.recallAt = -1
     // The selection is this open's: until it is read there is none, so the
@@ -583,11 +591,18 @@ Item {
   // Emptied after the close too: a pick or a confirm word the close ends
   // gives the field back what it held, which an action's close must not
   // keep (Fable 2026-10-06: Claude's run landing while one was open).
+  // The field is emptied without ranking: the bar is closing, and the next
+  // open ranks what it opens on.
   function finish() {
-    input.text = ""
-    root.selectedIndex = 0
-    root.dismiss()
-    if (input.text !== "") input.text = ""
+    root.quietQuery = true
+    try {
+      input.text = ""
+      root.selectedIndex = 0
+      root.dismiss()
+      if (input.text !== "") input.text = ""
+    } finally {
+      root.quietQuery = false
+    }
   }
 
   function toggle() {
@@ -1727,8 +1742,12 @@ Item {
     // Steps belong to their keyword: a query without it ends them.
     if (root.filterStep && !Engine.startsWithKeyword(root.queryNow(), root.filterStep.keyword)) root.endSteps()
     root.selectedIndex = 0
-    root.recompute()
+    if (!root.quietQuery) root.recompute()
   }
+
+  // Set while the bar changes the field itself and ranks after (open,
+  // finish): the change is not ranked as it is made.
+  property bool quietQuery: false
 
   // A key in the field: true when Nodi took it.
   function handleKey(key, modifiers, repeat) {
