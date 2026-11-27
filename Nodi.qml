@@ -2266,10 +2266,9 @@ Item {
     var snap = root.askCapture(rawMessage || question, context, purpose).snapshot
     var env = extraEnv || (context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {})
 
-    // Security: Only parse @f: file mentions from user-typed input (question),
-    // never from untrusted desktop selection or clipboard context in rawMessage.
-    var mentionSource = (context === "selection") ? (question || "") : (rawMessage || question)
-    var fileMentions = PromptContext.parseFileMentions ? PromptContext.parseFileMentions(mentionSource) : []
+    // Only what he typed is read for mentions (PromptContext.mentionSource):
+    // selected or copied text may carry an @f: of its own.
+    var fileMentions = PromptContext.parseFileMentions(PromptContext.mentionSource(context, question, rawMessage))
     var targetFiles = []
     if (filePath) targetFiles.push(filePath)
     for (var fi = 0; fi < fileMentions.length; fi++) {
@@ -2305,7 +2304,7 @@ Item {
 
   function finishDispatchAsk(question, rawMessage, context, purpose, extraEnv, image, snapshot, agentId, answerFresh, commandQuery) {
     var qText = commandQuery || ("ask " + question)
-    var expanded = PromptContext.expandMentions ? PromptContext.expandMentions(rawMessage || question, snapshot) : (rawMessage || question)
+    var expanded = PromptContext.expandFor(context, question, rawMessage, snapshot)
     var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
     if (ansSpec) {
       if (answerFresh) ansSpec.fresh = true
