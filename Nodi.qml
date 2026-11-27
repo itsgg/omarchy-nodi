@@ -2418,7 +2418,8 @@ Item {
     var env = Sources.cwdEnv(pid)
     if (env && Sources.sameWindow(root.windows, address, pid)) {
       root.pendingAsk.cwdWait = true
-      windowCwdReader.run(Sources.cwdArgv(), { pending: root.pendingAsk, pid: pid, address: address, env: env })
+      root.pendingAsk.token = Math.random()
+      windowCwdReader.run(Sources.cwdArgv(), { token: root.pendingAsk.token, pid: pid, address: address, env: env })
       return true
     }
     if (direct ? askSession.agent === target : askSession.agent === root.resolvedAgent)
@@ -2438,8 +2439,11 @@ Item {
     timeoutMs: 1000
     maxBytes: 8192
     onFinished: function(text, ok, tag) {
-      var pending = tag ? tag.pending : null
-      if (!pending || root.pendingAsk !== pending) return
+      // Matched by token: an object in a `var` signal argument arrives as a
+      // copy (Qt 6.12), never the pending Ask itself, so an identity test
+      // never matched and the Ask waited for good (NodiAskStatusTest.qml).
+      var pending = root.pendingAsk
+      if (!tag || !pending || pending.token !== tag.token) return
       var cwd = ok && Sources.sameWindow(root.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
       if (cwd) pending.snapshot.window.cwd = cwd
       pending.cwdWait = false
