@@ -17,10 +17,12 @@ const Omarchy = load("providers/omarchy.js");
 const fixture = name => readFileSync(join(root, "tests/js/fixtures", name), "utf8");
 const omarchy = process.env.OMARCHY_PATH || "/usr/share/omarchy";
 
-// Desktop entries as Nodi's rebuildApps keeps them.
+// Desktop entries as Nodi's rebuildApps keeps them. The user's own entry
+// replaces the system one of the same id, as the XDG data dirs say, and a
+// hidden one hides it (one mpv, not two).
 function desktopApps() {
   const dirs = ["/usr/share/applications", join(process.env.HOME || "", ".local/share/applications")];
-  const out = [];
+  const byId = new Map();
   for (const dir of dirs) {
     if (!existsSync(dir)) continue;
     for (const f of readdirSync(dir)) {
@@ -28,17 +30,19 @@ function desktopApps() {
       let text; try { text = readFileSync(join(dir, f), "utf8"); } catch { continue; }
       const main = (text.split(/^\[Desktop Entry\]\s*$/m)[1] || "").split(/^\[/m)[0];
       const get = k => ((main.match(new RegExp("^" + k + "=(.*)$", "m")) || [])[1] || "").trim();
-      if (/^true$/i.test(get("NoDisplay"))) continue;
+      const id = f.replace(/\.desktop$/, "");
+      byId.delete(id);
+      if (/^true$/i.test(get("NoDisplay")) || /^true$/i.test(get("Hidden"))) continue;
       const actions = get("Actions").split(";").filter(Boolean).map((a, i) => {
         const m = text.match(new RegExp("\\[Desktop Action " + a + "\\][^\\[]*?^Name=(.*)$", "m"));
         return { index: i, name: m ? m[1] : a };
       });
-      out.push({ id: f.replace(/\.desktop$/, ""), name: get("Name") || f, generic: get("GenericName"), comment: get("Comment"),
+      byId.set(id, { id, name: get("Name") || f, generic: get("GenericName"), comment: get("Comment"),
                  keywords: get("Keywords").split(";").filter(Boolean), icon: get("Icon"), wmclass: get("StartupWMClass"), actions,
                  exec: get("Exec"), terminal: /^true$/i.test(get("Terminal")) });
     }
   }
-  return out;
+  return [...byId.values()];
 }
 
 const menuFile = join(omarchy, "default/omarchy/omarchy-menu.jsonc");
