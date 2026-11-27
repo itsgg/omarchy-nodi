@@ -41,3 +41,82 @@ jobs:
         run: node tools/check-manifest.mjs
       - name: The guide, held to the code
         run: node tools/docs.mjs --check
+
+  # The QML gates, on Arch as Nodi runs: qmllint, the components that need
+  # Quickshell's own types (tests/qml), the card drawn offscreen for every
+  # scene and driven under QtTest (tests/ui), compiled in Quickshell on a
+  # headless Wayland compositor, and what a screen reader is told. They
+  # read Omarchy's shell (Commons, Ui, services) from /usr/share/omarchy,
+  # here Omarchy's repository at the release this machine runs. With that
+  # tree in place the JavaScript tests that read Omarchy's real menu,
+  # commands and themes run too, and catch Omarchy changing under Nodi.
+  # Everything after the packages runs as an ordinary user with a runtime
+  # directory of its own, as on a desktop: as root, a file made unreadable
+  # is read anyway and the tests of what Nodi cannot read fail.
+  qml:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    env:
+      # v4.5.0 (git ls-remote https://github.com/basecamp/omarchy v4.5.0^{}).
+      OMARCHY_REF: ac2690cd7be4f47e4a255f5e2e78d904d436b068
+      LANG: C.UTF-8
+      XDG_RUNTIME_DIR: /run/user/1000
+    defaults:
+      run:
+        shell: runuser -u nodi -- bash -e {0}
+    steps:
+      - name: Quickshell, Qt, Xvfb, a headless compositor and what the providers run
+        shell: bash -e {0}
+        run: |
+          # Omarchy's own Quickshell build, as Omarchy installs it: Arch's
+          # release lags it (Tray.qml reads a model's values, which 0.3.2
+          # lacks), with the key bin/omarchy-update-keyring trusts.
+          pacman-key --init
+          pacman-key --recv-keys 40DFB630FF42BCFFB047046CF0134EE680CAC571 --keyserver keys.openpgp.org
+          pacman-key --lsign-key 40DFB630FF42BCFFB047046CF0134EE680CAC571
+          sed -i 's|^\[core\]$|[omarchy]\nServer = https://pkgs.omarchy.org/stable/$arch\n\n[core]|' /etc/pacman.conf
+          pacman -Syu --noconfirm --needed git omarchy/quickshell qt6-declarative qt6-svg qt6-wayland \
+            xorg-server-xvfb sway nodejs npm python python-gobject gdk-pixbuf2 librsvg gtk3 at-spi2-core dbus \
+            pipewire wireplumber make fd ripgrep bat poppler lua jq rsync diffutils ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji
+          useradd -m -u 1000 nodi
+          install -d -m 700 -o nodi -g nodi "$XDG_RUNTIME_DIR"
+      - uses: actions/checkout@v7
+      - name: Omarchy's tree at the pinned release, and the checkout handed to the user
+        shell: bash -e {0}
+        run: |
+          git init -q /usr/share/omarchy
+          git -C /usr/share/omarchy fetch -q --depth 1 https://github.com/basecamp/omarchy "$OMARCHY_REF"
+          git -C /usr/share/omarchy checkout -q FETCH_HEAD
+          chown -R nodi:nodi .
+      - name: qmllint
+        run: make lint
+      # tests/qml/DesktopTest.qml reads the session's audio outputs: PipeWire
+      # with one null sink stands in for a desktop's.
+      - name: QML integration tests
+        run: |
+          dbus-run-session -- bash -ec '
+            pipewire >"$XDG_RUNTIME_DIR/pipewire.log" 2>&1 &
+            wireplumber >"$XDG_RUNTIME_DIR/wireplumber.log" 2>&1 &
+            for _ in $(seq 1 100); do pw-cli info 0 >/dev/null 2>&1 && break; sleep 0.1; done
+            pw-cli create-node adapter "{ factory.name=support.null-audio-sink node.name=ci-sink media.class=Audio/Sink object.linger=true audio.position=[FL FR] }" >/dev/null
+            for _ in $(seq 1 100); do wpctl inspect @DEFAULT_AUDIO_SINK@ >/dev/null 2>&1 && break; sleep 0.1; done
+            make qstest'
+      # In a stock theme: the runner has no current one.
+      - name: Every scene, drawn offscreen
+        run: NODI_THEME_DIR=/usr/share/omarchy/themes/tokyo-night make shots
+      - name: The card under QtTest
+        run: make ui
+      # sway's file capability cannot be raised in the container, so a copy
+      # without it runs.
+      - name: Compiled in Quickshell, on a headless Wayland compositor
+        run: |
+          cp /usr/bin/sway "$XDG_RUNTIME_DIR/sway"
+          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 "$XDG_RUNTIME_DIR/sway" -c /dev/null >"$XDG_RUNTIME_DIR/sway.log" 2>&1 &
+          for _ in $(seq 1 100); do display=$(cd "$XDG_RUNTIME_DIR" && ls wayland-* 2>/dev/null | grep -v lock | head -n1); [ -n "$display" ] && break; sleep 0.1; done
+          [ -n "$display" ] || { cat "$XDG_RUNTIME_DIR/sway.log"; exit 1; }
+          WAYLAND_DISPLAY=$display make compile | tee "$XDG_RUNTIME_DIR/compile.log"
+          grep -q "files compile in Quickshell" "$XDG_RUNTIME_DIR/compile.log"
+      - name: What a screen reader is told
+        run: make a11y
+      - name: Providers and libraries, against Omarchy's real menu
+        run: node --test "tests/js/*.test.mjs"

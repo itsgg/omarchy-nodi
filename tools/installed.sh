@@ -13,8 +13,10 @@ dest=${dest%/}
 repo=$(cd "$(dirname "$0")/.." && pwd)
 home=${HOME:-}
 # As `make install` copies: agent and review scratch folders and Python's
-# bytecode are not Nodi (2026-10-10).
-excludes=(--exclude .git --exclude tests --exclude .github --exclude shots --exclude docs --exclude .claude --exclude .worktrees --exclude .superpowers --exclude __pycache__)
+# bytecode are not Nodi (2026-10-10), and neither are the notes, the
+# Makefile, tools/ and preview.png, which nothing running reads.
+excludes=(--exclude .git --exclude tests --exclude .github --exclude shots --exclude docs --exclude .claude --exclude .worktrees --exclude .superpowers --exclude __pycache__
+  --exclude PLAN.md --exclude ROADMAP.md --exclude CHANGELOG.md --exclude Makefile --exclude tools --exclude preview.png)
 
 short() {
   local line=$1

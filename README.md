@@ -17,7 +17,7 @@ Nodi (நொடி) is Tamil for an instant.
 - Upcoming calendar meeting countdowns and direct join links (Meet, Zoom, Teams)
 - Arch Linux and AUR package installer and search (`pkg`)
 - Conversational answers from Claude, Codex, OpenCode, Pi, Agy, or your own agent over ACP
-- Active context mentions (`@w` for window, `@c` for clipboard, `@s` for selection), standing instructions, and background completion notices
+- Context mentions in a question (`@w`/`@window`/`@app` for the active window, `@c`/`@cb`/`@clipboard` for the clipboard, `@s`/`@selection` for the selection, `@f:<path>`/`@file:<path>` for a file's text), standing instructions, and background completion notices
 - Quick actions on selected text: fix grammar, rewrite, summarize, translate, and change case
 - Custom bash scripts, rofi-compatible script filters, custom streaming answers, and a 10-minute action undo stack
 
@@ -97,8 +97,9 @@ make check    # what CI runs, and more
 make reload   # install this tree and restart the shell
 ```
 
-[PLAN.md](PLAN.md) explains the design; [CHANGELOG.md](CHANGELOG.md)
-lists the releases.
+[PLAN.md](PLAN.md) holds the first design decisions and
+[ROADMAP.md](ROADMAP.md) the numbered items the code cites, both frozen;
+[CHANGELOG.md](CHANGELOG.md) lists the releases and what came after.
 
 ## Credits
 

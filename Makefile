@@ -1,5 +1,5 @@
 # Everything CI runs, in one command, before you push.
-.PHONY: check docs-check test rank rank-update opens picks replay lint compile qstest ui shots textsize a11y a11y-update ime themes docs bench hygiene manifest validate install uninstall reload installed swap
+.PHONY: check docs-check test rank rank-update opens picks replay lint compile qstest ui shots textsize a11y a11y-update ime themes docs bench hygiene manifest validate install uninstall reload installed
 
 PLUGIN_ID := io.github.itsgg.nodi
 DEST := $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
@@ -145,9 +145,13 @@ validate:
 # archive of the same tree was installed (2026-10-04, found by `installed`).
 # Agent and review scratch folders and Python's bytecode are hidden, not
 # excluded: never sent, and a copy left by an older install is deleted.
+# So are the design notes, the changelog, this Makefile, tools/ and the
+# marketplace's preview.png: nothing in the running plugin reads them, the
+# shell's loader needs only manifest.json, and `omarchy plugin add` and the
+# marketplace work from the repository itself.
 install:
 	@mkdir -p "$(DEST)"
-	@rsync -a --checksum --delete --exclude '.git' --exclude 'tests' --exclude '.github' --exclude 'shots' --exclude 'docs' --filter 'H .claude' --filter 'H .worktrees' --filter 'H .superpowers' --filter 'H __pycache__' ./ "$(DEST)/"
+	@rsync -a --checksum --delete --exclude '.git' --exclude 'tests' --exclude '.github' --exclude 'shots' --exclude 'docs' --filter 'H .claude' --filter 'H .worktrees' --filter 'H .superpowers' --filter 'H __pycache__' --filter 'H /PLAN.md' --filter 'H /ROADMAP.md' --filter 'H /CHANGELOG.md' --filter 'H /Makefile' --filter 'H /tools' --filter 'H /preview.png' ./ "$(DEST)/"
 	@echo "installed; enable with: omarchy plugin enable $(PLUGIN_ID)"
 
 # Quickshell caches compiled QML; clearing it and restarting the shell is the

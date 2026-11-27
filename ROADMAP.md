@@ -1,5 +1,9 @@
 # Nodi: the fix plan
 
+A frozen design log of items 1 to 87, kept because the code cites its
+items by number. Nothing is added here any more: later work is recorded in
+CHANGELOG.md and the git history.
+
 Written 2026-10-02 from three Fable reports, kept in
 `~/.local/share/nodi-research/`: a holistic review of Nodi on this machine's
 real data (`review/FINDINGS.md`, cited as R, F, A, I, T), a study of Raycast,

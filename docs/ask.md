@@ -91,7 +91,8 @@ A question can mention active context directly:
 - `@clipboard`, `@cb` or `@c`: expands to the current clipboard text (up to 4 KB).
 - `@selection` or `@s`: expands to the current primary selection (up to 4 KB).
 - `@file:<path>` or `@f:<path>`: expands to the file's first 16 KB, up to
-  eight files a question; quote a path that holds a space.
+  eight files a question; quote a path that holds a space,
+  `@f:"~/My notes.md"` or `@f:'~/My notes.md'`.
 
 For example, `ask @window why is this failing`, `claude format this as json: @cb`
 or `ask what does @f:~/notes.md say?`. Only mentions you type count: one inside

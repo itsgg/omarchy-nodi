@@ -4,7 +4,8 @@ Written 2026-10-02, before the first line of code. Nodi replaces
 `io.github.saikomantisu.commandbar` on this machine: the same idea, a
 Spotlight-style bar for Omarchy, rewritten under Ganesh's name with Omarchy's
 own menu and toggles at its centre. Since the review that evening,
-ROADMAP.md is the plan and README.md says what Nodi does; this file keeps
+ROADMAP.md was the plan (now a frozen log of items 1 to 87, later work
+being in CHANGELOG.md) and README.md says what Nodi does; this file keeps
 the decisions it was written to make, and its Shape, Processes, State and
 Verification sections were brought up to the code on 2026-10-03.
 
