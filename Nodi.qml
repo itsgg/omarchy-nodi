@@ -7,7 +7,6 @@ import "components"
 import "lib/Engine.js" as Engine
 import "lib/Rows.js" as Rows
 import "lib/Run.js" as Run
-import "lib/Jsonc.js" as Jsonc
 import "lib/Sources.js" as Sources
 import "lib/AskTools.js" as AskTools
 import "lib/Acp.js" as Acp
@@ -16,7 +15,6 @@ import "lib/Teach.js" as Teach
 import "lib/Hotkey.js" as Hotkey
 // Not "Keys": that name is QtQuick's attached Keys (Keys.onPressed below).
 import "lib/Keys.js" as NodiKeys
-import "lib/Config.js" as Config
 import "lib/Prefs.js" as Prefs
 import "lib/Starters.js" as Starters
 import "lib/WindowRules.js" as WindowRules
@@ -86,7 +84,6 @@ Item {
   // would make that assignment throw and stop the shell wiring Nodi in.
   property string omarchyPath: Quickshell.env("OMARCHY_PATH") || "/usr/share/omarchy"
   readonly property string pluginDir: String(Qt.resolvedUrl(".")).replace(/^file:\/\//, "").replace(/\/$/, "")
-  readonly property string userConfigPath: home + "/.config/omarchy/extensions/nodi.json"
   readonly property string cacheDir: home + "/.cache/nodi"
   readonly property string stateDir: home + "/.local/state/nodi"
   // What Nodi installs for itself: an agent's ACP adapter (lib/Agents.js).
@@ -96,12 +93,30 @@ Item {
 
   // ---------------------------------------------------------------- data
 
-  property var defaultConfig: ({})
-  property var userConfig: ({})
-  property bool userConfigGood: false   // a nodi.json has parsed since load
-  property string configWarned: ""      // the error last notified, so each is said once
-  readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir,
-                                              { home: root.home, runtimeDir: root.runtimeDir })
+  // config.default.json and his nodi.json, merged (components/ConfigFiles.qml).
+  readonly property ConfigFiles configFiles: ConfigFiles {
+    pluginDir: root.pluginDir
+    home: root.home
+    runtimeDir: root.runtimeDir
+    onConfigChanged: {
+      if (root.opened) root.recompute()
+      if (root.configFiles.ready) root.readAhead(false)
+      root.desktop.forgetZones()
+      root.ensureHotkey()
+      root.describeApps()
+    }
+    // Both files in: what waits on the settings is asked for.
+    onBothRead: {
+      root.readAhead(false)
+      hotkeys.start()
+    }
+    onUserRead: {
+      // His settings read whole, and no "picks": true among them: a log
+      // kept before goes, as none is kept now (codex's review, 2026-10-09).
+      if (root.configFiles.config.picks !== true) { root.pickLog = []; Quickshell.execDetached(["/usr/bin/rm", "-f", "--", root.cacheDir + "/picks-log.json"]) }
+    }
+    onWarn: function(title, body) { root.toast(title, body) }
+  }
 
   property var history: ({})        // row key -> { n, t }: what was run, how often, when (lib/History.js)
   property var picks: ({})          // query -> row key -> { n, t }: what was picked for what was typed
@@ -115,7 +130,7 @@ Item {
   readonly property DesktopSources desktop: DesktopSources {
     home: root.home
     omarchyPath: root.omarchyPath
-    timeConfig: root.config.time
+    timeConfig: root.configFiles.config.time
     onUpdated: if (root.opened) root.recompute()
     // New apps described, and their pictures catalogued.
     onAppsRebuilt: { root.describeApps(); images.catalog(root.desktop.apps) }
@@ -273,7 +288,7 @@ Item {
     images.refreshStale()
     // Made once a shell: again at an open only until they are.
     if (!root.cacheReady) root.makeFolders()
-    root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
+    root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.configFiles.config, root.opens)
     root.aliasRow = null
     root.endCapture()
     // The first row before the bar counts as open: the pane's window
@@ -296,7 +311,7 @@ Item {
     root.closePalette()
     root.lastPointer = Qt.point(-1, -1)
     // The windows as last kept, for the first ranking.
-    desktop.readWindows()
+    root.desktop.readWindows()
     // The reads (windows, toggles, themes...) start 60 ms after, once the
     // card is on screen: each start forks the shell, and started here they
     // held the first frame back about 70 ms (161 ms from the key to the
@@ -352,7 +367,7 @@ Item {
     var t = Hyprland.activeToplevel
     root.cameFromTop = t ? { address: String(t.address || ""), title: String(t.title || ""), ipc: t.lastIpcObject || {},
                              workspace: t.workspace ? String(t.workspace.name || "") : "" } : null
-    root.cameFrom = Sources.windowContext(root.cameFromTop, desktop.windows)
+    root.cameFrom = Sources.windowContext(root.cameFromTop, root.desktop.windows)
   }
 
   function startReads() {
@@ -362,18 +377,18 @@ Item {
     if (!root.readsPending) return
     root.readsPending = false
     readsAfterFrame.stop()
-    desktop.refreshWindows()
+    root.desktop.refreshWindows()
     var now = Date.now()
-    if (Probes.due(desktop.togglesAt, now, Probes.FRESH_MS)) desktop.refreshToggles()
-    if (Probes.due(desktop.appearanceAt, now, Probes.FRESH_MS)) desktop.refreshAppearance()
-    desktop.reloadThemeColours()
-    if (Probes.due(desktop.themesAt, now, Probes.THEMES_MAX_AGE_MS)) desktop.refreshThemes()
+    if (Probes.due(root.desktop.togglesAt, now, Probes.FRESH_MS)) root.desktop.refreshToggles()
+    if (Probes.due(root.desktop.appearanceAt, now, Probes.FRESH_MS)) root.desktop.refreshAppearance()
+    root.desktop.reloadThemeColours()
+    if (Probes.due(root.desktop.themesAt, now, Probes.THEMES_MAX_AGE_MS)) root.desktop.refreshThemes()
     root.checkReminders()
-    desktop.refreshZones()
+    root.desktop.refreshZones()
     requests.request("omarchy-commands")
     requests.request("agent-usage")
     trayMenus.active = true
-    if (Date.now() - desktop.guardsAt > 60 * 1000) desktop.evaluateGuards()
+    if (Date.now() - root.desktop.guardsAt > 60 * 1000) root.desktop.evaluateGuards()
   }
 
   Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
@@ -420,7 +435,7 @@ Item {
   readonly property bool contentHeld: root.homeHeld && root.composedQuery.trim() === "" && !root.pickSession && !root.aliasRow
                                       && !root.wordAsk && !root.captureRow
   Timer { id: homeHold; interval: 250; onTriggered: root.releaseHome() }
-  function providerOn(id) { return (root.config.providers || []).indexOf(id) !== -1 }
+  function providerOn(id) { return (root.configFiles.config.providers || []).indexOf(id) !== -1 }
   // A read with nothing yet or one on its way holds the rows; a failed one
   // does not (Cursor 2026-10-07: a refresh due when the hold let go moved
   // them after).
@@ -428,7 +443,7 @@ Item {
   function homeReadsIn() {
     if (root.selectionPending) return false
     if (root.providerOn("chooser") && Chooser.dialogOf(root.cameFrom) && !root.settled("chooser-folders")) return false
-    var feeds = Calendars.param(root.config.calendar)
+    var feeds = Calendars.param(root.configFiles.config.calendar)
     if (feeds && root.providerOn("calendar") && !root.settled("calendar:" + feeds)) return false
     return true
   }
@@ -436,7 +451,7 @@ Item {
   // start and on a new config, so an open finds them in hand.
   function readAhead(opening) {
     if (root.providerOn("chooser") && (!opening || Chooser.dialogOf(root.cameFrom))) requests.request("chooser-folders")
-    var feeds = Calendars.param(root.config.calendar)
+    var feeds = Calendars.param(root.configFiles.config.calendar)
     if (feeds && root.providerOn("calendar")) requests.request("calendar", feeds)
   }
   function settleHome() { if (root.homeHeld && root.homeReadsIn()) root.releaseHome() }
@@ -630,7 +645,7 @@ Item {
   // Only with "picks": true: the queries he typed, kept for make picks and
   // make replay, are no one else's to keep by default.
   function logPick(e) {
-    if (root.config.picks !== true) return
+    if (root.configFiles.config.picks !== true) return
     root.pickLog = PickLog.add(root.pickLog, e)
     if (root.cacheReady && root.pickLogLoaded) pickLogFile.setText(PickLog.serialize(root.pickLog))
   }
@@ -640,7 +655,7 @@ Item {
     path: root.cacheDir + "/picks-log.json"
     printErrors: false
     atomicWrites: true
-    onLoaded: { if (root.config.picks === true) root.pickLog = PickLog.parse(text()).concat(root.pickLog).slice(-PickLog.MAX); root.pickLogLoaded = true }
+    onLoaded: { if (root.configFiles.config.picks === true) root.pickLog = PickLog.parse(text()).concat(root.pickLog).slice(-PickLog.MAX); root.pickLogLoaded = true }
     onLoadFailed: root.pickLogLoaded = true
   }
 
@@ -740,10 +755,10 @@ Item {
   function services() {
     var media = desktopState.snapshot()
     return {
-      zones: desktop.zones, localZone: desktop.localZone,
-      emojis: desktop.emojis, apps: desktop.apps, windows: desktop.windows, history: root.history, picks: root.picks, reminders: root.reminders,
-      activeWorkspace: desktop.activeWorkspace, clipboard: desktop.clipboard, files: desktop.recentFiles, menu: desktop.menu,
-      toggleStates: desktop.toggleStates, themes: desktop.themes, home: root.home, descriptions: root.appDescriptions,
+      zones: root.desktop.zones, localZone: root.desktop.localZone,
+      emojis: root.desktop.emojis, apps: root.desktop.apps, windows: root.desktop.windows, history: root.history, picks: root.picks, reminders: root.reminders,
+      activeWorkspace: root.desktop.activeWorkspace, clipboard: root.desktop.clipboard, files: root.desktop.recentFiles, menu: root.desktop.menu,
+      toggleStates: root.desktop.toggleStates, themes: root.desktop.themes, home: root.home, descriptions: root.appDescriptions,
       request: requests.request,
       pluginId: root.pluginId,
       tray: trayMenus.entries,
@@ -763,7 +778,7 @@ Item {
       answer: { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, text: answerSession.text,
                 error: answerSession.error, running: answerSession.running, conversation: answerSession.conversation,
                 reopened: answerSession.reopened,
-                follows: answerSession.follows(answerSession.keyword, Answers.freshFor(root.config.answers, answerSession.keyword)) },
+                follows: answerSession.follows(answerSession.keyword, Answers.freshFor(root.configFiles.config.answers, answerSession.keyword)) },
       window: root.cameFrom,
       selection: { text: root.selection, fresh: root.selectionFresh, source: root.selectionSource, clipboard: root.lastCopied },
       undo: undoer.entries,
@@ -795,11 +810,11 @@ Item {
       var svc = root.services()
       // The empty bar while what may lead it is still being read: nothing
       // yet, rather than rows that move when it lands.
-      root.results = root.homeHeld && root.queryNow().trim() === "" ? [] : Engine.run(root.queryNow(), root.config, svc)
+      root.results = root.homeHeld && root.queryNow().trim() === "" ? [] : Engine.run(root.queryNow(), root.configFiles.config, svc)
       // The desktop the rows show, so the timer redraws them when it moves;
       // a search for Claude does not count (Fable 2026-10-06).
       desktopTimer.seen = JSON.stringify(svc.desktop)
-      root.mode = Engine.mode(root.queryNow(), root.config, root.results)
+      root.mode = Engine.mode(root.queryNow(), root.configFiles.config, root.results)
       if (root.opened) root.noteReached(Starters.reachedBy(root.results[0]))
       // A step names where it is: "Wi-Fi > Home".
       if (root.filterStep && root.mode && root.filterStep.trail.length)
@@ -878,7 +893,7 @@ Item {
   property var taught: ({})
   property bool taughtLoaded: false
   function teach(row) {
-    if (root.config.teach === false || !root.taughtLoaded || !root.cacheReady) return
+    if (root.configFiles.config.teach === false || !root.taughtLoaded || !root.cacheReady) return
     var keys = Teach.keysFor(row, root.boundRows)
     if (!Teach.due(root.taught, row.key, keys)) return
     root.taught = Teach.noted(root.taught, row.key, keys, Date.now())
@@ -897,7 +912,7 @@ Item {
   // A desktop action's command, by its place; a run that names the action's
   // id gets it only if that place still holds that action, else nothing.
   function appAction(id, index, actionId) {
-    var entry = desktop.appEntries[id]
+    var entry = root.desktop.appEntries[id]
     var action = entry && entry.actions ? entry.actions[index] : null
     if (action && actionId && String(action.id || "") !== actionId) action = null
     return action ? Array.prototype.slice.call(action.command || []) : null
@@ -933,8 +948,8 @@ Item {
     else Quickshell.execDetached(argv)
     if (run.kind === "app") launchFeedback.begin(name || (snap && snap.title) || run.id)
     if (key) root.remember(key, query, snap)
-    desktop.menuRan(key)
-    if (toggleId) desktop.flip(toggleId)
+    root.desktop.menuRan(key)
+    if (toggleId) root.desktop.flip(toggleId)
     return true
   }
 
@@ -962,7 +977,7 @@ Item {
 
   // What the palette needs to know besides the row.
   function paletteContext() {
-    return { activeWorkspace: desktop.activeWorkspace, prefs: root.prefs, knows: function(key) { return History.knows(root.history, root.picks, key) } }
+    return { activeWorkspace: root.desktop.activeWorkspace, prefs: root.prefs, knows: function(key) { return History.knows(root.history, root.picks, key) } }
   }
 
   // The palette acts on the row it opened for: results that refresh under it
@@ -1331,7 +1346,7 @@ Item {
   // gives it now.
   function keySnapshot(k, agent) {
     return NodiMcp.keySnapshot(k, agent, root.foundRows, root.prefs, root.history, Date.now(),
-      function(key, saved) { return Engine.resolve(key, saved, root.config, root.services()) })
+      function(key, saved) { return Engine.resolve(key, saved, root.configFiles.config, root.services()) })
   }
 
   // Rows `nodi mcp` showed him to propose, by key, kept until his Enter
@@ -1419,8 +1434,8 @@ Item {
     else Quickshell.execDetached(argv)
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     if (remember) root.remember(k, "", s)
-    if (s.toggle) desktop.flip(s.toggle)
-    desktop.menuRan(k)
+    if (s.toggle) root.desktop.flip(s.toggle)
+    root.desktop.menuRan(k)
     if (s.run.kind === "copy") root.markOwnCopy(s.run.text)
     return "ok"
   }
@@ -1431,7 +1446,7 @@ Item {
     root.applyEffects(NodiActions.decide(row, {
       query: root.queryNow(), now: Date.now(), prefs: root.prefs, aliasRow: root.aliasRow,
       wordAsk: root.wordAsk, armedKey: root.armedKey, selection: root.selection,
-      cameFrom: root.cameFrom, answers: root.config.answers, conversations: root.conversations,
+      cameFrom: root.cameFrom, answers: root.configFiles.config.answers, conversations: root.conversations,
       pickSession: root.pickSession, askBusy: askSession.busy(), proposal: askSession.proposal,
       shooting: windowShot.active,
       prepared: function(q) { return root.preparedAsk(q) },
@@ -1475,7 +1490,7 @@ Item {
 
   // The answer "fallback" names, asked of what the field now holds.
   function startFallbackAnswer(data) {
-    var fbSpec = Answers.spec(input.text, root.config.answers, root.cameFrom, data.message)
+    var fbSpec = Answers.spec(input.text, root.configFiles.config.answers, root.cameFrom, data.message)
     if (fbSpec) { fbSpec.fresh = data.fresh === true; answerSession.start(fbSpec) }
   }
 
@@ -1717,22 +1732,11 @@ Item {
     }
   }
 
-  onConfigChanged: {
-    if (root.opened) root.recompute()
-    if (root.configsLoaded) root.readAhead(false)
-    desktop.forgetZones()
-    root.ensureHotkey()
-    root.describeApps()
-  }
-
   // ---------------------------------------------------------------- hotkey
 
   // Nodi's hotkey and the rows' hotkeys, bound in the running Hyprland
   // (components/HotkeyBinder.qml): asked again after every reload, after a
   // config change, and at startup.
-  property bool configsLoaded: false
-  property bool defaultConfigSeen: false
-  property bool userConfigSeen: false
 
   // The hotkey, straight from Hyprland: no process is started for a press.
   GlobalShortcut {
@@ -1744,8 +1748,8 @@ Item {
 
   HotkeyBinder {
     id: hotkeys
-    ready: root.configsLoaded
-    hotkey: String(root.config.hotkey || "").trim()
+    ready: root.configFiles.ready
+    hotkey: String(root.configFiles.config.hotkey || "").trim()
     rowHotkeys: root.prefs.hotkeys
     pluginId: root.pluginId
     toggleShortcut: root.toggleShortcut
@@ -1780,18 +1784,6 @@ Item {
   // What the release asks through the shell: a Nodi is loaded.
   function ping() { return "ok" }
 
-  // Both files read once, each counted by itself.
-  function configLoaded(which) {
-    if (which === "default") root.defaultConfigSeen = true
-    if (which === "user") root.userConfigSeen = true
-    if (root.defaultConfigSeen && root.userConfigSeen && !root.configsLoaded) {
-      root.configsLoaded = true
-      root.readAhead(false)
-      hotkeys.start()
-      if (root.configPending) { var e = root.configPending; root.configPending = ""; root.configError(e) }
-    }
-  }
-
   // ---------------------------------------------------------------- config
 
   // External JSONL rows are watched continuously by FileView delegates. They
@@ -1799,73 +1791,13 @@ Item {
   // wait for a source read.
   HomeSources {
     id: watchedHome
-    sources: root.config.home || []
+    sources: root.configFiles.config.home || []
     onUpdated: {
       if (root.paletteOpen && root.paletteRow && root.paletteRow.provider === "home") root.closePalette()
       for (var i = 0; i < diagnostics.length; i++)
         console.warn("nodi: home source " + diagnostics[i].id + " (" + diagnostics[i].file + "): " + diagnostics[i].error)
       if (root.opened && !root.homeHeld && root.queryNow().trim() === "") root.recompute()
     }
-  }
-
-  FileView {
-    path: root.pluginDir + "/config.default.json"
-    watchChanges: true
-    printErrors: false
-    onLoaded: {
-      try { root.defaultConfig = Jsonc.parse(text()) } catch (e) { console.warn("nodi: bad config.default.json: " + e) }
-      root.configLoaded("default")
-    }
-    onFileChanged: reload()
-  }
-
-  // A nodi.json that does not parse never takes effect: the last good one
-  // stays, or the defaults at startup, and a notification says so once.
-  // After startup a change is read again once it has settled, so an editor
-  // that empties the file and then writes it is read whole, not halfway.
-  function userConfigRead(text) {
-    var r = Config.read(text)
-    if (r.error) root.configError(r.error)
-    else {
-      root.userConfig = r.config; root.userConfigGood = true; root.configWarned = ""
-      // His settings read whole, and no "picks": true among them: a log
-      // kept before goes, as none is kept now (codex's review, 2026-10-09).
-      if (root.config.picks !== true) { root.pickLog = []; Quickshell.execDetached(["/usr/bin/rm", "-f", "--", root.cacheDir + "/picks-log.json"]) }
-    }
-    root.configLoaded("user")
-  }
-
-  Timer { id: userConfigSettle; interval: 300; onTriggered: userConfigFile.reload() }
-
-  FileView {
-    id: userConfigFile
-    path: root.userConfigPath
-    watchChanges: true
-    printErrors: false
-    onLoaded: root.userConfigRead(text())
-    // No file is no settings; one that cannot be read is an error.
-    onLoadFailed: function(error) {
-      if (error === FileViewError.FileNotFound) root.userConfigRead("")
-      else {
-        root.configError(error === FileViewError.PermissionDenied ? "it cannot be read: permission denied"
-          : error === FileViewError.NotAFile ? "it is not a file" : "it cannot be read")
-        root.configLoaded("user")
-      }
-    }
-    onFileChanged: { if (root.configsLoaded) userConfigSettle.restart(); else reload() }
-  }
-
-  // Said once both config files are in, so the default hotkey it names is known.
-  property string configPending: ""
-
-  function configError(error) {
-    console.warn("nodi: " + root.userConfigPath + ": " + error)
-    if (!root.configsLoaded) { root.configPending = error; return }
-    if (root.configWarned === error) return
-    root.configWarned = error
-    var keeping = root.userConfigGood ? "Keeping the last settings that worked."
-      : "Using the defaults until it is fixed; the hotkey is " + String(root.config.hotkey || "") + "."
-    root.toast("nodi.json has an error", error + ". " + keeping)
   }
 
   // ---------------------------------------------------------------- cache
@@ -1977,14 +1909,14 @@ Item {
     onPhaseChanged: if (root.opened) root.recompute()
   }
 
-  readonly property var askRegistry: Agents.registry(root.config.ask)
+  readonly property var askRegistry: Agents.registry(root.configFiles.config.ask)
   property var agentAvailability: ({})
-  readonly property var resolvedAgent: Agents.chosen(root.config.ask && root.config.ask.agent, root.omarchyAgent,
+  readonly property var resolvedAgent: Agents.chosen(root.configFiles.config.ask && root.configFiles.config.ask.agent, root.omarchyAgent,
                                                      root.prefs.askAgent, root.askRegistry, root.agentAvailability)
   property string directAskAgent: ""
   property var pendingAsk: null
   readonly property var effectiveAskAgent: root.directAskAgent || root.resolvedAgent
-  readonly property string resolvedModel: Agents.modelFor(root.effectiveAskAgent, root.config.ask, root.omarchyAgent, root.askRegistry)
+  readonly property string resolvedModel: Agents.modelFor(root.effectiveAskAgent, root.configFiles.config.ask, root.omarchyAgent, root.askRegistry)
   readonly property string resolvedAgentId: typeof root.resolvedAgent === "string" ? root.resolvedAgent : ""
   readonly property string effectiveAgentId: typeof root.effectiveAskAgent === "string" ? root.effectiveAskAgent : ""
   readonly property string agentProgram: Agents.program(root.effectiveAskAgent, root.askRegistry)
@@ -1995,7 +1927,7 @@ Item {
     var program = Agents.program(a.id, root.askRegistry)
     var reason = Agents.disabledReason(a.id)
     var available = root.agentAvailability[a.id] === true
-    return { id: a.id, name: a.name, model: Agents.modelFor(a.id, root.config.ask, root.omarchyAgent, root.askRegistry),
+    return { id: a.id, name: a.name, model: Agents.modelFor(a.id, root.configFiles.config.ask, root.omarchyAgent, root.askRegistry),
              policy: Agents.policy(a.id, root.askRegistry),
              missing: root.agentAvailability[a.id] === false ? program : "", reason: reason, available: available,
              current: a.id === root.resolvedAgentId }
@@ -2009,7 +1941,7 @@ Item {
   function askContext(message, context, purpose) {
     var snap = {
       purpose: purpose || "",
-      window: Sources.windowSnapshot(root.cameFrom, desktop.windows),
+      window: Sources.windowSnapshot(root.cameFrom, root.desktop.windows),
       clipboard: root.lastCopied || "",
       primarySelection: root.selection || ""
     }
@@ -2032,7 +1964,7 @@ Item {
   property var pendingFileAsk: null
 
   function askRoute(qText, agentId) {
-    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.config.answers, root.cameFrom), agentId: agentId || "",
+    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.configFiles.config.answers, root.cameFrom), agentId: agentId || "",
                                     busy: askSession.busy(), shooting: windowShot.active })
   }
 
@@ -2094,7 +2026,7 @@ Item {
     var route = root.askRoute(qText, agentId)
     if (route === "busy") return
     if (route === "answer") {
-      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
+      var ansSpec = Answers.spec(qText, root.configFiles.config.answers, root.cameFrom, expanded, extraEnv)
       if (answerFresh) ansSpec.fresh = true
       answerSession.start(ansSpec)
       return
@@ -2125,7 +2057,7 @@ Item {
     var pid = snapshot.window.pid || 0
     var address = made.address
     var env = Sources.cwdEnv(pid)
-    if (env && Sources.sameWindow(desktop.windows, address, pid)) {
+    if (env && Sources.sameWindow(root.desktop.windows, address, pid)) {
       root.pendingAsk.cwdWait = true
       root.pendingAsk.token = Math.random()
       windowCwdReader.run(Sources.cwdArgv(), { token: root.pendingAsk.token, pid: pid, address: address, env: env })
@@ -2153,7 +2085,7 @@ Item {
       // never matched and the Ask waited for good (NodiAskStatusTest.qml).
       var pending = root.pendingAsk
       if (!tag || !pending || pending.token !== tag.token) return
-      var cwd = ok && Sources.sameWindow(desktop.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
+      var cwd = ok && Sources.sameWindow(root.desktop.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
       if (cwd) pending.snapshot.window.cwd = cwd
       pending.cwdWait = false
       root.flushAsk()
@@ -2287,7 +2219,7 @@ Item {
     if (!askSession.busy() && root.directAskAgent && !root.queryUsesDirectAgent(root.queryNow()))
       root.directAskAgent = ""
     if (root.askWasBusy && !askSession.busy() && askSession.phase === "done" && !root.opened) {
-      if (root.config.ask && root.config.ask.notifyOnDone && askSession.answer.trim()) {
+      if (root.configFiles.config.ask && root.configFiles.config.ask.notifyOnDone && askSession.answer.trim()) {
         toaster.show("Answer ready: " + askSession.agentName, askSession.question)
       }
     }
@@ -2313,11 +2245,11 @@ Item {
     version: String((root.manifest && root.manifest.version) || "")
     // The bar's rows as the agent's tools, unless nodi.json says
     // "ask": { "actions": false } (ROADMAP 44).
-    acts: !(root.config.ask && root.config.ask.actions === false)
-    mcp: AskTools.servers(root.config.ask && root.config.ask.mcpServers)
-    customInstructions: String((root.config.ask && root.config.ask.instructions) || "")
+    acts: !(root.configFiles.config.ask && root.configFiles.config.ask.actions === false)
+    mcp: AskTools.servers(root.configFiles.config.ask && root.configFiles.config.ask.mcpServers)
+    customInstructions: String((root.configFiles.config.ask && root.configFiles.config.ask.instructions) || "")
     // Variables of his the agent needs beyond those Ask passes (Ask.qml).
-    passed: Array.isArray(root.config.ask && root.config.ask.environment) ? root.config.ask.environment : []
+    passed: Array.isArray(root.configFiles.config.ask && root.configFiles.config.ask.environment) ? root.configFiles.config.ask.environment : []
     searcher: root.askSearch
     resolver: root.askResolve
     committer: root.askCommit
@@ -2384,10 +2316,10 @@ Item {
   property var askRows: ({ turn: "", rows: ({}) })
 
   // The bar's ranking for a query, for an agent (lib/Engine.js agentRows).
-  function agentRows(q) { return Engine.agentRows(q, root.config, root.services()) }
+  function agentRows(q) { return Engine.agentRows(q, root.configFiles.config, root.services()) }
 
   // Its unfiltered top row, for a direct run that must never substitute.
-  function agentTop(q) { return Engine.agentTop(q, root.config, root.services()) }
+  function agentTop(q) { return Engine.agentTop(q, root.configFiles.config, root.services()) }
 
   // A row as an agent reads it; a row that asks says how.
   function agentData(r) { return NodiMcp.agentData(r) }
@@ -2500,7 +2432,7 @@ Item {
     function onPhaseChanged() {
       root.keepConversation()
       if (answerSession.phase === "done" && !root.opened) {
-        if (root.config.ask && root.config.ask.notifyOnDone && answerSession.text.trim()) {
+        if (root.configFiles.config.ask && root.configFiles.config.ask.notifyOnDone && answerSession.text.trim()) {
           toaster.show("Answer ready: " + (answerSession.title || answerSession.keyword), answerSession.question)
         }
       }
@@ -2527,9 +2459,9 @@ Item {
     && askSession.question === root.shownAskQuestion
   readonly property string askShown: root.askOn ? askSession.answer : ""
   // A streamed answer (providers/answers.js), while the query is its question.
-  readonly property bool answerShown: Answers.shown(root.composedQuery, root.config.answers,
+  readonly property bool answerShown: Answers.shown(root.composedQuery, root.configFiles.config.answers,
     { phase: answerSession.phase, keyword: answerSession.keyword, question: answerSession.question, running: answerSession.running,
-      follows: answerSession.follows(answerSession.keyword, Answers.freshFor(root.config.answers, answerSession.keyword)),
+      follows: answerSession.follows(answerSession.keyword, Answers.freshFor(root.configFiles.config.answers, answerSession.keyword)),
       reopened: answerSession.reopened })
   // The pane beside the list (item 26), as lib/Pane.js chooses it.
   readonly property bool anyPreview: root.rows.some(Pane.hasPane)
@@ -2620,7 +2552,7 @@ Item {
   // lands, and one that does not is not shown anew (Requests.same).
   function askLive() {
     if (root.aliasRow || root.wordAsk || root.pickSession || root.captureRow) return
-    Engine.run(root.queryNow(), root.config, root.services())
+    Engine.run(root.queryNow(), root.configFiles.config, root.services())
   }
 
   // ---------------------------------------------------------------- reads
@@ -2664,8 +2596,8 @@ Item {
   readonly property var warmIcons: {
     var seen = ({})
     var out = []
-    for (var i = 0; i < desktop.apps.length && out.length < 48; i++) {
-      var icon = desktop.apps[i].icon
+    for (var i = 0; i < root.desktop.apps.length && out.length < 48; i++) {
+      var icon = root.desktop.apps[i].icon
       if (icon && !seen[icon]) { seen[icon] = true; out.push(icon) }
     }
     return out
@@ -2693,7 +2625,7 @@ Item {
   // open asks again for the stale ones (images.refreshStale).
   function iconSource(icon, large, background) {
     var value = String(icon || "")
-    return images.source(value || "application-x-executable", !!large, !!background, !!desktop.appIcons[value])
+    return images.source(value || "application-x-executable", !!large, !!background, !!root.desktop.appIcons[value])
   }
 
   // ---------------------------------------------------------------- app descriptions
@@ -2708,13 +2640,13 @@ Item {
   property real describeFailedAt: 0
 
   function describeApps() {
-    if (!root.descriptionsLoaded || !root.cacheReady || !(root.config.apps && root.config.apps.describe === true)) return
+    if (!root.descriptionsLoaded || !root.cacheReady || !(root.configFiles.config.apps && root.configFiles.config.apps.describe === true)) return
     if (describer.busy || Date.now() - root.describeFailedAt < 60 * 60 * 1000) return
-    var list = Describe.wanted(desktop.apps, root.appDescriptions, Apps.undescribed)
+    var list = Describe.wanted(root.desktop.apps, root.appDescriptions, Apps.undescribed)
     if (list.length === 0) return
     // Ask's model when Ask holds Claude; another agent's model means
     // nothing to claude.
-    var model = askSession.agent === "claude" && root.config.ask && root.config.ask.model ? String(root.config.ask.model) : "haiku"
+    var model = askSession.agent === "claude" && root.configFiles.config.ask && root.configFiles.config.ask.model ? String(root.configFiles.config.ask.model) : "haiku"
     describer.run(Describe.argv(model, list, root.cacheDir + "/ask"), { list: list, env: { NODI_TEXT: Describe.request(list) } })
   }
 
@@ -2757,7 +2689,7 @@ Item {
   property bool remindersLoaded: false
   property bool remindersWaiting: false
   property int remindersMade: 0
-  readonly property bool clock24: !(root.config.time && root.config.time.clock24 === false)
+  readonly property bool clock24: !(root.configFiles.config.time && root.configFiles.config.time.clock24 === false)
 
   FileView {
     id: remindersFile
@@ -2826,14 +2758,14 @@ Item {
   }
 
   Component.onCompleted: {
-    desktop.refreshWindows()
+    root.desktop.refreshWindows()
     // Before the first open, so it is drawn as asked (Sonnet 2026-10-06).
-    desktop.refreshAppearance()
+    root.desktop.refreshAppearance()
     // Each his alone (0700), made so or made so now: they hold what he
     // typed, pinned and set (codex's review, 2026-10-09).
     agentProbe.look()
     root.makeFolders()
-    desktop.readAppsSoon()
+    root.desktop.readAppsSoon()
     requests.request("omarchy-commands")
   }
 
@@ -2852,9 +2784,9 @@ Item {
     Rectangle {
       anchors.fill: parent
       color: root.scrim
-      opacity: root.entered || desktop.reducedMotion ? 1.0 : 0.0
+      opacity: root.entered || root.desktop.reducedMotion ? 1.0 : 0.0
       Behavior on opacity {
-        enabled: !desktop.reducedMotion
+        enabled: !root.desktop.reducedMotion
         NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
       }
     }
@@ -2868,16 +2800,16 @@ Item {
       y: look.cardTop
       // Unseen until the empty bar's rows are whole so the card fades in whole
       // without popping from text-bar to expanded overlay.
-      opacity: (!root.contentHeld && (root.entered || desktop.reducedMotion)) ? 1.0 : 0.0
-      scale: root.entered || desktop.reducedMotion ? 1.0 : 0.96
+      opacity: (!root.contentHeld && (root.entered || root.desktop.reducedMotion)) ? 1.0 : 0.0
+      scale: root.entered || root.desktop.reducedMotion ? 1.0 : 0.96
       transformOrigin: Item.Center
 
       Behavior on opacity {
-        enabled: !desktop.reducedMotion && !root.contentHeld
+        enabled: !root.desktop.reducedMotion && !root.contentHeld
         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
       }
       Behavior on scale {
-        enabled: !desktop.reducedMotion
+        enabled: !root.desktop.reducedMotion
         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
       }
     }

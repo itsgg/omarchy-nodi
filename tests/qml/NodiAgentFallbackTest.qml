@@ -41,7 +41,7 @@ Item {
       // In memory: nothing of this reaches the real state file.
       nodi.prefsLoaded = false
       nodi.cacheReady = false
-      nodi.defaultConfig = {
+      nodi.configFiles.defaultConfig = {
         providers: ["ask"],
         fallbacks: [],
         ask: {
@@ -53,7 +53,7 @@ Item {
           ]
         }
       }
-      nodi.userConfig = ({})
+      nodi.configFiles.userConfig = ({})
       nodi.prefs = Prefs.empty()
       nodi.agentAvailability = ({ limited: true, free: true })
       nodi.open("{}")

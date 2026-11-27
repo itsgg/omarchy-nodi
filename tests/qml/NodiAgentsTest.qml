@@ -17,7 +17,7 @@ Item {
 
   function check(ok, what) { if (!ok) test.failures.push(what) }
   function configure() {
-    nodi.defaultConfig = {
+    nodi.configFiles.defaultConfig = {
       providers: ["system", "ask"],
       fallbacks: [],
       ask: {
@@ -28,7 +28,7 @@ Item {
         ]
       }
     }
-    nodi.userConfig = ({})
+    nodi.configFiles.userConfig = ({})
     nodi.prefs = Prefs.withAskAgent(Prefs.empty(), "beta")
     test.checkActionResolution()
   }

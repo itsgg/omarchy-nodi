@@ -191,7 +191,7 @@ Item {
       var lines = setupOut.text.split("\n")
       test.pid = lines[0]
       test.real = lines[1]
-      nodi.defaultConfig = {
+      nodi.configFiles.defaultConfig = {
         providers: ["ask"],
         fallbacks: [],
         ask: {
@@ -199,7 +199,7 @@ Item {
           agents: [{ id: "alpha", name: "Alpha", command: [test.base + "/alpha", "plain", "installing"] }]
         }
       }
-      nodi.userConfig = ({})
+      nodi.configFiles.userConfig = ({})
       nodi.prefs = Prefs.empty()
       nodi.agentAvailability = ({ alpha: true })
       nodi.open("{}")

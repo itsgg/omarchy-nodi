@@ -151,11 +151,11 @@ Item {
   Process {
     id: setup
     onExited: {
-      nodi.defaultConfig = {
+      nodi.configFiles.defaultConfig = {
         providers: [], fallbacks: [], teach: false,
         home: [{ id: "test", file: test.source, title: "Test", max: 4, priority: 0, trustedActions: true }]
       }
-      nodi.userConfig = ({})
+      nodi.configFiles.userConfig = ({})
       nodi.open("{}")
       test.beginPaletteTrust()
       poll.start()
