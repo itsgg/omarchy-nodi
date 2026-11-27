@@ -1208,8 +1208,10 @@ test("an agent that needs him signed in asks in the bar (ROADMAP 84)", () => {
 
 test("Ask status refresh waits until its state-change handler has finished", () => {
   const nodi = readFileSync(root + "/Nodi.qml", "utf8");
-  assert.match(nodi, /function syncAskStatus\(\) \{[\s\S]*?root\.askStatus = askSession\.status[\s\S]*?root\.recompute\(\)[\s\S]*?onStatusChanged:\s*Qt\.callLater\(root\.syncAskStatus\)/,
+  const bridge = readFileSync(root + "/components/AskBridge.qml", "utf8");
+  assert.match(nodi, /function syncAskStatus\(\) \{[\s\S]*?root\.askBridge\.syncStatus\(\)[\s\S]*?root\.recompute\(\)[\s\S]*?onStatusChanged:\s*Qt\.callLater\(root\.syncAskStatus\)/,
                "a synchronous refresh can warm a new session inside the old session's reset, and the pane must not outrun its row");
+  assert.match(bridge, /function syncStatus\(\) \{ bridge\.askStatus = bridge\.session\.status \}/, "the status the pane shows is Ask's");
 });
 
 test("before the first question installs the adapter, the rows that ask say so (the marketplace's review, 2026-10-09)", () => {

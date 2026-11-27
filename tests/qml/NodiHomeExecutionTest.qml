@@ -113,14 +113,14 @@ Item {
         test.phase = 9
         test.verifyAbsent("agent proposal trust loss", 10)
       } else if (test.phase === 10 && row && row.run && !writer.running) {
-        var rows = nodi.askSearch("", "home-expiry-turn")
+        var rows = nodi.askBridge.askSearch("", "home-expiry-turn")
         test.check(rows.some(function(r) { return r.key === row.key }), "Ask search did not cache the watched row")
-        var resolved = nodi.askResolve("key", row.key, "home-expiry-turn")
+        var resolved = nodi.askBridge.askResolve("key", row.key, "home-expiry-turn")
         test.check(resolved.ok, "Ask did not resolve the watched proposal: " + JSON.stringify(resolved))
         test.heldSnapshot = resolved.snapshot
         test.phase = 11
       } else if (test.phase === 11 && !row) {
-        var result = nodi.askCommit(test.heldSnapshot)
+        var result = nodi.askBridge.askCommit(test.heldSnapshot)
         test.check(result.status === "failed", "an expired Ask proposal reported success: " + JSON.stringify(result))
         test.phase = 12
         test.verifyAbsent("agent proposal expiry", 13)

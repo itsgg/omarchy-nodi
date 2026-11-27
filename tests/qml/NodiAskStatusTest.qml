@@ -201,7 +201,7 @@ Item {
       }
       nodi.configFiles.userConfig = ({})
       nodi.prefs = Prefs.empty()
-      nodi.agentAvailability = ({ alpha: true })
+      nodi.askBridge.agentAvailability = ({ alpha: true })
       nodi.open("{}")
       nodi.input.text = "ask wait before words"
       askNow.start()

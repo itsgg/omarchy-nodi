@@ -12,7 +12,7 @@ Item {
   id: binder
   visible: false
 
-  // Nothing is asked until both config files are read (Nodi.qml configLoaded).
+  // Nothing is asked until both config files are read (components/ConfigFiles.qml ready).
   property bool ready: false
   property string hotkey: ""             // nodi.json's "hotkey", trimmed
   property var rowHotkeys: ({})          // prefs.hotkeys

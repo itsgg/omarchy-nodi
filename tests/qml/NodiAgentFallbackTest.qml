@@ -55,7 +55,7 @@ Item {
       }
       nodi.configFiles.userConfig = ({})
       nodi.prefs = Prefs.empty()
-      nodi.agentAvailability = ({ limited: true, free: true })
+      nodi.askBridge.agentAvailability = ({ limited: true, free: true })
       nodi.open("{}")
       nodi.selections.selection = "teh"
       nodi.selections.selectionSource = "selection"
@@ -99,7 +99,7 @@ Item {
     interval: 100
     onTriggered: {
       var ask = nodi.services().ask
-      test.check(nodi.resolvedAgent === "free", "the fallback did not switch to Free: " + nodi.resolvedAgent)
+      test.check(nodi.askBridge.resolvedAgent === "free", "the fallback did not switch to Free: " + nodi.askBridge.resolvedAgent)
       test.check(nodi.input.text === "ask " + test.question, "the field: " + nodi.input.text)
       test.check(ask.phase === "idle" && ask.question === test.question && ask.message === test.message,
                  "the turn was not prepared on Free: " + ask.phase + "/" + ask.question + "/" + ask.message)

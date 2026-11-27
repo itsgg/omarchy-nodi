@@ -10,7 +10,6 @@ import "lib/Run.js" as Run
 import "lib/Sources.js" as Sources
 import "lib/AskTools.js" as AskTools
 import "lib/Acp.js" as Acp
-import "lib/Agents.js" as Agents
 import "lib/Teach.js" as Teach
 import "lib/Hotkey.js" as Hotkey
 // Not "Keys": that name is QtQuick's attached Keys (Keys.onPressed below).
@@ -31,7 +30,6 @@ import "lib/Markdown.js" as Markdown
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
 import "lib/HomeSources.js" as HomeParser
-import "lib/PromptContext.js" as PromptContext
 import "lib/NodiActions.js" as NodiActions
 import "lib/NodiMcp.js" as NodiMcp
 import "providers/apps.js" as Apps
@@ -298,10 +296,10 @@ Item {
     // before any writes over it (codex's review, 2026-10-09).
     if (root.prefsLoaded) prefsFile.reload()
     // The registry's programs are looked for again at every open, on the
-    // login PATH learnt (agentProbe.look): an installed remembered agent
-    // can recover precedence, and a removed non-current one is disabled
-    // before it is selected.
-    agentProbe.look()
+    // login PATH learnt (AskBridge.qml agentProbe): an installed remembered
+    // agent can recover precedence, and a removed non-current one is
+    // disabled before it is selected.
+    root.askBridge.look()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -336,19 +334,6 @@ Item {
 
   property bool readsPending: false
 
-  // The last login shell's PATH, { at, key, path } (lib/Probes.js): the
-  // agents are looked for on it at every open without a login shell.
-  property var agentsSeen: null
-  function agentsKey(tag) { return tag + "\n" + (Quickshell.env("PATH") || "") }
-  // An Ask that failed as a missing program fails: looked for again now.
-  Connections {
-    target: askSession
-    function onErrorChanged() {
-      if (!Probes.suggestsMissing(askSession.error)) return
-      root.agentsSeen = null
-      agentProbe.look()
-    }
-  }
 
   // The window that had the focus when the bar opened (README, "The window
   // you came from"), for the providers that act on it: Hyprland's active
@@ -499,8 +484,7 @@ Item {
     root.aliasRow = null
     root.endWord()
     root.endCapture()
-    root.pendingFileAsk = null
-    if (askFileReader.active) askFileReader.cancel()
+    root.askBridge.dropFileAsk()
     // Claude's conversation goes on (ROADMAP 43), so a kept question sent
     // with its text is asked again with it; a run it waits on is refused.
     askSession.hidden()
@@ -652,8 +636,6 @@ Item {
 
   // ---------------------------------------------------------------- queries
 
-  property string askStatus: ""
-
   function services() {
     var media = desktopState.snapshot()
     return {
@@ -670,9 +652,9 @@ Item {
       homeSources: watchedHome.snapshots,
       ask: { phase: askSession.phase, question: askSession.question, message: askSession.message, answer: askSession.answer, error: askSession.error,
              agentId: typeof askSession.agent === "string" ? askSession.agent : "",
-             agent: askSession.agentName, model: askSession.modelName, status: root.askStatus, activity: askSession.activity,
-             proposal: root.proposed(), context: askSession.context, capturing: windowShot.active, install: askSession.install,
-             missing: root.agentMissing ? root.agentProgram : "", turns: askSession.turns, agents: root.askAgents,
+             agent: askSession.agentName, model: askSession.modelName, status: root.askBridge.askStatus, activity: askSession.activity,
+             proposal: root.proposed(), context: askSession.context, capturing: root.askBridge.shooting, install: askSession.install,
+             missing: root.askBridge.agentMissing ? root.askBridge.agentProgram : "", turns: askSession.turns, agents: root.askBridge.askAgents,
              sessionId: askSession.sessionId, commands: askSession.commands, plans: askSession.plans,
              resultActions: askSession.resultActions, remoteSessions: askSession.remoteSessions,
              form: askSession.form },
@@ -762,7 +744,7 @@ Item {
     // order can be set from his use (ROADMAP 87); the bar remembers none.
     // Not an Ask that cannot be asked now (Fable 2026-10-07: logged, then
     // logged again when it could).
-    if (row.provider === "fallback" && !(row.nodi === "askWith" && (askSession.busy() || windowShot.active))) {
+    if (row.provider === "fallback" && !(row.nodi === "askWith" && (askSession.busy() || root.askBridge.shooting))) {
       var q = Match.normalise(root.queryNow())
       if (q && !root.pickSession) root.logPick(PickLog.entry(Date.now(), root.trail, q, row.key, root.rows))
     }
@@ -995,7 +977,7 @@ Item {
     if (a.nodi === "askWith" && (a.ask || row.ask)) {
       var askSpec = a.ask || row.ask
       var extraEnv = askSpec.context === "selection" && root.selections.selection ? { NODI_SELECTION: root.selections.selection } : {}
-      root.dispatchAsk(askSpec.question, askSpec.message, askSpec.context, askSpec.purpose, extraEnv, undefined, askSpec.file)
+      root.askBridge.dispatchAsk(askSpec.question, askSpec.message, askSpec.context, askSpec.purpose, extraEnv, undefined, askSpec.file)
       return
     }
     if (a.nodi === "complete") {
@@ -1009,7 +991,7 @@ Item {
       }
       return
     }
-    if (a.nodi === "askAgent" && a.data) { root.selectAskAgent(a.data.id); return }
+    if (a.nodi === "askAgent" && a.data) { root.askBridge.selectAskAgent(a.data.id); return }
     if (a.nodi) { root.setPref(a, row); return }
     var own = !!a.own
     var remembered = own && row.remember
@@ -1350,8 +1332,8 @@ Item {
       wordAsk: root.wordAsk, armedKey: root.armedKey, selection: root.selections.selection,
       cameFrom: root.cameFrom, answers: root.configFiles.config.answers, conversations: root.conversations,
       pickSession: root.pickSession, askBusy: askSession.busy(), proposal: askSession.proposal,
-      shooting: windowShot.active,
-      prepared: function(q) { return root.preparedAsk(q) },
+      shooting: root.askBridge.shooting,
+      prepared: function(q) { return root.askBridge.preparedAsk(q) },
       resultAction: function(index) { return askSession.resultAction(index) },
       answer: { message: answerSession.message, keyword: answerSession.keyword,
                 question: answerSession.question, conversation: answerSession.conversation },
@@ -1370,8 +1352,7 @@ Item {
         if (e.cursor) input.cursorPosition = input.text.length
       } else if (e.do === "recompute") root.recompute()
       else if (e.do === "call") {
-        var target = e.on === "ask" ? askSession : e.on === "answer" ? answerSession
-          : e.on === "tray" ? trayMenus : e.on === "shot" ? windowShot : root
+        var target = root.effectTarget(e.on)
         var result = target[e.fn].apply(target, e.args)
         if (e.need && !result) return
         if (e.then && result) root.applyEffects(e.then)
@@ -1379,10 +1360,11 @@ Item {
     }
   }
 
-  // A question about the window, held with what it is about until its
-  // picture is taken (askWindow, windowShot).
-  function holdShotAsk(a) {
-    root.shotAsk = Object.assign({}, a, { captured: root.askCapture(a.message, a.context, a.purpose) })
+  // What an effect acts on: the bar, or Ask ("ask"), the streamed answer
+  // ("answer"), the tray ("tray") or the bridge to Ask ("bridge").
+  function effectTarget(on) {
+    return on === "ask" ? askSession : on === "answer" ? answerSession
+      : on === "tray" ? trayMenus : on === "bridge" ? root.askBridge : root
   }
 
   function runUndo(key) {
@@ -1489,8 +1471,7 @@ Item {
     root.typedSinceOpen = true
     if (!root.recalling) root.recallAt = -1
     root.trail = PickLog.typed(root.trail, Match.normalise(root.queryNow()))
-    if (root.directAskAgent && !askSession.busy() && !root.queryUsesDirectAgent(root.queryNow()))
-      root.directAskAgent = ""
+    root.askBridge.releaseDirect(root.queryNow())
     if (/^\s*ask\s/i.test(root.queryNow())) askSession.warm()
     root.armedKey = ""
     root.closePalette()
@@ -1811,315 +1792,32 @@ Item {
     onPhaseChanged: if (root.opened) root.recompute()
   }
 
-  readonly property var askRegistry: Agents.registry(root.configFiles.config.ask)
-  property var agentAvailability: ({})
-  readonly property var resolvedAgent: Agents.chosen(root.configFiles.config.ask && root.configFiles.config.ask.agent, root.omarchyAgent,
-                                                     root.prefs.askAgent, root.askRegistry, root.agentAvailability)
-  property string directAskAgent: ""
-  property var pendingAsk: null
-  readonly property var effectiveAskAgent: root.directAskAgent || root.resolvedAgent
-  readonly property string resolvedModel: Agents.modelFor(root.effectiveAskAgent, root.configFiles.config.ask, root.omarchyAgent, root.askRegistry)
-  readonly property string resolvedAgentId: typeof root.resolvedAgent === "string" ? root.resolvedAgent : ""
-  readonly property string effectiveAgentId: typeof root.effectiveAskAgent === "string" ? root.effectiveAskAgent : ""
-  readonly property string agentProgram: Agents.program(root.effectiveAskAgent, root.askRegistry)
-  readonly property string resolvedAgentProgram: Agents.program(root.resolvedAgent, root.askRegistry)
-  readonly property string resolvedAvailabilityKey: root.effectiveAgentId || (root.agentProgram ? "__legacy__" : "")
-  readonly property bool agentMissing: !!root.resolvedAvailabilityKey && root.agentAvailability[root.resolvedAvailabilityKey] === false
-  readonly property var askAgents: root.askRegistry.map(function(a) {
-    var program = Agents.program(a.id, root.askRegistry)
-    var reason = Agents.disabledReason(a.id)
-    var available = root.agentAvailability[a.id] === true
-    return { id: a.id, name: a.name, model: Agents.modelFor(a.id, root.configFiles.config.ask, root.omarchyAgent, root.askRegistry),
-             policy: Agents.policy(a.id, root.askRegistry),
-             missing: root.agentAvailability[a.id] === false ? program : "", reason: reason, available: available,
-             current: a.id === root.resolvedAgentId }
-  })
-
-  // What the agent is told of the Ask beside its question
-  // (lib/PromptContext.js), seen now, as the Ask is chosen and never before:
-  // the window the bar came from, and the selection only when the action is
-  // about it (`context`) and the message holds its text, so the structured
-  // copy never carries what the textual prompt does not.
-  function askContext(message, context, purpose) {
-    var snap = {
-      purpose: purpose || "",
-      window: Sources.windowSnapshot(root.cameFrom, root.desktop.windows),
-      clipboard: root.selections.lastCopied || "",
-      primarySelection: root.selections.selection || ""
-    }
-    var source = context === "copied" ? "clipboard" : context === "selection" ? "selection" : ""
-    if (source && root.selections.selectionSource === source && root.selections.selection !== "" && String(message || "").indexOf(root.selections.selection) !== -1) {
-      var seen = source === "clipboard" ? root.selections.copiedSeenAt : root.selections.selectionSeenAt
-      snap.selection = { text: root.selections.selection, source: source === "clipboard" ? "clipboard" : "primary", ageMs: Math.max(0, Date.now() - seen) }
-    }
-    return snap
-  }
-
-  // What askContext saw, with the window's own address, which stays here:
-  // taken when the Ask is chosen and carried by an Ask that waits for a
-  // picture (askWindow), so that what is sent is of the window the question
-  // was asked about, not of the one the bar knows when the picture is done.
-  function askCapture(message, context, purpose) {
-    return { snapshot: root.askContext(message, context, purpose), address: String(root.cameFrom.address || "") }
-  }
-
-  property var pendingFileAsk: null
-
-  function askRoute(qText, agentId) {
-    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.configFiles.config.answers, root.cameFrom), agentId: agentId || "",
-                                    busy: askSession.busy(), shooting: windowShot.active })
-  }
-
-  // A turn an agent fallback prepared (askAgentFallback, Ask.qml prepare):
-  // idle, on the question still in the field. Enter sends the message the
-  // failed turn effectively sent, as it was, with its context: it was
-  // expanded when first asked, and expanding it again would read mentions
-  // from text he did not type (PromptContext.mentionSource).
-  function preparedAsk(question) {
-    var q = String(question || "")
-    return q !== "" && askSession.phase === "idle" && askSession.question === q
-  }
-  function sendPreparedAsk(agentId, question) {
-    root.askRows = ({ turn: "", rows: ({}) })
-    // No message: Ask.send asked again on its question keeps the prepared one.
-    root.startAsk(agentId || "", question)
-  }
-
-  // An Ask, its context expanded (window, clipboard, selection and files),
-  // so that an answers filter of his and an ACP agent get the same question.
-  function dispatchAsk(question, rawMessage, context, purpose, extraEnv, image, filePath, agentId, answerFresh, commandQuery) {
-    var qText = commandQuery || ("ask " + question)
-    // Busy: nothing of this Ask is done, the field left as he has it.
-    if (root.askRoute(qText, agentId) === "busy") return
-    root.pendingFileAsk = null
-    if (askFileReader.active) askFileReader.cancel()
-    // An agent named in the field keeps its name there: "ask " would end
-    // the direct Ask (queryUsesDirectAgent).
-    if (!(agentId && !commandQuery) && input.text !== qText) {
-      input.text = qText
-      input.cursorPosition = input.text.length
-    }
-    var snap = root.askCapture(rawMessage || question, context, purpose).snapshot
-    var env = extraEnv || (context === "selection" && root.selections.selection ? { NODI_SELECTION: root.selections.selection } : {})
-
-    // Only what he typed is read for mentions (PromptContext.mentionSource):
-    // selected or copied text may carry an @f: of its own.
-    var targets = PromptContext.fileTargets(PromptContext.mentionSource(context, question, rawMessage), filePath, root.home)
-
-    if (targets.length > 0) {
-      var token = Math.random()
-      root.pendingFileAsk = {
-        question: question, rawMessage: rawMessage, context: context,
-        purpose: purpose, extraEnv: env, image: image, targets: targets,
-        agentId: agentId, snapshot: snap, token: token,
-        answerFresh: !!answerFresh, commandQuery: commandQuery
-      }
-      askFileReader.run(PromptContext.fileReadArgv(targets), root.pendingFileAsk)
-      return
-    }
-
-    root.finishDispatchAsk(question, rawMessage, context, purpose, env, image, snap, agentId, answerFresh, commandQuery)
-  }
-
-  function finishDispatchAsk(question, rawMessage, context, purpose, extraEnv, image, snapshot, agentId, answerFresh, commandQuery) {
-    var qText = commandQuery || ("ask " + question)
-    var expanded = PromptContext.expandFor(context, question, rawMessage, snapshot)
-    // Again after a file read: the agent may have taken another question since.
-    var route = root.askRoute(qText, agentId)
-    if (route === "busy") return
-    if (route === "answer") {
-      var ansSpec = Answers.spec(qText, root.configFiles.config.answers, root.cameFrom, expanded, extraEnv)
-      if (answerFresh) ansSpec.fresh = true
-      answerSession.start(ansSpec)
-      return
-    }
-    root.askRows = ({ turn: "", rows: ({}) })
-    root.startAsk(agentId || "", question, expanded, context, image, purpose, { snapshot: snapshot, address: String(root.cameFrom.address || "") })
-  }
-
-  // `captured` (askCapture) is the context of an Ask chosen earlier.
-  function startAsk(id, question, message, context, image, purpose, captured) {
-    if (root.pendingAsk || askSession.busy() || windowShot.active) return false
-    var direct = !!id
-    var target = direct ? Agents.canonicalId(id) : root.resolvedAgent
-    if (direct && (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)
-        || root.agentAvailability[target] !== true)) return false
-    var made = captured && captured.snapshot ? captured : root.askCapture(message, context, purpose)
-    var snapshot = made.snapshot
-    root.pendingAsk = { direct: direct, target: target, question: String(question || ""),
-                        message: message, context: context, image: image, snapshot: snapshot, cwdWait: false }
-    root.directAskAgent = direct ? target : ""
-    root.askStatus = askSession.status
-    // The window's working directory, one bounded read now; the Ask waits
-    // for it, and goes without it when the read fails (windowCwdReader). The
-    // pid goes in the reader's environment, never its argv, and only while
-    // the window list still holds this window's address with that pid: a pid
-    // is a number another program may take. The address stays here, out of
-    // what the agent is told.
-    var pid = snapshot.window.pid || 0
-    var address = made.address
-    var env = Sources.cwdEnv(pid)
-    if (env && Sources.sameWindow(root.desktop.windows, address, pid)) {
-      root.pendingAsk.cwdWait = true
-      root.pendingAsk.token = Math.random()
-      windowCwdReader.run(Sources.cwdArgv(), { token: root.pendingAsk.token, pid: pid, address: address, env: env })
-      return true
-    }
-    if (direct ? askSession.agent === target : askSession.agent === root.resolvedAgent)
-      root.flushAsk()
-    else Qt.callLater(root.flushAsk)
-    return true
-  }
-
-  // The read of the window's working directory (Sources.cwdArgv), started
-  // only by startAsk: a second at most, and 8 KB. Its answer is the
-  // pending Ask's if that is still the one waiting and the window list still
-  // holds the same window (address and pid) as it did at the start; failing,
-  // timing out, another pid's answer, a vanished process or a replaced
-  // window leave the directory out, and the Ask goes on.
-  Reader {
-    id: windowCwdReader
-    timeoutMs: 1000
-    maxBytes: 8192
-    onFinished: function(text, ok, tag) {
-      // Matched by token: an object in a `var` signal argument arrives as a
-      // copy (Qt 6.12), never the pending Ask itself, so an identity test
-      // never matched and the Ask waited for good (NodiAskStatusTest.qml).
-      var pending = root.pendingAsk
-      if (!tag || !pending || pending.token !== tag.token) return
-      var cwd = ok && Sources.sameWindow(root.desktop.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
-      if (cwd) pending.snapshot.window.cwd = cwd
-      pending.cwdWait = false
-      root.flushAsk()
-    }
-  }
-
-  // Bounded (PromptContext.flushStep): an Ask whose agent never comes is
-  // given up, said in a toast, never left pending to refuse the next.
-  function flushAsk() {
-    var pending = root.pendingAsk
-    if (!pending || pending.cwdWait) return
-    var step = PromptContext.flushStep(pending, askSession.agent, root.resolvedAgent, root.directAskAgent)
-    if (step === "wait") {
-      pending.tries = (pending.tries || 0) + 1
-      Qt.callLater(root.flushAsk)
-      return
-    }
-    root.pendingAsk = null
-    if (step === "drop") {
-      if (!pending.prepare) root.toast("Ask did not send the question", "The agent changed while it waited; ask again")
-      return
-    }
-    if (pending.prepare) askSession.prepare(pending.question, pending.message, pending.context)
-    else askSession.send(pending.question, pending.message, pending.context, pending.image, pending.snapshot)
-  }
-
-  function prepareDirectAsk(id, question, message, context) {
-    var target = Agents.canonicalId(id)
-    if (!Agents.byId(root.askRegistry, target) || Agents.disabledReason(target)
-        || root.agentAvailability[target] !== true) return false
-    root.pendingAsk = { direct: true, prepare: true, target: target, question: String(question || ""),
-                        message: message, context: context }
-    root.directAskAgent = target
-    if (askSession.agent === target) root.flushAsk()
-    else Qt.callLater(root.flushAsk)
-    return true
-  }
-
-  function selectAskAgent(id) {
-    id = Agents.canonicalId(id)
-    var available = root.agentAvailability[id]
-    if (!Agents.byId(root.askRegistry, id) || Agents.disabledReason(id)
-        || (id === root.resolvedAgentId ? available === false : available !== true)) return false
-    var next = Prefs.withAskAgent(root.prefs, id)
-    if (!next) return false
-    if (id === root.resolvedAgentId) {
-      root.savePrefs(next)
-      root.directAskAgent = ""
-      return true
-    }
-    root.askRows = ({ turn: "", rows: ({}) })
-    root.savePrefs(next)
-    root.directAskAgent = ""
-    return true
-  }
-
-  // Availability for every palette agent, from the same login PATH its
-  // session uses. The resolved agent's missing state is one entry in this
-  // map, never a second interpretation of raw configuration.
-  onAskRegistryChanged: agentProbe.look()
-  onResolvedAgentChanged: agentProbe.look()
-  onEffectiveAskAgentChanged: {
-    // A palette choice or an availability change must end every operation
-    // owned by the old agent before the new name is presented.
-    root.shotAsk = null
-    askSession.switchAway()
-  }
-  onAgentMissingChanged: if (root.opened) root.recompute()
-  Reader {
-    id: agentProbe
-    timeoutMs: 5000
-    // The session's PATH, as Ask's agent has it (Ask.qml environment), then
-    // the login shell's: found here is found there.
-    extraEnvironment: ({ PATH: Quickshell.env("PATH") || "" })
-    function probeTag() {
-      var all = root.askRegistry.map(function(a) {
-        return [a.id, Agents.disabledReason(a.id) ? "" : Agents.program(a.id, root.askRegistry)]
-      })
-      if (!root.resolvedAgentId && root.resolvedAgentProgram) all.push(["__legacy__", root.resolvedAgentProgram])
-      return JSON.stringify(all)
-    }
-    // Every look asks for each program on the login shell's PATH. Only a
-    // look that finds that PATH old, or the programs or the session's PATH
-    // changed (lib/Probes.js agentsDue), starts the login shell to learn it
-    // again; the others are a plain shell given the PATH learnt, so an
-    // agent installed or removed shows at the next open without a login
-    // shell's cost at each one.
-    readonly property string lookScript: 'while [ "$#" -ge 2 ]; do id=$1 p=$2; shift 2; command -v -- "$p" >/dev/null 2>&1 && printf "%s\\tyes\\n" "$id" || printf "%s\\tno\\n" "$id"; done'
-    function look() {
-      var tag = probeTag()
-      var seen = root.agentsSeen
-      var argv = Probes.agentsDue(seen, Date.now(), root.agentsKey(tag))
-        ? ["/usr/bin/bash", "-lc", lookScript + '; printf "@path\\t%s\\n" "$PATH"', "nodi-agent-probe"]
-        : ["/usr/bin/bash", "--norc", "--noprofile", "-c", 'PATH=$1; shift; ' + lookScript, "nodi-agent-probe", seen.path]
-      for (var i = 0; i < root.askRegistry.length; i++)
-        argv.push(root.askRegistry[i].id, Agents.disabledReason(root.askRegistry[i].id) ? ""
-                                                   : Agents.program(root.askRegistry[i].id, root.askRegistry))
-      if (!root.resolvedAgentId && root.resolvedAgentProgram) argv.push("__legacy__", root.resolvedAgentProgram)
-      agentProbe.run(argv, probeTag())
-    }
-    onFinished: function(text, ok, tag) {
-      if (tag !== agentProbe.probeTag() || !ok) return
-      var found = {}
-      var lines = String(text || "").trim().split("\n")
-      for (var i = 0; i < lines.length; i++) {
-        var pair = lines[i].split("\t")
-        if (pair[0] === "@path") root.agentsSeen = { at: Date.now(), key: root.agentsKey(tag), path: pair.slice(1).join("\t") }
-        else if (pair.length === 2) found[pair[0]] = pair[1] === "yes"
-      }
-      root.agentAvailability = found
-      if (root.opened) root.recompute()
-    }
-  }
-
-  // Omarchy's default coding agent (omarchy-default-agent), which Ask holds
-  // unless nodi.json names another (lib/Agents.js chosen).
-  property string omarchyAgent: ""
-  FileView {
-    path: root.home + "/.config/omarchy/defaults/agent"
-    printErrors: false
-    watchChanges: true
-    onLoaded: root.omarchyAgent = text().trim()
-    onLoadFailed: root.omarchyAgent = ""
-    onFileChanged: reload()
+  // Which agent Ask holds, an Ask's context and its wait for its agent, and
+  // the rows an agent finds (components/AskBridge.qml).
+  readonly property AskBridge askBridge: AskBridge {
+    session: askSession
+    answer: answerSession
+    input: root.input
+    config: root.configFiles.config
+    prefs: root.prefs
+    home: root.home
+    cameFrom: root.cameFrom
+    windows: root.desktop.windows
+    selections: root.selections
+    execute: root.execute
+    savePrefs: root.savePrefs
+    appAction: root.appAction
+    agentRows: root.agentRows
+    agentTop: root.agentTop
+    onUpdated: if (root.opened) root.recompute()
+    onWarn: function(title, body) { root.toast(title, body) }
   }
 
   property bool askWasBusy: false
 
   // A quick answer from a coding agent, held open over ACP (components/Ask.qml).
   function syncAskPhase() {
-    if (!askSession.busy() && root.directAskAgent && !root.queryUsesDirectAgent(root.queryNow()))
-      root.directAskAgent = ""
+    root.askBridge.releaseDirect(root.queryNow())
     if (root.askWasBusy && !askSession.busy() && askSession.phase === "done" && !root.opened) {
       if (root.configFiles.config.ask && root.configFiles.config.ask.notifyOnDone && askSession.answer.trim()) {
         toaster.show("Answer ready: " + askSession.agentName, askSession.question)
@@ -2130,15 +1828,15 @@ Item {
   }
 
   function syncAskStatus() {
-    root.askStatus = askSession.status
+    root.askBridge.syncStatus()
     if (root.opened) root.recompute()
   }
 
   Ask {
     id: askSession
-    registry: root.askRegistry
-    agent: root.effectiveAskAgent
-    model: root.resolvedModel
+    registry: root.askBridge.askRegistry
+    agent: root.askBridge.effectiveAskAgent
+    model: root.askBridge.resolvedModel
     workDir: root.cacheDir + "/ask"
     dataDir: root.dataDir
     toolServer: root.pluginDir + "/bin/nodi"
@@ -2152,11 +1850,11 @@ Item {
     customInstructions: String((root.configFiles.config.ask && root.configFiles.config.ask.instructions) || "")
     // Variables of his the agent needs beyond those Ask passes (Ask.qml).
     passed: Array.isArray(root.configFiles.config.ask && root.configFiles.config.ask.environment) ? root.configFiles.config.ask.environment : []
-    searcher: root.askSearch
-    resolver: root.askResolve
-    committer: root.askCommit
+    searcher: root.askBridge.askSearch
+    resolver: root.askBridge.askResolve
+    committer: root.askBridge.askCommit
     shown: root.opened
-    onActionTurnChanged: root.askRows = ({ turn: actionTurn, rows: ({}) })
+    onActionTurnChanged: root.askBridge.newTurn(actionTurn)
     onPhaseChanged: Qt.callLater(root.syncAskPhase)
     onActivityChanged: if (root.opened) root.recompute()
     onInteractionRevisionChanged: if (root.opened && !askSession.form) root.recompute()
@@ -2169,134 +1867,11 @@ Item {
 
   // ---------------------------------------------------------------- Ask acts
 
-  // A question about the window, waiting for its picture (askWindow).
-  property var shotAsk: null
-
-  Reader {
-    id: windowShot
-    timeoutMs: 5000
-    maxBytes: 8388608
-    onActiveChanged: if (root.opened) root.recompute()
-    onFinished: function(text, ok) {
-      var a = root.shotAsk
-      root.shotAsk = null
-      if (!a) return
-      var data = ok ? String(text).replace(/\s+/g, "") : ""
-      // No picture (the window gone, grim failing): the question goes as
-      // text, and says so.
-      // Once this read has ended: the reader is still active while it
-      // reports, which startAsk refuses.
-      var image = data ? { mediaType: "image/jpeg", data: data } : undefined
-      var message = data ? a.message : a.question + "\n\n(The window could not be captured.)"
-      var context = data ? a.context : ""
-      Qt.callLater(function() { root.startAsk("", a.question, message, context, image, a.purpose, a.captured) })
-    }
-  }
-
-  Reader {
-    id: askFileReader
-    timeoutMs: 1000
-    maxBytes: PromptContext.FILE_READ_BYTES
-    cancelable: true
-    onFinished: function(text, ok, tag) {
-      if (!tag || !root.pendingFileAsk || root.pendingFileAsk.token !== tag.token) return
-      var pending = root.pendingFileAsk
-      root.pendingFileAsk = null
-      // A file not read is said so in the prompt (PromptContext.fileReads).
-      pending.snapshot.files = PromptContext.attachFiles(pending.snapshot.files, pending.targets,
-                                                         PromptContext.fileReads(text, ok, pending.targets))
-      root.finishDispatchAsk(
-        pending.question, pending.rawMessage, pending.context,
-        pending.purpose, pending.extraEnv, pending.image, pending.snapshot, pending.agentId,
-        pending.answerFresh, pending.commandQuery
-      )
-    }
-  }
-
-  // What the agent found for one turn, by key. Request tombstones live in
-  // Ask for the ACP session; search rows do not cross turn boundaries.
-  property var askRows: ({ turn: "", rows: ({}) })
-
   // The bar's ranking for a query, for an agent (lib/Engine.js agentRows).
   function agentRows(q) { return Engine.agentRows(q, root.configFiles.config, root.services()) }
 
   // Its unfiltered top row, for a direct run that must never substitute.
   function agentTop(q) { return Engine.agentTop(q, root.configFiles.config, root.services()) }
-
-  // A row as an agent reads it; a row that asks says how.
-  function agentData(r) { return NodiMcp.agentData(r) }
-
-  // The agent's exploratory search: as data, with its live rows scoped to
-  // the prompt turn that requested them.
-  function askSearch(q, turnId) {
-    var rows = root.agentRows(q)
-    var all = root.askRows.turn === turnId ? Object.assign({}, root.askRows.rows) : {}
-    for (var i = 0; i < rows.length; i++) all[rows[i].key] = rows[i]
-    root.askRows = { turn: String(turnId), rows: all }
-    return rows.map(root.agentData)
-  }
-
-  function askCheckRow(row) {
-    if (row.confirmWord) return "That row asks for a typed word; he must run it from the bar himself."
-    if (row.help) return "That top-ranked row is help and cannot be run."
-    if (row.nodi) return "That top-ranked row belongs to Nodi and cannot be run by an agent."
-    if (!Run.command(row.run, root.appAction, row.title)) return "That row cannot run here."
-    return ""
-  }
-
-  function askClone(value) {
-    if (!value || typeof value !== "object") return value
-    var out = Array.isArray(value) ? [] : {}
-    for (var key in value)
-      if (Object.prototype.hasOwnProperty.call(value, key)) out[key] = root.askClone(value[key])
-    return out
-  }
-
-  function askSnapshot(row, turnId) {
-    return root.askClone({
-      key: String(row.key || ""),
-      title: String(row.title || ""),
-      subtitle: String(row.subtitle || ""),
-      risk: String(row.risk || ""),
-      confirmWord: String(row.confirmWord || ""),
-      run: row.run,
-      toggle: row.toggle,
-      rememberKey: row.remember ? String(row.key || "") : "",
-      history: History.snapshot(row),
-      undoable: !!row.undoable,
-      provider: String(row.provider || ""),
-      homeExecution: typeof row.homeExecution === "string" ? row.homeExecution : "",
-      turn: String(turnId)
-    })
-  }
-
-  // A direct query resolves only the top-ranked row. If that row is not
-  // runnable, a lower row is never silently substituted.
-  function askResolve(kind, value, turnId) {
-    var row = null
-    if (kind === "query") {
-      row = root.agentTop(value)
-    } else {
-      row = root.askRows.turn === String(turnId) ? root.askRows.rows[value] : null
-    }
-    if (!row) return { ok: false, error: "No matching row" }
-    var why = root.askCheckRow(row)
-    if (why) return { ok: false, error: why }
-    return { ok: true, snapshot: root.askSnapshot(row, turnId) }
-  }
-
-  // Enter executes exactly the proposal snapshot captured before the card
-  // appeared; no live row is resolved at commit time.
-  function askCommit(snapshot) {
-    input.text = ""
-    var executed = root.execute(snapshot.run, snapshot.toggle, snapshot.rememberKey,
-                                snapshot.history, snapshot.title, snapshot.undoable,
-                                snapshot.provider === "home" ? snapshot.key : "", snapshot.homeExecution)
-    return executed
-      ? { status: "executed", key: snapshot.key, title: snapshot.title }
-      : { status: "failed", key: snapshot.key, title: snapshot.title,
-          message: "The captured action could not be dispatched." }
-  }
 
   // What waits for his answer, as the bar shows it.
   function proposed() {
@@ -2344,18 +1919,9 @@ Item {
     }
   }
 
-  // A direct Ask's query, and the question a query asks (lib/Agents.js).
-  function queryUsesDirectAgent(query) {
-    return Agents.usesDirect(query, root.askRegistry, root.directAskAgent)
-  }
-
-  function askQuestion(query) {
-    return Agents.askQuestion(query, root.askRegistry, root.directAskAgent)
-  }
-
   // The answer the card shows, while the query is the question it answers:
   // its pane from the Enter that asked it, waiting, then its words.
-  readonly property var shownAskQuestion: root.askQuestion(root.composedQuery)
+  readonly property var shownAskQuestion: root.askBridge.askQuestion(root.composedQuery)
   readonly property bool asking: root.shownAskQuestion !== null
   readonly property bool askOn: root.asking && askSession.phase !== "idle" && askSession.question !== ""
     && askSession.question === root.shownAskQuestion
@@ -2376,7 +1942,7 @@ Item {
     chosen: Pane.choose({
       paletteOpen: root.paletteOpen,
       ask: root.askOn ? { question: askSession.question, agent: askSession.agentName, model: askSession.modelName, text: askSession.answer,
-                          busy: askSession.phase === "waiting" || askSession.phase === "streaming", status: root.askStatus,
+                          busy: askSession.phase === "waiting" || askSession.phase === "streaming", status: root.askBridge.askStatus,
                           error: askSession.phase === "error" ? askSession.error : "", turns: askSession.turns,
                           plans: askSession.plans, form: askSession.form,
                           answerTurn: askSession.turn !== null
@@ -2665,7 +2231,7 @@ Item {
     root.desktop.refreshAppearance()
     // Each his alone (0700), made so or made so now: they hold what he
     // typed, pinned and set (codex's review, 2026-10-09).
-    agentProbe.look()
+    root.askBridge.look()
     root.makeFolders()
     root.desktop.readAppsSoon()
     requests.request("omarchy-commands")
