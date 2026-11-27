@@ -49,3 +49,13 @@ test("dates: a month or a year on keeps to the end of a shorter month", () => {
   assert.equal(top("2026-01-15 + 13 months").title, "Mon, 15 Feb 2027");
   assert.ok(!timeRows("today + 99999999999 months").some(r => /NaN/.test(r.title)));
 });
+
+test("dates: today is time.home's today when it is set", () => {
+  // 23:00 UTC on 23 September: already the 24th in Tokyo.
+  const utc = "2026-09-23T23:00:00Z";
+  const tokyo = Jsonc.merge(config, { time: { home: "Asia/Tokyo" } });
+  assert.equal(top("today", utc, tokyo).title, "Thu, 24 Sep 2026");
+  assert.equal(top("tomorrow", utc, tokyo).title, "Fri, 25 Sep 2026");
+  const ny = Jsonc.merge(config, { time: { home: "America/New_York" } });
+  assert.equal(top("today", utc, ny).title, "Wed, 23 Sep 2026");
+});

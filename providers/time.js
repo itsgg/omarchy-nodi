@@ -324,8 +324,19 @@ function countRow(days, a, b, score) {
   }
 }
 
+// The wall clock now, its UTC fields read as the time: in time.home when
+// it is set and its offset read, as the clock rows have it, else the
+// system's own zone.
+function wallNow(ctx) {
+  var now = ctx.now()
+  var home = ctx.settings && ctx.settings.home
+  if (home && ctx.zones && ctx.zones[home]) return wall(now.getTime(), home, ctx)
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()))
+}
+
 function matchDates(q, ctx) {
-  var today = midnight(ctx.now())
+  var w = wallNow(ctx)
+  var today = ymd(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate())
   var m
 
   // "days until dec 25", "until christmas"
