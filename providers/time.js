@@ -256,8 +256,9 @@ function occurrence(r, today, dir) {
 // The second date of a range, on or after the first when it was given
 // loosely: a date without its year, or a bare weekday ("monday to friday"
 // on a Wednesday is Monday to the Friday after it, not the one before).
-function following(r, first) {
-  if (r.weekday >= 0) return addDays(first, (r.weekday - first.getDay() + 7) % 7)
+// Between two bare weekdays the same day is a week on: "friday to friday".
+function following(r, first, fromWeekday) {
+  if (r.weekday >= 0) return addDays(first, (r.weekday - first.getDay() + 7) % 7 || (fromWeekday ? 7 : 0))
   return r.hadYear ? r.date : occurrence(r, first, 1)
 }
 
@@ -420,7 +421,7 @@ function matchDates(q, ctx) {
     // Without a year, the second date is the first one on or after the
     // first: "dec 25 to jan 1" is a week, "feb 29 to mar 1" a day.
     var da = a && (a.date || occurrence(a, today, 1))
-    var db = b && da && following(b, da)
+    var db = b && da && following(b, da, a.weekday >= 0)
     if (da && db) return [countRow(daysBetween(da, db), da, db, 88)]
   }
 

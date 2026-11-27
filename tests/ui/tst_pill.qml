@@ -49,14 +49,19 @@ Item {
       var clipped = false
       for (var p = pill.parent; p && p !== card; p = p.parent) if (p.clip && (p === list || p.parent === list || p === list.contentItem)) clipped = true
       verify(clipped, "clipped by the list")
-      // Nothing of it above the list: the colour of the mark is not drawn
-      // there, between the card's top and the list's.
+      // Nothing of it above the list: between the card's top and the
+      // list's, the card looks the same with the mark as without it. (Its
+      // colour alone can be the border's in a theme.)
       if (pill.visible) {
-        var img = grabImage(top)
+        var withMark = grabImage(top)
+        pill.visible = false
+        wait(20)
+        var without = grabImage(top)
+        pill.visible = true
         var listTop = list.mapToItem(top, 0, 0).y
         var x = Math.round(pill.mapToItem(top, pill.width / 2, 0).x)
         for (var y = Math.ceil(card.y); y < listTop; y++)
-          verify(!Qt.colorEqual(img.pixel(x, y), pill.color), "the mark drawn over the field at " + x + "," + y)
+          verify(Qt.colorEqual(withMark.pixel(x, y), without.pixel(x, y)), "the mark drawn over the field at " + x + "," + y)
       }
     }
   }
