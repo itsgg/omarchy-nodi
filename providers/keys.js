@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 .import "../lib/Sources.js" as Sources
@@ -117,7 +118,7 @@ var provider = {
     if (!whole && q.length < 3) return []
     var got = ctx.request ? ctx.request("keybindings") : { state: "pending" }
     var list = Array.isArray(got.value) ? got.value : []
-    if (whole && list.length === 0) return [{ title: got.state === "error" ? "No keybinding records" : "Reading keybindings...", subtitle: "Keybindings", score: 40, copy: "" }]
+    if (whole && list.length === 0) return [Rows.waiting(got, "Reading keybindings...", "No keybinding records", { subtitle: "Keybindings" })]
     var inMenu = whole ? null : menuActions(ctx.menu)
     var hits = []
     var fields = q ? fieldsOf(list) : null

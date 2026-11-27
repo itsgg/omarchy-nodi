@@ -32,7 +32,7 @@ test("an undo is offered for ten minutes, newest first, Enter twice", () => {
   ];
   assert.deepEqual(plain(U.live(entries, now).map(e => e.key)), ["undo:2", "undo:3"]);
   const rows = U.rows(entries, now);
-  assert.deepEqual(plain(rows.map(r => [r.title, r.subtitle])), [["Undo archiving", "Just now, Enter twice undoes it"], ["Recall the report", "3 minutes ago, Enter twice undoes it"]]);
+  assert.deepEqual(plain(rows.map(r => [r.title, r.subtitle])), [["Undo archiving", "Just now, Enter twice undoes it"], ["Recall the report", "3 min ago, Enter twice undoes it"]]);
   assert.ok(rows.every(r => r.confirm && r.nodi === "undo" && !r.remember && r.group === "Undo"));
 });
 

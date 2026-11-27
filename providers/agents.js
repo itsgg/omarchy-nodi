@@ -1,4 +1,6 @@
 .pragma library
+.import "../lib/Util.js" as Util
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 
@@ -120,8 +122,6 @@ function limitsOf(records) {
   return out
 }
 
-function pad(n) { return (n < 10 ? "0" : "") + n }
-
 var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -130,7 +130,7 @@ var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oc
 function resets(at, nowMs) {
   if (!(at > 0)) return ""
   var d = new Date(at)
-  var clock = pad(d.getHours()) + ":" + pad(d.getMinutes())
+  var clock = Util.pad(d.getHours()) + ":" + Util.pad(d.getMinutes())
   if (at <= nowMs) return "reset at " + clock + "; the record is older"
   var mins = Math.round((at - nowMs) / 60000)
   if (mins >= 24 * 60) return "resets on " + DAYS[d.getDay()] + " " + d.getDate() + " " + MONTHS[d.getMonth()] + " at " + clock
@@ -185,8 +185,7 @@ var provider = {
     var nowMs = (ctx.now ? ctx.now() : new Date()).getTime()
     if (USAGE_WORDS.test(q)) {
       var got = ctx.request ? ctx.request("agent-usage") : { state: "pending" }
-      if (!Array.isArray(got.value)) return [{ title: got.state === "error" ? "The usage records could not be read" : "Reading the usage records...",
-                                               score: 40, intent: "ordinary", copy: "", remember: false }]
+      if (!Array.isArray(got.value)) return [Rows.waiting(got, "Reading the usage records...", "The usage records could not be read", { intent: "ordinary" })]
       var all = limitsOf(got.value)
       if (!all.length) return [{ title: "No usage recorded", subtitle: "Omarchy's agents widget keeps it, for Claude Code and Codex",
                                  score: 40, intent: "ordinary", copy: "", remember: false }]
@@ -194,8 +193,7 @@ var provider = {
     }
     if (AGENTS_WORDS.test(q)) {
       var s = ctx.request ? ctx.request("agent-sessions") : { state: "pending" }
-      if (!Array.isArray(s.value)) return [{ title: s.state === "error" ? "The sessions could not be read" : "Looking for agent sessions...",
-                                             score: 40, intent: "ordinary", copy: "", remember: false }]
+      if (!Array.isArray(s.value)) return [Rows.waiting(s, "Looking for agent sessions...", "The sessions could not be read", { intent: "ordinary" })]
       var list = s.value.filter(function(x) { return /^0x[0-9a-fA-F]+$/.test(String(x.address || "")) && isSession(x) })
       if (!list.length) return [{ title: "No agent session in a terminal", subtitle: "Claude Code and Codex, run in a terminal window",
                                   score: 40, intent: "ordinary", copy: "", remember: false }]

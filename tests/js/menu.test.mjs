@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { load, root, plain } from "./load.mjs";
-import { config, run, top, apps } from "./fixtures.mjs";
+import { config, run, top, apps, Engine, services } from "./fixtures.mjs";
 
 const Menu = load("lib/Menu.js");
 const fixture = name => readFileSync(join(root, "tests/js/fixtures", name), "utf8");
@@ -147,7 +147,8 @@ test("toggle rows carry their state", () => {
 test("Omarchy's real menu parses, and its guards run in one batch", { skip: !existsSync("/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc") }, () => {
   const real = Menu.merge([Menu.parseItems(readFileSync("/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc", "utf8"))]);
   assert.ok(real.order.length > 200, "read " + real.order.length + " items");
-  for (const id of ["system.shutdown", "trigger.toggle.window-gaps", "setup.network.dns", "style.font", "update.process.shell"]) assert.ok(real.items[id], id);
+  const keys = new Set(real.order.map(id => Menu.key(id)));
+  for (const id of ["system.shutdown", "trigger.toggle.window-gaps", "setup.network.dns", "style.font", "update.process.shell"]) assert.ok(keys.has(Menu.key(id)), id);
   const cache = mkdtempSync(join(tmpdir(), "nodi-cache-"));
   let out;
   try {
@@ -156,6 +157,26 @@ test("Omarchy's real menu parses, and its guards run in one batch", { skip: !exi
   const g = Menu.parseGuards(out, real);
   assert.ok(Object.keys(g.when).length > 50, "answered " + Object.keys(g.when).length + " when: guards");
   assert.ok(Object.values(g.checked).filter(Boolean).length >= 1, "at least one current choice is marked");
+});
+
+test("every menu id Nodi names is in Omarchy's real menu", { skip: !existsSync("/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc") }, () => {
+  const real = Menu.merge([Menu.parseItems(readFileSync("/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc", "utf8"))]);
+  const keys = new Set(real.order.map(id => Menu.key(id)));
+  const actions = new Set(real.order.filter(id => real.items[id].action).map(id => Menu.key(id)));
+  const P = load("providers/menu.js");
+  const T = load("lib/Toggles.js");
+  const own = T.extras(real).map(t => t.id);
+  for (const t of T.TABLE) if (t.menu) assert.ok(actions.has(t.menu) || own.includes(t.id), "toggle " + t.menu);
+  for (const id of Object.keys(P.SYNONYMS)) assert.ok(keys.has(id), "synonym " + id);
+  for (const id of Object.keys(P.CONFIRM)) assert.ok(actions.has(Menu.key(id)), "confirm " + id);
+  // The gates' trees and the subtrees they let through.
+  const prefixes = ["install", "remove"];
+  for (const m of P.UNGATED.source.matchAll(/(install|remove)\\\.\(([^)]+)\)/g)) for (const leaf of m[2].split("|")) prefixes.push(m[1] + "." + leaf);
+  assert.ok(prefixes.length > 4, "read the subtrees of " + P.UNGATED.source);
+  for (const p of prefixes) {
+    assert.ok(P.GATED.test(p), p + " is gated");
+    assert.ok(real.items[p], "gate " + p);
+  }
 });
 
 test("guards: the package list is kept until the package database changes, the readers run side by side", () => {
@@ -212,4 +233,39 @@ test("a submenu stays two points under its best child, whatever the weights woul
   const P = load("providers/menu.js");
   assert.equal(P.provider.resolve("menu:no.such.row", { menu }), null);
   assert.equal(P.provider.resolve("app:firefox", { menu }), null);
+});
+
+// Omarchy 4.5's shape: each toggle two rows, one hidden by its `when:`, and
+// the window toggles moved under Appearance.
+const pairs = Menu.merge([Menu.parseItems(JSON.stringify({
+  trigger: { label: "Trigger" }, "trigger.toggle": { label: "Toggle" },
+  "trigger.toggle.idle-lock-on": { label: "Stay Awake", when: "[[ ! -f /x ]]", action: "omarchy-toggle-idle" },
+  "trigger.toggle.idle-lock-off": { label: "Allow Sleep", when: "[[ -f /x ]]", action: "omarchy-toggle-idle" },
+  "trigger.toggle.notifications-on": { label: "Notifications On", action: "omarchy-toggle-notification-silencing" },
+  "trigger.toggle.notifications-off": { label: "Silence Notifications", action: "omarchy-toggle-notification-silencing" },
+  appearance: { label: "Appearance" }, "appearance.windows": { label: "Windows" },
+  "appearance.windows.gaps-on": { label: "Window Gaps On", action: "omarchy-hyprland-window-gaps-toggle" },
+  "appearance.windows.gaps-off": { label: "Window Gaps Off", action: "omarchy-hyprland-window-gaps-toggle" },
+  "appearance.theme": { label: "Theme", action: "true" }
+}))]);
+
+test("Omarchy 4.5's on and off rows are the toggle they split from, with its words and its state", () => {
+  assert.equal(Menu.key("trigger.toggle.idle-lock-on"), "trigger.toggle.idle-lock");
+  assert.equal(Menu.key("trigger.toggle.window-gaps"), Menu.key("appearance.windows.gaps-off"), "an older id keys as the current one");
+  assert.equal(Menu.key("style.theme"), "appearance.theme");
+  assert.ok(Menu.staleAfter("menu:trigger.toggle.idle-lock-on"), "a menu action asks the guards again");
+  assert.ok(!Menu.staleAfter("app:firefox") && !Menu.staleAfter(""));
+  const states = { "stay-awake": { on: false, value: "0" }, notifications: { on: true, value: "1" }, "window-gaps": { on: true, value: "1" } };
+  const hidden = { "trigger.toggle.idle-lock-off": false };
+  const m = { items: pairs.items, order: pairs.order, when: hidden, checked: {} };
+  const awake = top("caffeine", { menu: m, toggleStates: states });
+  assert.equal(awake.title, "Stay Awake"); assert.equal(awake.toggle, "stay-awake"); assert.equal(awake.badge, "OFF");
+  const dnd = run("dnd", { menu: m, toggleStates: states }).filter(r => r.key.startsWith("menu:"));
+  assert.equal(dnd.length, 1, "both rows of a pair answer while the guards have not: one stands for them");
+  assert.equal(dnd[0].toggle, "notifications"); assert.equal(dnd[0].badge, "ON");
+  assert.equal(top("gaps", { menu: m, toggleStates: states }).toggle, "window-gaps");
+  assert.equal(top("dark mode", { menu: m, toggleStates: {} }).key, "menu:appearance.theme", "synonyms follow a rename");
+  // A row saved as one half of a pair is the half shown now, under its saved key.
+  const saved = Engine.resolve("menu:trigger.toggle.idle-lock-off", { provider: "menu", run: { kind: "shell" } }, config, services({ menu: m, toggleStates: states }));
+  assert.equal(saved.title, "Stay Awake"); assert.equal(saved.key, "menu:trigger.toggle.idle-lock-off");
 });

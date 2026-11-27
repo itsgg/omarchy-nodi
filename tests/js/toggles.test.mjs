@@ -122,7 +122,11 @@ const REAL_MENU = "/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc";
 test("every menu toggle names a real Omarchy menu id", { skip: !existsSync(REAL_MENU) }, () => {
   const Menu = load("lib/Menu.js");
   const real = Menu.merge([Menu.parseItems(readFileSync(REAL_MENU, "utf8"))]);
-  for (const t of Toggles.TABLE) if (t.menu) assert.ok(real.items[t.menu] && real.items[t.menu].action, t.menu);
+  const keys = new Set(real.order.filter(id => real.items[id].action).map(id => Menu.key(id)));
+  const own = Toggles.extras(real).map(t => t.id);
+  // A toggle the menu has no row for has one of Nodi's.
+  for (const t of Toggles.TABLE) if (t.menu) assert.ok(keys.has(t.menu) || own.includes(t.id), t.menu);
+  assert.ok(Toggles.byMenu("trigger.toggle.idle-lock-on"), "a row of a pair is its toggle");
 });
 
 
@@ -130,4 +134,24 @@ test("a state that says neither on, off nor a value shows no badge", () => {
   const T = load("lib/Toggles.js");
   assert.deepEqual(plain(T.badge({ on: null })), { text: "", tone: "" });
   assert.deepEqual(plain(T.badge(null)), { text: "", tone: "" });
+});
+
+test("a toggle whose row the menu lost gets Nodi's own, and only then", () => {
+  const Menu = load("lib/Menu.js");
+  const old = Menu.merge([Menu.parseItems(JSON.stringify({ "trigger.toggle.workspace-layout": { label: "Workspace Layout", action: "x" } }))]);
+  const now = Menu.merge([Menu.parseItems(JSON.stringify({ "appearance.workspace-layout": { label: "Workspace Layout" } }))]);
+  assert.ok(!Toggles.extras(old).some(t => t.id === "workspace-layout"));
+  assert.ok(Toggles.extras(now).some(t => t.id === "workspace-layout"));
+  assert.ok(!Toggles.extras().some(t => t.id === "workspace-layout"), "no menu read yet: none");
+  assert.equal(Toggles.byMenu("appearance.windows.gaps-on").id, "window-gaps");
+  assert.equal(Toggles.byMenu("trigger.toggle.window-gaps").id, "window-gaps", "the older id still names it");
+});
+
+test("do-not-disturb is read by Omarchy 4.5's isDnd, and by dndState before it", () => {
+  const now = probe((home, bin) => stub(bin, "omarchy-shell",
+    '[ "$1 $2" = "notifications isDnd" ] && { echo on; exit 0; }; echo "Function not found"; exit 1'));
+  assert.equal(now.notifications.on, false, "dnd on: notifications OFF");
+  const before = probe((home, bin) => stub(bin, "omarchy-shell",
+    '[ "$1 $2" = "notifications dndState" ] && { echo off; exit 0; }; echo "Function not found"; exit 1'));
+  assert.equal(before.notifications.on, true);
 });

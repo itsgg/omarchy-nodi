@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/tzcities.js" as Tz
 .import "../lib/Score.js" as Score
 
@@ -10,14 +11,13 @@
 //
 //   time, time in tokyo, tokyo time, 3pm lkt to pst, 15:30 in london
 //   days until dec 25, today + 45 days, 2026-01-01 to 2026-09-23, next friday
+//   in 30 min, now + 90 minutes, 2 hours ago
 
 var DAY_MS = 86400000
 var WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 var WD_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
-function pad(n) { return (n < 10 ? "0" : "") + n }
 
 // ---------------------------------------------------------------- zones
 
@@ -54,9 +54,9 @@ function clock(d, ctx) {
   if (ctx.settings && ctx.settings.clock24 === false) {
     var suffix = h < 12 ? "am" : "pm"
     h = h % 12 || 12
-    return h + ":" + pad(m) + " " + suffix
+    return h + ":" + Util.pad(m) + " " + suffix
   }
-  return pad(h) + ":" + pad(m)
+  return Util.pad(h) + ":" + Util.pad(m)
 }
 
 function wallDay(d) { return Math.floor(d.getTime() / DAY_MS) }
@@ -72,7 +72,7 @@ function dayShift(targetWall, refWall) {
 function offsetText(minutes) {
   var sign = minutes < 0 ? "-" : "+"
   var abs = Math.abs(minutes)
-  return "UTC" + sign + Math.floor(abs / 60) + (abs % 60 ? ":" + pad(abs % 60) : "")
+  return "UTC" + sign + Math.floor(abs / 60) + (abs % 60 ? ":" + Util.pad(abs % 60) : "")
 }
 
 function zoneRow(zone, utcMs, ctx, score) {
@@ -93,6 +93,19 @@ function pending() {
   return [{ title: "Looking up time zones...", subtitle: "Time", score: 30, copy: "" }]
 }
 
+// A zone the read left out once it has landed is one tzdata does not have
+// (lib/Sources.js ZONES_READ): a misspelt time.zones or time.home.
+function unknownZone(zone, score) {
+  return { title: "Unknown time zone: " + zone, subtitle: "No such zone in tzdata; check time.zones and time.home in the config",
+           icon: "󰀦", score: score, copy: "" }
+}
+
+// The rows when a zone asked for has no offset: still reading, or unknown.
+function missing(ready, names, ctx) {
+  if (!ready) return pending()
+  return names.filter(function(z) { return !ctx.zones[z] }).map(function(z) { return unknownZone(z, 88) })
+}
+
 function matchZones(q, ctx) {
   var nowMs = ctx.now().getTime()
   var ready = ctx.zones && Object.keys(ctx.zones).length > 0
@@ -102,7 +115,8 @@ function matchZones(q, ctx) {
     var zones = [homeZone(ctx)].concat((ctx.settings && ctx.settings.zones) || [])
     var rows = []
     for (var i = 0; i < zones.length; i++) {
-      if (ctx.zones[zones[i]] && (i === 0 || zones[i] !== zones[0])) rows.push(zoneRow(zones[i], nowMs, ctx, 85 - i))
+      if (i > 0 && zones[i] === zones[0]) continue
+      rows.push(ctx.zones[zones[i]] ? zoneRow(zones[i], nowMs, ctx, 85 - i) : unknownZone(zones[i], 85 - i))
     }
     return rows
   }
@@ -111,7 +125,7 @@ function matchZones(q, ctx) {
   if (m) {
     var zone = resolveZone(m[1], ctx)
     if (!zone) return []
-    if (!ready || !ctx.zones[zone]) return pending()
+    if (!ready || !ctx.zones[zone]) return missing(ready, [zone], ctx)
     return [zoneRow(zone, nowMs, ctx, 88)]
   }
 
@@ -127,7 +141,7 @@ function matchZones(q, ctx) {
     var from = m[4] ? resolveZone(m[4], ctx) : homeZone(ctx)
     var to = resolveZone(m[5], ctx)
     if (!from || !to) return []
-    if (!ready || !ctx.zones[from] || !ctx.zones[to]) return pending()
+    if (!ready || !ctx.zones[from] || !ctx.zones[to]) return missing(ready, [from, to], ctx)
 
     // Today's date as seen in the source zone, at the requested wall time.
     var srcToday = wall(nowMs, from, ctx)
@@ -197,7 +211,9 @@ function parseDate(s, today) {
       var diff = (wd - today.getDay() + 7) % 7
       if (m[1] === "last") diff = diff === 0 ? -7 : diff - 7
       else if (m[1] === "next" && diff === 0) diff = 7
-      return { date: addDays(today, diff), hadYear: true }
+      // A bare weekday can be placed again after another date ("monday
+      // to friday", following()); one with "next" or "last" is as said.
+      return { date: addDays(today, diff), hadYear: true, weekday: m[1] === "next" || m[1] === "last" ? -1 : wd }
     }
   }
   return null
@@ -237,17 +253,61 @@ function occurrence(r, today, dir) {
   return null
 }
 
+// The second date of a range, on or after the first when it was given
+// loosely: a date without its year, or a bare weekday ("monday to friday"
+// on a Wednesday is Monday to the Friday after it, not the one before).
+function following(r, first) {
+  if (r.weekday >= 0) return addDays(first, (r.weekday - first.getDay() + 7) % 7)
+  return r.hadYear ? r.date : occurrence(r, first, 1)
+}
+
 function addDays(d, n) { return ymd(d.getFullYear(), d.getMonth(), d.getDate() + n) }
+
+// The same day n months on, or the month's last when it is shorter:
+// "jan 31 + 1 month" is the end of February, not 3 March.
+function addMonths(d, n) {
+  var first = ymd(d.getFullYear(), d.getMonth() + n, 1)
+  if (isNaN(first.getTime())) return first
+  var last = ymd(first.getFullYear(), first.getMonth() + 1, 0).getDate()
+  return ymd(first.getFullYear(), first.getMonth(), Math.min(d.getDate(), last))
+}
 
 function addUnits(d, n, unit) {
   var u = unit.toLowerCase()
   var out = null
   if (/^(d|days?)$/.test(u)) out = addDays(d, n)
   else if (/^(w|wks?|weeks?)$/.test(u)) out = addDays(d, n * 7)
-  else if (/^(m|mos?|months?)$/.test(u)) out = ymd(d.getFullYear(), d.getMonth() + n, d.getDate())
-  else if (/^(y|yrs?|years?)$/.test(u)) out = ymd(d.getFullYear() + n, d.getMonth(), d.getDate())
+  else if (/^(m|mos?|months?)$/.test(u)) out = addMonths(d, n)
+  else if (/^(y|yrs?|years?)$/.test(u)) out = addMonths(d, n * 12)
   // An offset past what a Date can hold ("in 99999999999 days") is no date.
   return out && !isNaN(out.getTime()) ? out : null
+}
+
+// Minutes in a unit of time of day, 0 for any other: "m" stays months.
+function minutesIn(unit) {
+  var u = unit.toLowerCase()
+  if (/^(mins?|minutes?)$/.test(u)) return 1
+  if (/^(h|hrs?|hours?)$/.test(u)) return 60
+  return 0
+}
+
+// The wall time n minutes from `w` (wallNow), with its date when that is
+// another day: "in 30 min", "now + 90 minutes", "2 hours ago".
+function timeRow(w, n, ctx, score) {
+  var t = new Date(w.getTime() + n * 60000)
+  if (isNaN(t.getTime())) return null
+  var day = ymd(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())
+  var otherDay = Math.floor(t.getTime() / DAY_MS) !== Math.floor(w.getTime() / DAY_MS)
+  var a = Math.abs(n)
+  var span = a % 60 === 0 ? (a / 60) + (a === 60 ? " hour" : " hours")
+                          : a < 60 ? a + (a === 1 ? " minute" : " minutes")
+                                   : Math.floor(a / 60) + "h " + (a % 60) + "m"
+  return {
+    title: clock(t, ctx) + (otherDay ? ", " + formatDate(day) : ""),
+    subtitle: n >= 0 ? "in " + span : span + " ago",
+    score: score,
+    copy: clock(t, ctx)
+  }
 }
 
 function daysBetween(a, b) { return Math.round((midnight(b) - midnight(a)) / DAY_MS) }
@@ -260,7 +320,7 @@ function formatDate(d) {
   return WD_SHORT[d.getDay()] + ", " + d.getDate() + " " + MON_SHORT[d.getMonth()] + " " + year4(d)
 }
 
-function isoDate(d) { return year4(d) + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) }
+function isoDate(d) { return year4(d) + "-" + Util.pad(d.getMonth() + 1) + "-" + Util.pad(d.getDate()) }
 
 function relative(days) {
   if (days === 0) return "today"
@@ -291,8 +351,19 @@ function countRow(days, a, b, score) {
   }
 }
 
+// The wall clock now, its UTC fields read as the time: in time.home when
+// it is set and its offset read, as the clock rows have it, else the
+// system's own zone.
+function wallNow(ctx) {
+  var now = ctx.now()
+  var home = ctx.settings && ctx.settings.home
+  if (home && ctx.zones && ctx.zones[home]) return wall(now.getTime(), home, ctx)
+  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()))
+}
+
 function matchDates(q, ctx) {
-  var today = midnight(ctx.now())
+  var w = wallNow(ctx)
+  var today = ymd(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate())
   var m
 
   // "days until dec 25", "until christmas"
@@ -311,6 +382,10 @@ function matchDates(q, ctx) {
 
   // "today + 45 days", "dec 25 - 2 weeks"
   m = q.match(/^(.+?) ?([+-]) ?(\d+) ?([a-z]+)$/)
+  if (m && m[1] === "now" && minutesIn(m[4])) {
+    var later = timeRow(w, (m[2] === "-" ? -1 : 1) * parseInt(m[3], 10) * minutesIn(m[4]), ctx, 90)
+    if (later) return [later]
+  }
   if (m) {
     var base = parseDate(m[1], today)
     var from = base && (base.date || occurrence(base, today, 1))
@@ -320,11 +395,19 @@ function matchDates(q, ctx) {
 
   // "in 3 weeks", "3 weeks from now", "10 days ago"
   m = q.match(/^in (\d+) ?([a-z]+)$/) || q.match(/^(\d+) ?([a-z]+) (?:from now|from today|later)$/)
+  if (m && minutesIn(m[2])) {
+    var soon = timeRow(w, parseInt(m[1], 10) * minutesIn(m[2]), ctx, 88)
+    if (soon) return [soon]
+  }
   if (m) {
     var ahead = addUnits(today, parseInt(m[1], 10), m[2])
     if (ahead) return [dateRow(ahead, today, 88)]
   }
   m = q.match(/^(\d+) ?([a-z]+) ago$/)
+  if (m && minutesIn(m[2])) {
+    var before = timeRow(w, -parseInt(m[1], 10) * minutesIn(m[2]), ctx, 88)
+    if (before) return [before]
+  }
   if (m) {
     var back = addUnits(today, -parseInt(m[1], 10), m[2])
     if (back) return [dateRow(back, today, 88)]
@@ -337,7 +420,7 @@ function matchDates(q, ctx) {
     // Without a year, the second date is the first one on or after the
     // first: "dec 25 to jan 1" is a week, "feb 29 to mar 1" a day.
     var da = a && (a.date || occurrence(a, today, 1))
-    var db = b && da && (b.hadYear ? b.date : occurrence(b, da, 1))
+    var db = b && da && following(b, da)
     if (da && db) return [countRow(daysBetween(da, db), da, db, 88)]
   }
 

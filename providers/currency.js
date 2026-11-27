@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "math.js" as Calc
 .import "../lib/Score.js" as Score
 
@@ -125,6 +126,12 @@ function parseRates(text, ok) {
   return { rates: data.rates, updated: data.time_last_update_unix, next: data.time_next_update_unix }
 }
 
+// An amount as shown: to the cent, or four significant digits under one.
+function money(value) {
+  if (Math.abs(value) < 1 && value !== 0) return Number(value.toPrecision(4))
+  return Math.round(value * 100) / 100
+}
+
 var provider = {
   id: "currency",
   sources: {
@@ -173,8 +180,7 @@ var provider = {
     var rates = data && data.rates
 
     if (!rates) {
-      return [{ title: got.state === "error" ? "Could not fetch exchange rates" : "Fetching exchange rates...",
-                subtitle: got.state === "error" ? got.error : "No saved rates yet", score: 40, copy: "" }]
+      return [Rows.waiting(got, "Fetching exchange rates...", "Could not fetch exchange rates", { subtitle: "No saved rates yet" })]
     }
 
     var targets = []
@@ -197,11 +203,11 @@ var provider = {
     for (var j = 0; j < targets.length; j++) {
       var value = convert(q.amount, q.from, targets[j], rates)
       if (value === null) continue
-      var rounded = Math.round(value * 100) / 100
-      if (Math.abs(value) < 1 && value !== 0) rounded = Number(value.toPrecision(4))
+      var rounded = money(value)
       out.push({
         title: ctx.format(rounded) + " " + targets[j],
-        subtitle: ctx.format(q.amount) + " " + q.from + " to " + targets[j] + (asOf ? ", " + asOf : ""),
+        // "1/3 usd" reads 0.3333 USD, as rounded as what it converts to.
+        subtitle: ctx.format(money(q.amount)) + " " + q.from + " to " + targets[j] + (asOf ? ", " + asOf : ""),
         score: 99 - j,
         copy: ctx.plain(rounded)
       })

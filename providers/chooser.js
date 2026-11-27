@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 .import "../lib/Match.js" as Match
@@ -99,8 +100,6 @@ function homeSet(folders) {
   return out.slice(0, HOME_MAX)
 }
 
-function tilde(path, home) { return home && (path === home || path.indexOf(home + "/") === 0) ? "~" + path.slice(home.length) : path }
-
 function typeRun(d, path) { return Run.pasting(Run.shell(TYPE, [d.address], path === "/" ? "/" : path + "/")) }
 
 // A path wtype can type as it is: a newline in one would be an Enter in
@@ -109,7 +108,7 @@ function typable(path) { return !/[\r\n]/.test(String(path || "")) }
 
 function rowOf(path, d, home) {
   var name = path === home ? "Home" : path.slice(path.lastIndexOf("/") + 1) || "/"
-  return { key: "file:" + path, title: name, subtitle: tilde(path, home), icon: ICON, run: typeRun(d, path), actionLabel: "Type in",
+  return { key: "file:" + path, title: name, subtitle: Util.tilde(path, home), icon: ICON, run: typeRun(d, path), actionLabel: "Type in",
            copy: path, remember: false, group: "Folders" }
 }
 
@@ -139,7 +138,7 @@ function typed(r, d, home) {
   c.actionLabel = "Type in"
   c.actions = [{ label: "Open the folder", icon: ICON, run: r.run }].concat(r.actions || [])
   if (r.tier) { c.kind = "mode"; c.intent = "mode" }
-  if (r.folderSelf) c.title = tilde(r.folder, home)
+  if (r.folderSelf) c.title = Util.tilde(r.folder, home)
   c.remember = false
   return c
 }
@@ -165,7 +164,7 @@ function over(d, query, rows, ctx) {
     var p = list[j].path
     if (have[p]) continue
     var name = p === home ? "Home" : p.slice(p.lastIndexOf("/") + 1)
-    var tier = Score.tier(q, Score.prepare({ name: name, keywords: [tilde(p, home).split("/").join(" ")] }))
+    var tier = Score.tier(q, Score.prepare({ name: name, keywords: [Util.tilde(p, home).split("/").join(" ")] }))
     if (!tier || Score.loose(tier)) continue
     var row = rowOf(p, d, home)
     row.tier = tier

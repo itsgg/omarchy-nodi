@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Match.js" as Match
 .import "../lib/Menu.js" as Menu
 .import "../lib/Run.js" as Run
@@ -34,7 +35,8 @@ var GATE_WORDS = { install: "install", remove: "remove", uninstall: "remove" }
 // it names that row and no other ("clock", "internet" and "sound" do not),
 // and never over a row that names it by its own words: "reinstall" is
 // Omarchy's reinstall command, never Reset Computer; "record screen" the
-// action that records it, not the submenu (Fable 2026-10-05).
+// action that records it, not the submenu (Fable 2026-10-05). Keyed by
+// lib/Menu.js key, the current id.
 var SYNONYMS = {
   "system.lock": ["lock screen", "lock the screen"],
   "system.logout": ["log out", "sign out", "log off"],
@@ -44,8 +46,8 @@ var SYNONYMS = {
   "system.screensaver": ["screen saver"],
   "learn.omarchy": ["manual", "docs", "documentation"],
   "learn.keybindings": ["shortcuts", "keyboard shortcuts", "hotkeys", "keys"],
-  "style.theme": ["dark mode", "light mode", "colours", "colors", "appearance"],
-  "style.background": ["wallpaper"],
+  "appearance.theme": ["dark mode", "light mode", "colours", "colors", "appearance"],
+  "appearance.background": ["wallpaper"],
   "trigger.capture.screenshot": ["screen shot", "print screen", "snip"],
   "trigger.capture.text": ["ocr", "extract text", "read text"],
   "trigger.capture.qr": ["qr code", "scan qr"],
@@ -64,7 +66,7 @@ var SYNONYMS = {
   "trigger.toggle.idle-lock": ["caffeine", "keep awake", "prevent sleep"],
   "trigger.toggle.notifications": ["do not disturb", "silence notifications", "mute notifications"],
   "trigger.toggle.nightlight": ["night light", "blue light", "night mode", "warm screen"],
-  "trigger.toggle.top-bar": ["hide bar", "show bar", "hide the bar", "top bar"],
+  "appearance.top-bar.hide": ["hide bar", "show bar", "hide the bar", "top bar"],
   "trigger.tests.network-speedtest": ["internet speed", "speedtest", "bandwidth"],
   "trigger.tests.disk-speedtest": ["disk speed", "ssd speed"],
   "trigger.hardware.laptop-display": ["laptop screen", "internal display"],
@@ -72,9 +74,9 @@ var SYNONYMS = {
   "trigger.hardware.hybrid-gpu": ["graphics card", "nvidia"],
   "trigger.emoji": ["emoji picker", "emojis"],
   "trigger.reminder": ["remind me", "timer"],
-  "style.font": ["fonts", "typeface"],
-  "style.bar": ["status bar"],
-  "style.bar.transparency": ["bar opacity", "transparent bar"],
+  "appearance.font": ["fonts", "typeface"],
+  "appearance.top-bar": ["status bar"],
+  "appearance.top-bar.background": ["bar opacity", "transparent bar"],
   "setup.network.dns": ["name server", "nameserver"],
   "setup.default.browser": ["default browser"],
   "setup.default.terminal": ["default terminal"],
@@ -98,10 +100,10 @@ var SYNONYMS = {
   "learn.arch": ["arch wiki"]
 }
 
-// Own keys only: a user's menu id can be `constructor`.
-function own(table, id) { return Object.prototype.hasOwnProperty.call(table, id) ? table[id] : undefined }
-
-function synonyms(id) { return own(SYNONYMS, id) || [] }
+// By the row's key (lib/Menu.js key): the same words for a row Omarchy
+// renamed or split into "-on" and "-off". Own keys only: a user's menu id
+// can be `constructor`.
+function synonyms(id) { return Util.own(SYNONYMS, Menu.key(id)) || [] }
 
 function leafWords(id) {
   return String(id).split(".").pop().replace(/[_-]+/g, " ")
@@ -189,7 +191,7 @@ function rowFor(hit, ctx, chords) {
   }
   if (item.kind === "action") {
     row.run = Run.shell(item.action)
-    if (own(CONFIRM, item.id)) row.confirm = true
+    if (Util.own(CONFIRM, item.id)) row.confirm = true
     if (toggle) {
       var b = Toggles.badge((ctx.toggleStates || {})[toggle.id])
       row.badge = b.text
@@ -231,7 +233,7 @@ function entriesOf(menu) {
       tree: GATED.test(id), ungated: UNGATED.test(id),
       contextWords: item.checked ? contextWords(above) : [],
       kind: kindOf(item, toggle, menu),
-      crumb: above.map(function(a) { return a.label }).join(" > "),
+      crumb: Menu.breadcrumb(menu.items, id),
       fields: Score.prepare({
         name: item.label,
         aliases: item.aliases.concat(synonyms(id)),
@@ -268,7 +270,7 @@ var provider = {
     // its submenu first, then what is in it, where it answered nothing
     // but the web's searches (the replay of his picks, 2026-10-06).
     // Own keys: "constructor" is a word, not an installer gate (codex 2026-10-04).
-    var gate = own(GATE_WORDS, qw[0]) || ""
+    var gate = Util.own(GATE_WORDS, qw[0]) || ""
     var words = gate ? qw.slice(1) : qw
     var text = gate ? (words.length ? words.join(" ") : gate) : q
 
@@ -317,6 +319,15 @@ var provider = {
     }
 
     hits.sort(function(a, b) { return b.score - a.score || a.n - b.n })
+    // Both rows of an "-on"/"-off" pair show until the guards answer;
+    // the better one stands for the pair.
+    var seen = Object.create(null)
+    hits = hits.filter(function(h) {
+      var k = Menu.key(h.item.id)
+      if (seen[k]) return false
+      seen[k] = true
+      return true
+    })
     var chords = chordsByAction(ctx)
     return hits.slice(0, LIMIT).map(function(hit) { return rowFor(hit, ctx, chords) })
   },
@@ -325,11 +336,15 @@ var provider = {
     var menu = ctx.menu
     if (!menu || !menu.items || !Array.isArray(menu.order) || String(key).indexOf("menu:") !== 0) return null
     var entries = entriesOf(menu)
-    for (var i = 0; i < entries.length; i++) {
-      var e = entries[i]
-      if ("menu:" + e.id !== key) continue
-      return rowFor({ item: e.item, tier: "exact", kind: e.kind, offset: 0, crumb: e.crumb }, ctx, chordsByAction(ctx))
-    }
-    return null
+    var id = String(key).slice(5)
+    // The row itself, else the one standing for it now: the other row of
+    // its pair, or the row it was before Omarchy renamed it.
+    var e = entries.filter(function(x) { return x.id === id })[0]
+         || entries.filter(function(x) { return Menu.key(x.id) === Menu.key(id) })[0]
+    if (!e) return null
+    var row = rowFor({ item: e.item, tier: "exact", kind: e.kind, offset: 0, crumb: e.crumb }, ctx, chordsByAction(ctx))
+    // Kept under the key it was saved by, as lib/Engine.js resolve asks.
+    row.key = key
+    return row
   }
 }

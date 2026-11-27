@@ -959,6 +959,7 @@ Item {
     else Quickshell.execDetached(argv)
     if (run.kind === "app") launchFeedback.begin(name || (snap && snap.title) || run.id)
     if (key) root.remember(key, query, snap)
+    if (Menu.staleAfter(key)) root.guardsAt = 0
     if (toggleId) {
       root.toggleStates = Toggles.flipped(root.toggleStates, toggleId)
       toggleReprobe.restart()
@@ -1491,6 +1492,7 @@ Item {
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     if (remember) root.remember(k, "", s)
     if (s.toggle) { root.toggleStates = Toggles.flipped(root.toggleStates, s.toggle); toggleReprobe.restart() }
+    if (Menu.staleAfter(k)) root.guardsAt = 0
     if (s.run.kind === "copy") root.markOwnCopy(s.run.text)
     return "ok"
   }
@@ -2932,12 +2934,8 @@ Item {
     if (zonesReader.busy || Date.now() - root.zonesFetchedAt < 60 * 60 * 1000) return
     var t = root.config.time || {}
     var extra = (t.zones || []).concat(t.home ? [t.home] : [])
-    // "@local Europe/Berlin" first, then "zone +hhmm ABBR" per zone.
-    zonesReader.run(["/usr/bin/bash", "-c",
-      "lz=$(timedatectl show -p Timezone --value 2>/dev/null); "
-      + "[ -n \"$lz\" ] || lz=$(readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||'); "
-      + "echo \"@local $lz\"; "
-      + "for z in \"$@\" $lz; do printf '%s ' \"$z\"; TZ=\"$z\" date +'%z %Z'; done", "nodi-zones"].concat(Tz.allZones(extra)))
+    // Sources.ZONES_READ: the local zone, then each zone tzdata has.
+    zonesReader.run(Sources.zonesArgv(Tz.allZones(extra)))
   }
 
   Reader {
