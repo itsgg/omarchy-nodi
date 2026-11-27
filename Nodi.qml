@@ -29,6 +29,7 @@ import "lib/Describe.js" as Describe
 import "lib/Pick.js" as Pick
 import "lib/Pane.js" as Pane
 import "lib/Opens.js" as Opens
+import "lib/Probes.js" as Probes
 import "lib/Conversations.js" as Conversations
 import "lib/PickLog.js" as PickLog
 import "lib/Markdown.js" as Markdown
@@ -271,7 +272,8 @@ Item {
     root.readAhead(true)
     launchFeedback.opened()
     root.opens++
-    root.makeFolders()
+    // Made once a shell: again at an open only until they are.
+    if (!root.cacheReady) root.makeFolders()
     root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
     root.aliasRow = null
     root.endCapture()
@@ -284,10 +286,11 @@ Item {
     // of one with an error too, and one that broke it stops the saves
     // before any writes over it (codex's review, 2026-10-09).
     if (root.prefsLoaded) prefsFile.reload()
-    // Every registry program is looked for again at the open cadence: an
-    // installed remembered agent can recover precedence, and a removed
-    // non-current one is disabled before it is selected.
-    agentProbe.look()
+    // The registry's programs are looked for again when that look is old,
+    // or what it asked changed (lib/Probes.js): an installed remembered
+    // agent can recover precedence, and a removed non-current one is
+    // disabled before it is selected.
+    root.lookForAgents()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -322,6 +325,34 @@ Item {
 
   property bool readsPending: false
 
+  // When each probe an open would start last answered (lib/Probes.js): one
+  // seconds old is this open's, and the agents and the themes are kept
+  // longer, the current theme watched (themeName).
+  property real togglesAt: 0
+  property real appearanceAt: 0
+  property real themesAt: 0
+  property var agentsSeen: null
+  function agentsKey(tag) { return tag + "\n" + (Quickshell.env("PATH") || "") }
+  function lookForAgents() {
+    if (Probes.agentsDue(root.agentsSeen, Date.now(), root.agentsKey(agentProbe.probeTag()))) agentProbe.look()
+  }
+  Connections {
+    target: agentProbe
+    function onFinished(text, ok, tag) { if (ok && tag === agentProbe.probeTag()) root.agentsSeen = { at: Date.now(), key: root.agentsKey(tag) } }
+  }
+  Connections { target: togglesReader; function onFinished(text, ok) { if (ok) root.togglesAt = Date.now() } }
+  Connections { target: appearanceReader; function onFinished(text, ok) { if (ok) root.appearanceAt = Date.now() } }
+  Connections { target: themesReader; function onFinished(text, ok) { if (ok) root.themesAt = Date.now() } }
+  // An Ask that failed as a missing program fails: looked for again now.
+  Connections {
+    target: askSession
+    function onErrorChanged() {
+      if (!Probes.suggestsMissing(askSession.error)) return
+      root.agentsSeen = null
+      agentProbe.look()
+    }
+  }
+
   // The window that had the focus when the bar opened (README, "The window
   // you came from"), for the providers that act on it: Hyprland's active
   // toplevel at the press, before the bar's layer takes the keyboard (a
@@ -347,10 +378,11 @@ Item {
     root.readsPending = false
     readsAfterFrame.stop()
     root.refreshWindows()
-    root.refreshToggles()
-    root.refreshAppearance()
+    var now = Date.now()
+    if (Probes.due(root.togglesAt, now, Probes.FRESH_MS)) root.refreshToggles()
+    if (Probes.due(root.appearanceAt, now, Probes.FRESH_MS)) root.refreshAppearance()
     themeColors.reload()
-    root.refreshThemes()
+    if (Probes.due(root.themesAt, now, Probes.THEMES_MAX_AGE_MS)) root.refreshThemes()
     root.checkReminders()
     root.refreshZones()
     requests.request("omarchy-commands")
@@ -2130,9 +2162,11 @@ Item {
       }
     }
   }
-  // Each his alone (0700), made so or made so now; again at each open, so
-  // one deleted while the shell runs is not made again at 0755 by the next
-  // write (the marketplace's review, 2026-10-10).
+  // Each his alone (0700), made so or made so now: at start, and at an
+  // open only until they are made. Made again at every open, they cost a
+  // fork each time to cover a folder deleted while the shell runs, which
+  // the next write would make again at 0755 (the marketplace's review,
+  // 2026-10-10).
   function makeFolders() {
     cacheMaker.run(["/usr/bin/install", "-d", "-m", "700", root.cacheDir, root.stateDir, root.cacheDir + "/ask", root.dataDir])
   }
@@ -3298,6 +3332,18 @@ Item {
   }
 
   // ---------------------------------------------------------------- themes
+
+  // The current theme, watched: a switch is the next open's at once, with
+  // no probe at each open (lib/Probes.js keeps the list ten minutes). The
+  // name is written after the theme is in place (omarchy-theme-set), and
+  // read once it has settled.
+  FileView {
+    path: root.home + "/.local/state/omarchy/current/theme.name"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: { reload(); themeSwitched.restart() }
+  }
+  Timer { id: themeSwitched; interval: 200; onTriggered: { themeColors.reload(); root.refreshThemes() } }
 
   function refreshThemes() {
     themesReader.run(["/usr/bin/bash", "-c",
