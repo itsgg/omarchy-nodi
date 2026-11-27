@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
@@ -35,8 +36,6 @@ function fileOf(settings, home) {
   if (f === "~" || f.indexOf("~/") === 0) f = home + f.slice(1)
   return f.charAt(0) === "/" ? f : ""
 }
-
-function tilde(path, home) { return home && path.indexOf(home + "/") === 0 ? "~" + path.slice(home.length) : path }
 
 // The file's lines as [{ n, text, date }], a dated note's date apart.
 function linesOf(text) {
@@ -89,17 +88,17 @@ var provider = {
     if (add) {
       var text = add[1].replace(/\s+/g, " ").trim()
       if (!file) return [{ title: "The notes file is no path", subtitle: "\"notes\": { \"file\": \"~/notes.md\" }", icon: ICON, score: 40, copy: "", remember: false }]
-      if (!text) return [{ title: "Add a note", subtitle: "A dated line in " + tilde(file, home), icon: ICON, score: 40, copy: "", remember: false, hint: "note <text>" }]
-      return [{ key: "note:add", title: "Note: " + text, subtitle: "Adds a dated line to " + tilde(file, home), icon: ICON, score: 98,
+      if (!text) return [{ title: "Add a note", subtitle: "A dated line in " + Util.tilde(file, home), icon: ICON, score: 40, copy: "", remember: false, hint: "note <text>" }]
+      return [{ key: "note:add", title: "Note: " + text, subtitle: "Adds a dated line to " + Util.tilde(file, home), icon: ICON, score: 98,
                 run: Run.shell(ADD, [file], text), actionLabel: "Add", copy: text, remember: false }]
     }
     var find = String(query).match(/^\s*notes\s+(.*)$/i)
     if (!find) return []
     if (!file || !ctx.request) return []
     var got = ctx.request("notes-file", file)
-    if (!Array.isArray(got.value)) return [Rows.waiting(got, "Reading the notes...", "The notes could not be read", { subtitle: tilde(file, home), icon: ICON })]
+    if (!Array.isArray(got.value)) return [Rows.waiting(got, "Reading the notes...", "The notes could not be read", { subtitle: Util.tilde(file, home), icon: ICON })]
     var lines = got.value
-    if (!lines.length) return [{ title: "No notes yet", subtitle: "note <text> adds one to " + tilde(file, home), icon: ICON, score: 40, copy: "", remember: false }]
+    if (!lines.length) return [{ title: "No notes yet", subtitle: "note <text> adds one to " + Util.tilde(file, home), icon: ICON, score: 40, copy: "", remember: false }]
     var words = Match.fold(find[1] || "").split(/\s+/).filter(function(w) { return w })
     var out = []
     for (var i = lines.length - 1; i >= 0 && out.length < (words.length ? 50 : LIMIT); i--) {
@@ -111,9 +110,9 @@ var provider = {
       out.push({ key: l.n ? "note:" + l.n : "note:t:" + l.raw.slice(0, 200), title: l.text.length > 110 ? l.text.slice(0, 107) + "..." : l.text,
                  subtitle: (l.date ? l.date + (l.n ? ", " : "") : "") + (l.n ? "line " + l.n : ""), icon: ICON, score: 97 - out.length * 0.01, copy: l.text,
                  remember: false, run: Run.shell(OPEN, [file, String(l.n || 1)]), actionLabel: "Open",
-                 preview: { title: tilde(file, home), subtitle: l.n ? "Line " + l.n : "", text: around(lines, i), mono: true } })
+                 preview: { title: Util.tilde(file, home), subtitle: l.n ? "Line " + l.n : "", text: around(lines, i), mono: true } })
     }
-    if (!out.length) return [{ title: "No note holds \"" + find[1].trim() + "\"", subtitle: tilde(file, home), icon: ICON, score: 40, copy: "", remember: false }]
+    if (!out.length) return [{ title: "No note holds \"" + find[1].trim() + "\"", subtitle: Util.tilde(file, home), icon: ICON, score: 40, copy: "", remember: false }]
     return out
   }
 }

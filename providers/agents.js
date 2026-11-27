@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
@@ -121,8 +122,6 @@ function limitsOf(records) {
   return out
 }
 
-function pad(n) { return (n < 10 ? "0" : "") + n }
-
 var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -131,7 +130,7 @@ var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oc
 function resets(at, nowMs) {
   if (!(at > 0)) return ""
   var d = new Date(at)
-  var clock = pad(d.getHours()) + ":" + pad(d.getMinutes())
+  var clock = Util.pad(d.getHours()) + ":" + Util.pad(d.getMinutes())
   if (at <= nowMs) return "reset at " + clock + "; the record is older"
   var mins = Math.round((at - nowMs) / 60000)
   if (mins >= 24 * 60) return "resets on " + DAYS[d.getDay()] + " " + d.getDate() + " " + MONTHS[d.getMonth()] + " at " + clock

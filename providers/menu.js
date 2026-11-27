@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Match.js" as Match
 .import "../lib/Menu.js" as Menu
 .import "../lib/Run.js" as Run
@@ -99,12 +100,10 @@ var SYNONYMS = {
   "learn.arch": ["arch wiki"]
 }
 
-// Own keys only: a user's menu id can be `constructor`.
-function own(table, id) { return Object.prototype.hasOwnProperty.call(table, id) ? table[id] : undefined }
-
 // By the row's key (lib/Menu.js key): the same words for a row Omarchy
-// renamed or split into "-on" and "-off".
-function synonyms(id) { return own(SYNONYMS, Menu.key(id)) || [] }
+// renamed or split into "-on" and "-off". Own keys only: a user's menu id
+// can be `constructor`.
+function synonyms(id) { return Util.own(SYNONYMS, Menu.key(id)) || [] }
 
 function leafWords(id) {
   return String(id).split(".").pop().replace(/[_-]+/g, " ")
@@ -192,7 +191,7 @@ function rowFor(hit, ctx, chords) {
   }
   if (item.kind === "action") {
     row.run = Run.shell(item.action)
-    if (own(CONFIRM, item.id)) row.confirm = true
+    if (Util.own(CONFIRM, item.id)) row.confirm = true
     if (toggle) {
       var b = Toggles.badge((ctx.toggleStates || {})[toggle.id])
       row.badge = b.text
@@ -271,7 +270,7 @@ var provider = {
     // its submenu first, then what is in it, where it answered nothing
     // but the web's searches (the replay of his picks, 2026-10-06).
     // Own keys: "constructor" is a word, not an installer gate (codex 2026-10-04).
-    var gate = own(GATE_WORDS, qw[0]) || ""
+    var gate = Util.own(GATE_WORDS, qw[0]) || ""
     var words = gate ? qw.slice(1) : qw
     var text = gate ? (words.length ? words.join(" ") : gate) : q
 

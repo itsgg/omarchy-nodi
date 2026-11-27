@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/tzcities.js" as Tz
 .import "../lib/Score.js" as Score
 
@@ -17,8 +18,6 @@ var WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday"
 var MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
 var WD_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 var MON_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-
-function pad(n) { return (n < 10 ? "0" : "") + n }
 
 // ---------------------------------------------------------------- zones
 
@@ -55,9 +54,9 @@ function clock(d, ctx) {
   if (ctx.settings && ctx.settings.clock24 === false) {
     var suffix = h < 12 ? "am" : "pm"
     h = h % 12 || 12
-    return h + ":" + pad(m) + " " + suffix
+    return h + ":" + Util.pad(m) + " " + suffix
   }
-  return pad(h) + ":" + pad(m)
+  return Util.pad(h) + ":" + Util.pad(m)
 }
 
 function wallDay(d) { return Math.floor(d.getTime() / DAY_MS) }
@@ -73,7 +72,7 @@ function dayShift(targetWall, refWall) {
 function offsetText(minutes) {
   var sign = minutes < 0 ? "-" : "+"
   var abs = Math.abs(minutes)
-  return "UTC" + sign + Math.floor(abs / 60) + (abs % 60 ? ":" + pad(abs % 60) : "")
+  return "UTC" + sign + Math.floor(abs / 60) + (abs % 60 ? ":" + Util.pad(abs % 60) : "")
 }
 
 function zoneRow(zone, utcMs, ctx, score) {
@@ -321,7 +320,7 @@ function formatDate(d) {
   return WD_SHORT[d.getDay()] + ", " + d.getDate() + " " + MON_SHORT[d.getMonth()] + " " + year4(d)
 }
 
-function isoDate(d) { return year4(d) + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) }
+function isoDate(d) { return year4(d) + "-" + Util.pad(d.getMonth() + 1) + "-" + Util.pad(d.getDate()) }
 
 function relative(days) {
   if (days === 0) return "today"

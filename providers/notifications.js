@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 
@@ -8,14 +9,6 @@
 // what clicking the toast did, the argv the sender attached; one with none
 // copies its text. Silencing, dismissing and the shell's own history panel
 // are Omarchy's keybindings and menu toggle, rows already.
-
-function ago(ms, now) {
-  var s = Math.max(0, Math.round((now - ms) / 1000))
-  if (s < 60) return "just now"
-  if (s < 3600) return Math.floor(s / 60) + " min ago"
-  if (s < 86400) return Math.floor(s / 3600) + " h ago"
-  return Math.floor(s / 86400) + " d ago"
-}
 
 // One JSON object per line, as the source prints them; the newest first.
 function parse(text, ok) {
@@ -46,7 +39,7 @@ function rowFor(n, tier, nowMs, i) {
   return {
     key: "notification:" + n.at,
     title: n.summary,
-    subtitle: [n.app, n.body, ago(n.at, nowMs)].filter(function(x) { return x }).join(", "),
+    subtitle: [n.app, n.body, Util.ago(nowMs - n.at)].filter(function(x) { return x }).join(", "),
     icon: n.glyph || "󰂚",
     tier: tier,
     kind: "item",

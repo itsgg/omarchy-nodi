@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
@@ -52,15 +53,13 @@ function param(settings) {
   return feeds.length ? JSON.stringify({ calendars: feeds, me: String((settings && settings.me) || "") }) : ""
 }
 
-function pad(n) { return (n < 10 ? "0" : "") + n }
-
 function clock(ms, h24) {
   var d = new Date(ms)
-  if (h24) return pad(d.getHours()) + ":" + pad(d.getMinutes())
-  return (d.getHours() % 12 || 12) + ":" + pad(d.getMinutes()) + (d.getHours() < 12 ? " AM" : " PM")
+  if (h24) return Util.pad(d.getHours()) + ":" + Util.pad(d.getMinutes())
+  return (d.getHours() % 12 || 12) + ":" + Util.pad(d.getMinutes()) + (d.getHours() < 12 ? " AM" : " PM")
 }
 
-function isoOf(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) }
+function isoOf(d) { return d.getFullYear() + "-" + Util.pad(d.getMonth() + 1) + "-" + Util.pad(d.getDate()) }
 
 // "Today", "Tomorrow", or "Thursday 8 Oct", for a day as lib/ics.py gives it.
 function dayName(iso, nowMs) {

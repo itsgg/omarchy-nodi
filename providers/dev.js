@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
@@ -31,10 +32,6 @@ function terminal(dir, cmd) {
   if (dir) argv.push("--dir=" + dir)
   if (cmd && cmd.length) argv = argv.concat(["--"], cmd)
   return Run.terminal(argv)
-}
-
-function tilde(path, home) {
-  return home && String(path).indexOf(home + "/") === 0 ? "~" + String(path).slice(home.length) : String(path)
 }
 
 // "git<TAB>/path" for a repository, "z<TAB>score<TAB>/path" for a folder
@@ -382,7 +379,7 @@ function projectRows(q, ctx, home) {
   var out = []
   for (var i = 0; i < list.length; i++) {
     var p = list[i]
-    var t = Score.tier(q, { name: p.name, whole: true, keywords: [p.git ? "project repo repository git" : "folder"], context: tilde(p.path, home) })
+    var t = Score.tier(q, { name: p.name, whole: true, keywords: [p.git ? "project repo repository git" : "folder"], context: Util.tilde(p.path, home) })
     if (!t) continue
     var actions = [
       { label: "Open in your editor", icon: "󰨞", run: Run.exec(["omarchy-launch-editor", p.path]) },
@@ -391,7 +388,7 @@ function projectRows(q, ctx, home) {
     ]
     if (p.git) actions.splice(1, 0, { label: "Open in lazygit", icon: "󰊢", run: terminal(p.path, ["lazygit"]) })
     out.push({
-      key: "project:" + p.path, title: p.name, subtitle: tilde(p.path, home) + (p.git ? ", git" : ""),
+      key: "project:" + p.path, title: p.name, subtitle: Util.tilde(p.path, home) + (p.git ? ", git" : ""),
       icon: p.git ? "󰊢" : "󰉋", tier: t, kind: "item", offset: (p.git ? 0 : -0.5) + Math.min(0.4, p.score / 100),
       copy: p.path, run: terminal(p.path), actionLabel: "Terminal", actions: actions, group: "Projects"
     })
