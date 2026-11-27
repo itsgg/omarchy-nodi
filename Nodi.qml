@@ -215,6 +215,7 @@ Item {
       root.entered = false
       Qt.callLater(function() { root.entered = true })
       root.wideForOpen = false
+      root.frameShows = false
       root.openRec = Opens.start(Date.now(), root.openBy || "call", false)
     }
     root.openBy = ""
@@ -732,12 +733,22 @@ Item {
     onLoadFailed: root.openTimesLoaded = true
   }
 
-  // The first frame the bar's window swaps after the open.
+  // The first frame the bar's window swaps that shows the card (Opens.shows):
+  // one held is not seen (contentHeld), and one made while the entrance
+  // still had it at opacity 0 showed nothing. The card's opacity is read as
+  // a frame is made, after its animations step (afterAnimating), and that
+  // frame stamped once swapped; a card already whole stamps at its swap.
+  property bool frameShows: false
   Connections {
     target: card.Window.window
     ignoreUnknownSignals: true
-    // The first frame that shows the card: one held is not seen (contentHeld).
-    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1 && !root.contentHeld) Opens.stamp(root.openRec, "frame", Date.now()) }
+    function onAfterAnimating() {
+      if (root.openRec && root.openRec.frame === -1) root.frameShows = Opens.shows(card.opacity, root.contentHeld)
+    }
+    function onFrameSwapped() {
+      if (!root.openRec || root.openRec.frame !== -1) return
+      if (root.frameShows || (card.opacity >= 1 && Opens.shows(card.opacity, root.contentHeld))) Opens.stamp(root.openRec, "frame", Date.now())
+    }
   }
 
   // Hyprland maps the layer: what the compositor shows.
