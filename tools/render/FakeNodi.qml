@@ -124,7 +124,10 @@ QtObject {
   function activate(index) { fake.note("activate", [index]) }
   function openLink(url) { fake.note("openLink", [url]) }
   function toast(title, body) { fake.note("toast", [title, body]) }
-  function pasteInput(target) { fake.note("pasteInput", [target]) }
+  // The paste keys' reader (components/SelectionReads.qml).
+  readonly property QtObject selections: QtObject {
+    function pasteInput(target) { fake.note("pasteInput", [target]) }
+  }
   function openPalette() { fake.note("openPalette", [fake.selectedIndex]); return fake.opens }
   // What openPalette answers: whether the row had actions to open.
   property bool opens: true

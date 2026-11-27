@@ -7,6 +7,7 @@ import { root } from "./load.mjs";
 const card = readFileSync(join(root, "components/Card.qml"), "utf8");
 const nodi = readFileSync(join(root, "Nodi.qml"), "utf8");
 const homeSources = readFileSync(join(root, "components/HomeSources.qml"), "utf8");
+const selections = readFileSync(join(root, "components/SelectionReads.qml"), "utf8");
 const ask = readFileSync(join(root, "components/Ask.qml"), "utf8");
 const actions = readFileSync(join(root, "lib/NodiActions.js"), "utf8");
 
@@ -16,9 +17,9 @@ test("the card keeps no editable TextInput alive", () => {
 });
 
 test("all native paste paths are replaced by the bounded reader", () => {
-  assert.match(nodi, /timeoutMs:\s*2000/);
-  assert.match(nodi, /maxBytes:\s*65536/);
-  assert.match(nodi, /id:\s*pasteReader[\s\S]*?terminateLines:\s*false/,
+  assert.match(selections, /timeoutMs:\s*2000/);
+  assert.match(selections, /maxBytes:\s*65536/);
+  assert.match(selections, /id:\s*pasteReader[\s\S]*?terminateLines:\s*false/,
     "explicit paste keeps exact clipboard text instead of Reader's synthetic line ending");
   assert.doesNotMatch(card, /\bReader\s*\{/);
   assert.equal((card.match(/StandardKey\.Paste/g) || []).length, 2);
@@ -53,8 +54,8 @@ test("prompt context is built only where a turn is sent, and never logged", () =
 });
 
 test("explicit paste advances the cursor and agent paste waits for confirmation", () => {
-  const insert = nodi.slice(nodi.indexOf("  function insertPaste("),
-                            nodi.indexOf("\n  function ", nodi.indexOf("  function insertPaste(") + 1));
+  const insert = selections.slice(selections.indexOf("  function insertPaste("),
+                                  selections.indexOf("\n  function ", selections.indexOf("  function insertPaste(") + 1));
   assert.match(insert, /field\.insert\(start,\s*value\)[\s\S]*field\.cursorPosition\s*=\s*start\s*\+\s*value\.length/);
   const resultStart = actions.indexOf('n === "askResult"');
   const result = actions.slice(resultStart,

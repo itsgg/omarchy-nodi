@@ -57,8 +57,8 @@ Item {
       nodi.prefs = Prefs.empty()
       nodi.agentAvailability = ({ limited: true, free: true })
       nodi.open("{}")
-      nodi.selection = "teh"
-      nodi.selectionSource = "selection"
+      nodi.selections.selection = "teh"
+      nodi.selections.selectionSource = "selection"
       askNow.start()
     }
   }

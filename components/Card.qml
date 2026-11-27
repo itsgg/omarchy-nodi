@@ -329,7 +329,7 @@ BorderSurface {
             // From the modifiers too, so a Ctrl already down when the bar opens counts.
             nodi.ctrlHeld = event.key === Qt.Key_Control || (event.modifiers & Qt.ControlModifier) !== 0
             if (event.matches(StandardKey.Paste)) {
-              nodi.pasteInput("input")
+              nodi.selections.pasteInput("input")
               event.accepted = true
               return
             }
@@ -412,7 +412,7 @@ BorderSurface {
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
             if (event.matches(StandardKey.Paste)) {
-              nodi.pasteInput("palette")
+              nodi.selections.pasteInput("palette")
               event.accepted = true
               return
             }

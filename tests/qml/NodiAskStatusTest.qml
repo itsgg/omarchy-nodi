@@ -48,9 +48,9 @@ Item {
       go: function() {
         nodi.cameFrom = test.window()
         test.pinWindows([{ address: "0xa", workspaceId: 3, pid: Number(test.pid) }])
-        nodi.selection = "teh"
-        nodi.selectionSource = "selection"
-        nodi.selectionSeenAt = Date.now() - 4000
+        nodi.selections.selection = "teh"
+        nodi.selections.selectionSource = "selection"
+        nodi.selections.selectionSeenAt = Date.now() - 4000
         nodi.doNodi({ nodi: "askWith", ask: { question: "Fix the selection", message: "echo prompt context fix\n\n<text>\nteh\n</text>", context: "selection", purpose: "fix" } })
       },
       want: function(m) {
@@ -60,9 +60,9 @@ Item {
       } },
     { name: "a copy", q: "Explain the copied text",
       go: function() {
-        nodi.selection = "copied words"
-        nodi.selectionSource = "clipboard"
-        nodi.copiedSeenAt = Date.now() - 100
+        nodi.selections.selection = "copied words"
+        nodi.selections.selectionSource = "clipboard"
+        nodi.selections.copiedSeenAt = Date.now() - 100
         nodi.doNodi({ nodi: "askWith", ask: { question: "Explain the copied text", message: "echo prompt context explain\n\n<text>\ncopied words\n</text>", context: "copied", purpose: "explain" } })
       },
       want: function(m) {
@@ -70,8 +70,8 @@ Item {
       } },
     { name: "an Ask that is not about the selection leaves it out", q: "echo prompt context plain",
       go: function() {
-        nodi.selection = "secret words"
-        nodi.selectionSource = "selection"
+        nodi.selections.selection = "secret words"
+        nodi.selections.selectionSource = "selection"
         nodi.input.text = "ask echo prompt context plain"
         nodi.doNodi({ nodi: "ask" })
       },
@@ -81,22 +81,22 @@ Item {
       } },
     { name: "a selection the message does not hold is left out", q: "Fix a text that is not there",
       go: function() {
-        nodi.selection = "something else"
-        nodi.selectionSource = "selection"
+        nodi.selections.selection = "something else"
+        nodi.selections.selectionSource = "selection"
         nodi.doNodi({ nodi: "askWith", ask: { question: "Fix a text that is not there", message: "echo prompt context mismatch\n\n<text>\nteh\n</text>", context: "selection", purpose: "fix" } })
       },
       want: function(m) { test.check(m.selection === undefined && m.purpose === "fix", "text not in the message: " + JSON.stringify(m)) } },
     { name: "a source the context does not name is left out", q: "Fix a text of another source",
       go: function() {
-        nodi.selection = "teh"
-        nodi.selectionSource = "clipboard"
+        nodi.selections.selection = "teh"
+        nodi.selections.selectionSource = "clipboard"
         nodi.doNodi({ nodi: "askWith", ask: { question: "Fix a text of another source", message: "echo prompt context source\n\n<text>\nteh\n</text>", context: "selection", purpose: "fix" } })
       },
       want: function(m) { test.check(m.selection === undefined, "another source: " + JSON.stringify(m)) } },
     { name: "a window picture's ask carries no selection", q: "What is in the window",
       go: function() {
-        nodi.selection = "teh"
-        nodi.selectionSource = "selection"
+        nodi.selections.selection = "teh"
+        nodi.selections.selectionSource = "selection"
         nodi.doNodi({ nodi: "askWith", ask: { question: "What is in the window", message: "echo prompt context window teh", context: "window", purpose: "ask" } })
       },
       want: function(m) { test.check(m.selection === undefined && m.window && m.window.cwd === test.real, "window context: " + JSON.stringify(m)) } },

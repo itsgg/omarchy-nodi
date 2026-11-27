@@ -271,14 +271,11 @@ Item {
     // bar's rows wait for it, a quarter second at most: read after the
     // frame, the copied text's rows landed over Recent a moment after it
     // showed (his report 2026-10-07).
-    root.openGen++
     if (starting) {
-      root.selection = ""
-      root.selectionFresh = false
       root.homeHeld = true
       homeHold.restart()
     }
-    root.readSelection()
+    root.selections.readSelection(starting)
     // The other reads that put rows at the top, started now where they
     // apply, so the hold knows they are on their way.
     root.readAhead(true)
@@ -393,35 +390,44 @@ Item {
 
   Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
 
-  // The text selected in the window you came from, read once an open
-  // (providers/selection.js, ROADMAP 47): Wayland's primary selection,
-  // which data-control gives a client without the focus. Fresh for two
-  // minutes from when it was first seen, as a kept query is: reopened over
-  // the same text its rows are still there, and a selection made long ago
-  // leads nothing (Fable 2026-10-06: fresh for one open only hid them on
-  // the next). Text selected with the mouse in the bar's own field becomes
-  // the primary selection too (Qt writes it on a mouse release), so the
-  // field's own text is never taken for one.
-  // Text copied with Ctrl+C counts too, by the same two minutes: on
-  // Wayland a copy sets the clipboard, not the selection (his report
-  // 2026-10-06). Of a fresh selection and a fresh copy, the newer leads,
-  // the copy on a tie. The read is Sources.SELECTION_READ.
-  property string selection: ""
-  property bool selectionFresh: false
-  property string selectionSource: "selection"   // or "clipboard"
-  property string lastSelection: ""
-  property real selectionSeenAt: 0
-  property string lastCopied: ""
-  property real copiedSeenAt: 0
-
-  // This open's read, tagged with it: a read still running from the last
-  // open lands as the last open's, and this one's waits behind it (Cursor
-  // 2026-10-07).
-  property int openGen: 0
-  property bool selectionPending: false
-  function readSelection() {
-    root.selectionPending = true
-    selectionReader.run(Sources.selectionArgv(), { gen: root.openGen })
+  // The text selected in the window you came from, and the bar's paste
+  // keys (components/SelectionReads.qml). Its read's end redraws the rows:
+  // held, they are drawn once, now that it is read.
+  readonly property SelectionReads selections: SelectionReads {
+    input: root.input
+    paletteInput: card.paletteInput
+    opened: root.opened
+    paletteOpen: root.paletteOpen
+    keepMs: root.keepQueryMs
+    onWarn: function(title, body) { root.toast(title, body) }
+    onLanded: function(ok, had) {
+      Opens.stamp(root.openRec, "selection", Date.now())
+      if (!ok) {
+        // Rows made from an earlier read go too (Fable 2026-10-06).
+        if (root.homeHeld) {
+          root.settleHome()
+          if (root.homeHeld && !root.contentHeld && root.opened && had) root.recompute()
+        } else if (root.opened && had) root.recompute()
+        return
+      }
+      var got = root.selections.selection
+      // Held, the rows are drawn once, now that it is read; a query on show
+      // meanwhile (a payload's) is answered with it at once (Cursor
+      // 2026-10-07: it waited for the hold).
+      if (root.homeHeld) {
+        root.settleHome()
+        if (root.homeHeld && !root.contentHeld && root.opened) root.recompute()
+        return
+      }
+      // The open began with none: any selection redraws (`tr ta`, `case `),
+      // as does one gone since an open while the bar was up, and a fresh
+      // one's first row is chosen while he is still at the top, a kept
+      // query's too (Fable 2026-10-06).
+      if (!root.opened || (got === "" && !had)) return
+      var top = root.selections.selectionFresh && root.selectedIndex === 0
+      root.recompute()
+      if (top) root.selectedIndex = 0
+    }
   }
 
   // The empty bar's rows, held until what may lead them is read: the
@@ -441,7 +447,7 @@ Item {
   // them after).
   function settled(key) { var e = requests.cache[key]; return !!e && !e.pending }
   function homeReadsIn() {
-    if (root.selectionPending) return false
+    if (root.selections.selectionPending) return false
     if (root.providerOn("chooser") && Chooser.dialogOf(root.cameFrom) && !root.settled("chooser-folders")) return false
     var feeds = Calendars.param(root.configFiles.config.calendar)
     if (feeds && root.providerOn("calendar") && !root.settled("calendar:" + feeds)) return false
@@ -467,110 +473,6 @@ Item {
     root.recompute()
     if (top) root.selectedIndex = 0
     Qt.callLater(function() { card.animated = shown || !root.readsPending })
-  }
-
-  // A copy the bar makes itself is no copy of his to act on: seen, and
-  // stale (Fable 2026-10-06: "Copied: 96" led the next open).
-  function markOwnCopy(text) {
-    root.lastCopied = Sources.clean(text)
-    root.copiedSeenAt = 0
-  }
-
-  Reader {
-    id: selectionReader
-    timeoutMs: 1000
-    maxBytes: 140000
-    onFinished: function(text, ok, tag) {
-      // The last open's read: this open's own waits behind it.
-      if (!tag || tag.gen !== root.openGen) return
-      root.selectionPending = false
-      // A read that failed or was cut off knows nothing: this open has no
-      // text, and what was seen before stays seen (Fable 2026-10-06: it
-      // made an old copy look new at the next read).
-      var had = root.selection !== ""
-      Opens.stamp(root.openRec, "selection", Date.now())
-      if (!ok) {
-        root.selection = ""
-        root.selectionFresh = false
-        // Rows made from an earlier read go too (Fable 2026-10-06).
-        if (root.homeHeld) {
-          root.settleHome()
-          if (root.homeHeld && !root.contentHeld && root.opened && had) root.recompute()
-        } else if (root.opened && had) root.recompute()
-        return
-      }
-      // Which leads, the selection or the copy (lib/Sources.js selectionRead).
-      var r = Sources.selectionRead(Sources.selections(text), {
-        field: input.text, lastSelection: root.lastSelection, lastCopied: root.lastCopied,
-        selectionSeenAt: root.selectionSeenAt, copiedSeenAt: root.copiedSeenAt,
-        now: Date.now(), keepMs: root.keepQueryMs
-      })
-      root.selectionSeenAt = r.selectionSeenAt
-      root.copiedSeenAt = r.copiedSeenAt
-      root.lastSelection = r.lastSelection
-      root.lastCopied = r.lastCopied
-      root.selectionSource = r.source
-      root.selection = r.selection
-      root.selectionFresh = r.fresh
-      var got = root.selection
-      // Held, the rows are drawn once, now that it is read; a query on show
-      // meanwhile (a payload's) is answered with it at once (Cursor
-      // 2026-10-07: it waited for the hold).
-      if (root.homeHeld) {
-        root.settleHome()
-        if (root.homeHeld && !root.contentHeld && root.opened) root.recompute()
-        return
-      }
-      // The open began with none: any selection redraws (`tr ta`, `case `),
-      // as does one gone since an open while the bar was up, and a fresh
-      // one's first row is chosen while he is still at the top, a kept
-      // query's too (Fable 2026-10-06).
-      if (!root.opened || (got === "" && !had)) return
-      var top = root.selectionFresh && root.selectedIndex === 0
-      root.recompute()
-      if (top) root.selectedIndex = 0
-    }
-  }
-
-  // Qt 6.11's editable TextInput reads every foreign clipboard offer when
-  // it changes. Card uses TextEdit instead and sends its explicit paste keys
-  // here, where the shared Reader enforces both a deadline and a byte cap.
-  function pasteInput(target, multiline) {
-    if (!pasteReader.busy)
-      pasteReader.run(Sources.pasteArgv(), {
-        target: target, direct: typeof target !== "string",
-        multiline: multiline === true
-      })
-  }
-
-  function insertPaste(field, text, multiline) {
-    var start = field.selectionStart
-    var end = field.selectionEnd
-    if (end > start) field.remove(start, end)
-    var value = String(text || "")
-    if (!multiline) value = value.replace(/[\r\n]+/g, " ")
-    field.insert(start, value)
-    field.cursorPosition = start + value.length
-  }
-
-  Reader {
-    id: pasteReader
-    timeoutMs: 2000
-    maxBytes: 65536
-    terminateLines: false
-    onFinished: function(text, ok, tag) {
-      if (!ok) {
-        root.toast(pasteReader.overflowed ? "Paste is larger than 64 KiB" : "Could not read the clipboard", "")
-        return
-      }
-      if (!root.opened || !tag || (tag.target === "palette" && !root.paletteOpen)) return
-      var target
-      if (tag.direct === true) {
-        if (!tag.target || typeof tag.target.insert !== "function") return
-        target = tag.target
-      } else target = tag.target === "palette" ? card.paletteInput : input
-      root.insertPaste(target, text, tag.multiline === true)
-    }
   }
 
   readonly property int keepQueryMs: 120000
@@ -780,7 +682,7 @@ Item {
                 reopened: answerSession.reopened,
                 follows: answerSession.follows(answerSession.keyword, Answers.freshFor(root.configFiles.config.answers, answerSession.keyword)) },
       window: root.cameFrom,
-      selection: { text: root.selection, fresh: root.selectionFresh, source: root.selectionSource, clipboard: root.lastCopied },
+      selection: { text: root.selections.selection, fresh: root.selections.selectionFresh, source: root.selections.selectionSource, clipboard: root.selections.lastCopied },
       undo: undoer.entries,
       desktop: media
     }
@@ -938,7 +840,7 @@ Item {
     var argv = Run.command(run, root.appAction, undoable && run.kind === "exec" ? "" : (name || (snap && snap.title) || ""),
                            root.cameFrom ? root.cameFrom.address : "")
     if (!argv) return false
-    if (run.kind === "copy") root.markOwnCopy(run.text)
+    if (run.kind === "copy") root.selections.markOwnCopy(run.text)
     var query = Match.normalise(root.queryNow())
     // What was typed and shown, before the bar empties (lib/PickLog.js);
     // a pick's choice ranks nothing.
@@ -1092,7 +994,7 @@ Item {
     }
     if (a.nodi === "askWith" && (a.ask || row.ask)) {
       var askSpec = a.ask || row.ask
-      var extraEnv = askSpec.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
+      var extraEnv = askSpec.context === "selection" && root.selections.selection ? { NODI_SELECTION: root.selections.selection } : {}
       root.dispatchAsk(askSpec.question, askSpec.message, askSpec.context, askSpec.purpose, extraEnv, undefined, askSpec.file)
       return
     }
@@ -1162,7 +1064,7 @@ Item {
     }
     if (a.nodi === "link") {
       root.savePrefs(Prefs.withLink(root.prefs, row.key, snap) || root.prefs)
-      root.markOwnCopy(Hotkey.deeplink(root.pluginId, row.key))
+      root.selections.markOwnCopy(Hotkey.deeplink(root.pluginId, row.key))
       Quickshell.execDetached(Run.command(Run.copy(Hotkey.deeplink(root.pluginId, row.key))))
       root.finish()
       return
@@ -1436,7 +1338,7 @@ Item {
     if (remember) root.remember(k, "", s)
     if (s.toggle) root.desktop.flip(s.toggle)
     root.desktop.menuRan(k)
-    if (s.run.kind === "copy") root.markOwnCopy(s.run.text)
+    if (s.run.kind === "copy") root.selections.markOwnCopy(s.run.text)
     return "ok"
   }
 
@@ -1445,7 +1347,7 @@ Item {
   function doNodi(row) {
     root.applyEffects(NodiActions.decide(row, {
       query: root.queryNow(), now: Date.now(), prefs: root.prefs, aliasRow: root.aliasRow,
-      wordAsk: root.wordAsk, armedKey: root.armedKey, selection: root.selection,
+      wordAsk: root.wordAsk, armedKey: root.armedKey, selection: root.selections.selection,
       cameFrom: root.cameFrom, answers: root.configFiles.config.answers, conversations: root.conversations,
       pickSession: root.pickSession, askBusy: askSession.busy(), proposal: askSession.proposal,
       shooting: windowShot.active,
@@ -1942,13 +1844,13 @@ Item {
     var snap = {
       purpose: purpose || "",
       window: Sources.windowSnapshot(root.cameFrom, root.desktop.windows),
-      clipboard: root.lastCopied || "",
-      primarySelection: root.selection || ""
+      clipboard: root.selections.lastCopied || "",
+      primarySelection: root.selections.selection || ""
     }
     var source = context === "copied" ? "clipboard" : context === "selection" ? "selection" : ""
-    if (source && root.selectionSource === source && root.selection !== "" && String(message || "").indexOf(root.selection) !== -1) {
-      var seen = source === "clipboard" ? root.copiedSeenAt : root.selectionSeenAt
-      snap.selection = { text: root.selection, source: source === "clipboard" ? "clipboard" : "primary", ageMs: Math.max(0, Date.now() - seen) }
+    if (source && root.selections.selectionSource === source && root.selections.selection !== "" && String(message || "").indexOf(root.selections.selection) !== -1) {
+      var seen = source === "clipboard" ? root.selections.copiedSeenAt : root.selections.selectionSeenAt
+      snap.selection = { text: root.selections.selection, source: source === "clipboard" ? "clipboard" : "primary", ageMs: Math.max(0, Date.now() - seen) }
     }
     return snap
   }
@@ -1998,7 +1900,7 @@ Item {
       input.cursorPosition = input.text.length
     }
     var snap = root.askCapture(rawMessage || question, context, purpose).snapshot
-    var env = extraEnv || (context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {})
+    var env = extraEnv || (context === "selection" && root.selections.selection ? { NODI_SELECTION: root.selections.selection } : {})
 
     // Only what he typed is read for mentions (PromptContext.mentionSource):
     // selected or copied text may carry an @f: of its own.
