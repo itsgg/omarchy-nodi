@@ -2276,9 +2276,8 @@ Item {
     // Only what he typed is read for mentions (PromptContext.mentionSource):
     // selected or copied text may carry an @f: of its own.
     var targets = PromptContext.fileTargets(PromptContext.mentionSource(context, question, rawMessage), filePath, root.home)
-    var resolvedFiles = targets.map(function(t) { return t.path })
 
-    if (resolvedFiles.length > 0) {
+    if (targets.length > 0) {
       var token = Math.random()
       root.pendingFileAsk = {
         question: question, rawMessage: rawMessage, context: context,
@@ -2286,8 +2285,7 @@ Item {
         agentId: agentId, snapshot: snap, token: token,
         answerFresh: !!answerFresh, commandQuery: commandQuery
       }
-      var pythonScript = 'import sys, os, stat\nfor p in sys.argv[1:]:\n    try:\n        fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK)\n        try:\n            st = os.fstat(fd)\n            if stat.S_ISREG(st.st_mode):\n                data = os.read(fd, 16384).decode("utf-8", errors="replace")\n                print("---NODI_FILE---")\n                print(p)\n                print(data)\n        finally:\n            os.close(fd)\n    except Exception:\n        pass'
-      askFileReader.run(["/usr/bin/python3", "-c", pythonScript].concat(resolvedFiles), root.pendingFileAsk)
+      askFileReader.run(PromptContext.fileReadArgv(targets), root.pendingFileAsk)
       return
     }
 
@@ -2555,21 +2553,15 @@ Item {
   Reader {
     id: askFileReader
     timeoutMs: 1000
-    maxBytes: 65536
+    maxBytes: PromptContext.FILE_READ_BYTES
     cancelable: true
     onFinished: function(text, ok, tag) {
       if (!tag || !root.pendingFileAsk || root.pendingFileAsk.token !== tag.token) return
       var pending = root.pendingFileAsk
       root.pendingFileAsk = null
-      if (ok && text) {
-        var reads = {}
-        var parts = text.split("---NODI_FILE---\n")
-        for (var pi = 1; pi < parts.length; pi++) {
-          var nl = parts[pi].indexOf("\n")
-          if (nl !== -1) reads[parts[pi].slice(0, nl)] = parts[pi].slice(nl + 1)
-        }
-        pending.snapshot.files = PromptContext.attachFiles(pending.snapshot.files, pending.targets, reads)
-      }
+      // A file not read is said so in the prompt (PromptContext.fileReads).
+      pending.snapshot.files = PromptContext.attachFiles(pending.snapshot.files, pending.targets,
+                                                         PromptContext.fileReads(text, ok, pending.targets))
       root.finishDispatchAsk(
         pending.question, pending.rawMessage, pending.context,
         pending.purpose, pending.extraEnv, pending.image, pending.snapshot, pending.agentId,
