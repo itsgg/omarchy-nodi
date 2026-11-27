@@ -146,3 +146,12 @@ test("a toggle whose row the menu lost gets Nodi's own, and only then", () => {
   assert.equal(Toggles.byMenu("appearance.windows.gaps-on").id, "window-gaps");
   assert.equal(Toggles.byMenu("trigger.toggle.window-gaps").id, "window-gaps", "the older id still names it");
 });
+
+test("do-not-disturb is read by Omarchy 4.5's isDnd, and by dndState before it", () => {
+  const now = probe((home, bin) => stub(bin, "omarchy-shell",
+    '[ "$1 $2" = "notifications isDnd" ] && { echo on; exit 0; }; echo "Function not found"; exit 1'));
+  assert.equal(now.notifications.on, false, "dnd on: notifications OFF");
+  const before = probe((home, bin) => stub(bin, "omarchy-shell",
+    '[ "$1 $2" = "notifications dndState" ] && { echo off; exit 0; }; echo "Function not found"; exit 1'));
+  assert.equal(before.notifications.on, true);
+});
