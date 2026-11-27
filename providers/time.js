@@ -93,6 +93,19 @@ function pending() {
   return [{ title: "Looking up time zones...", subtitle: "Time", score: 30, copy: "" }]
 }
 
+// A zone the read left out once it has landed is one tzdata does not have
+// (lib/Sources.js ZONES_READ): a misspelt time.zones or time.home.
+function unknownZone(zone, score) {
+  return { title: "Unknown time zone: " + zone, subtitle: "No such zone in tzdata; check time.zones and time.home in the config",
+           icon: "󰀦", score: score, copy: "" }
+}
+
+// The rows when a zone asked for has no offset: still reading, or unknown.
+function missing(ready, names, ctx) {
+  if (!ready) return pending()
+  return names.filter(function(z) { return !ctx.zones[z] }).map(function(z) { return unknownZone(z, 88) })
+}
+
 function matchZones(q, ctx) {
   var nowMs = ctx.now().getTime()
   var ready = ctx.zones && Object.keys(ctx.zones).length > 0
@@ -102,7 +115,8 @@ function matchZones(q, ctx) {
     var zones = [homeZone(ctx)].concat((ctx.settings && ctx.settings.zones) || [])
     var rows = []
     for (var i = 0; i < zones.length; i++) {
-      if (ctx.zones[zones[i]] && (i === 0 || zones[i] !== zones[0])) rows.push(zoneRow(zones[i], nowMs, ctx, 85 - i))
+      if (i > 0 && zones[i] === zones[0]) continue
+      rows.push(ctx.zones[zones[i]] ? zoneRow(zones[i], nowMs, ctx, 85 - i) : unknownZone(zones[i], 85 - i))
     }
     return rows
   }
@@ -111,7 +125,7 @@ function matchZones(q, ctx) {
   if (m) {
     var zone = resolveZone(m[1], ctx)
     if (!zone) return []
-    if (!ready || !ctx.zones[zone]) return pending()
+    if (!ready || !ctx.zones[zone]) return missing(ready, [zone], ctx)
     return [zoneRow(zone, nowMs, ctx, 88)]
   }
 
@@ -127,7 +141,7 @@ function matchZones(q, ctx) {
     var from = m[4] ? resolveZone(m[4], ctx) : homeZone(ctx)
     var to = resolveZone(m[5], ctx)
     if (!from || !to) return []
-    if (!ready || !ctx.zones[from] || !ctx.zones[to]) return pending()
+    if (!ready || !ctx.zones[from] || !ctx.zones[to]) return missing(ready, [from, to], ctx)
 
     // Today's date as seen in the source zone, at the requested wall time.
     var srcToday = wall(nowMs, from, ctx)

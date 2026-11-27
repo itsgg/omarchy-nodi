@@ -2869,12 +2869,8 @@ Item {
     if (zonesReader.busy || Date.now() - root.zonesFetchedAt < 60 * 60 * 1000) return
     var t = root.config.time || {}
     var extra = (t.zones || []).concat(t.home ? [t.home] : [])
-    // "@local Europe/Berlin" first, then "zone +hhmm ABBR" per zone.
-    zonesReader.run(["/usr/bin/bash", "-c",
-      "lz=$(timedatectl show -p Timezone --value 2>/dev/null); "
-      + "[ -n \"$lz\" ] || lz=$(readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||'); "
-      + "echo \"@local $lz\"; "
-      + "for z in \"$@\" $lz; do printf '%s ' \"$z\"; TZ=\"$z\" date +'%z %Z'; done", "nodi-zones"].concat(Tz.allZones(extra)))
+    // Sources.ZONES_READ: the local zone, then each zone tzdata has.
+    zonesReader.run(Sources.zonesArgv(Tz.allZones(extra)))
   }
 
   Reader {
