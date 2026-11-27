@@ -284,3 +284,14 @@ test("mentions count only in what he typed: never in selected or copied text", (
   assert.deepEqual(plain(P.parseFileMentions(P.mentionSource("file", "Explain a.txt", fileRaw))), [{ token: "f", rawPath: "/home/u/a.txt" }]);
   assert.ok(P.expandFor("", "explain @c", "explain @c", snap).includes('[Clipboard: "CLIP"]'));
 });
+
+test("a file read is found under the path as he wrote it, ~ and all", () => {
+  const typed = "explain @f:~/notes.md and @f:/home/u/notes.md and @f:rel.txt and @f:~other/x";
+  const targets = plain(P.fileTargets(typed, "", "/home/u"));
+  assert.deepEqual(targets, [{ path: "/home/u/notes.md", raws: ["~/notes.md", "/home/u/notes.md"] }], "relative and ~user paths are not read");
+  assert.deepEqual(plain(P.fileTargets("@f:~/a", "", "")), [], "no home, no ~ read");
+  assert.deepEqual(plain(P.fileTargets("x @f:/b", "/a", "/h")).map(t => t.path), ["/a", "/b"], "the file it is about first");
+  const files = P.attachFiles({}, P.fileTargets(typed, "", "/home/u"), { "/home/u/notes.md": "NOTES" });
+  assert.equal(P.expandMentions("explain @f:~/notes.md", { files }), 'explain [File "~/notes.md":\nNOTES\n]');
+  assert.equal(P.expandMentions("and @f:/home/u/notes.md", { files }), 'and [File "/home/u/notes.md":\nNOTES\n]');
+});

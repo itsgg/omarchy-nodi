@@ -2268,29 +2268,14 @@ Item {
 
     // Only what he typed is read for mentions (PromptContext.mentionSource):
     // selected or copied text may carry an @f: of its own.
-    var fileMentions = PromptContext.parseFileMentions(PromptContext.mentionSource(context, question, rawMessage))
-    var targetFiles = []
-    if (filePath) targetFiles.push(filePath)
-    for (var fi = 0; fi < fileMentions.length; fi++) {
-      var fp = fileMentions[fi].rawPath
-      if (targetFiles.indexOf(fp) === -1) targetFiles.push(fp)
-    }
-
-    var resolvedFiles = []
-    for (var i = 0; i < targetFiles.length; i++) {
-      var p = targetFiles[i]
-      if (p.charAt(0) === "~") {
-        var home = Quickshell.env("HOME") || ""
-        p = home ? p.replace(/^~(?=\/|$)/, home) : p
-      }
-      if (p.charAt(0) === "/" && resolvedFiles.indexOf(p) === -1) resolvedFiles.push(p)
-    }
+    var targets = PromptContext.fileTargets(PromptContext.mentionSource(context, question, rawMessage), filePath, root.home)
+    var resolvedFiles = targets.map(function(t) { return t.path })
 
     if (resolvedFiles.length > 0) {
       var token = Math.random()
       root.pendingFileAsk = {
         question: question, rawMessage: rawMessage, context: context,
-        purpose: purpose, extraEnv: env, image: image, targetFiles: resolvedFiles,
+        purpose: purpose, extraEnv: env, image: image, targets: targets,
         agentId: agentId, snapshot: snap, token: token,
         answerFresh: !!answerFresh, commandQuery: commandQuery
       }
@@ -2560,16 +2545,13 @@ Item {
       var pending = root.pendingFileAsk
       root.pendingFileAsk = null
       if (ok && text) {
-        pending.snapshot.files = pending.snapshot.files || {}
+        var reads = {}
         var parts = text.split("---NODI_FILE---\n")
         for (var pi = 1; pi < parts.length; pi++) {
           var nl = parts[pi].indexOf("\n")
-          if (nl !== -1) {
-            var fPath = parts[pi].slice(0, nl)
-            var fData = parts[pi].slice(nl + 1)
-            pending.snapshot.files[fPath] = fData
-          }
+          if (nl !== -1) reads[parts[pi].slice(0, nl)] = parts[pi].slice(nl + 1)
         }
+        pending.snapshot.files = PromptContext.attachFiles(pending.snapshot.files, pending.targets, reads)
       }
       root.finishDispatchAsk(
         pending.question, pending.rawMessage, pending.context,
