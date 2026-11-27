@@ -143,7 +143,9 @@ test("readers: the cap and the deadline hold outside Quickshell", () => {
   assert.equal(long.out.length, 1000); assert.equal(long.status, S.OVERFLOW, "one long line without a newline is cut too");
   const started = Date.now();
   assert.equal(go(["sleep", "30"], 1000, 100).status, S.TIMEOUT);
-  assert.ok(Date.now() - started < 5000, "the deadline kills the program");
+  // Slack against the program's own 30 s, not against the 1 s deadline: a
+  // busy machine is slow to start the reader, never 15 s slow.
+  assert.ok(Date.now() - started < 15000, "the deadline kills the program");
   assert.equal(go(["false"], 1000, 100).status, 1, "the program's own failure comes through");
 });
 
