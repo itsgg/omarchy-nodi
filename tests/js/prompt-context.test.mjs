@@ -391,3 +391,33 @@ test("an Ask's file read fits its cap, frames each file so no content forges ano
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a file read through a link is named with the file it leads to", async () => {
+  const { mkdtempSync, writeFileSync, symlinkSync, mkdirSync, rmSync, realpathSync } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "nodi-ask-link-")));
+  try {
+    mkdirSync(join(dir, "ssh"));
+    mkdirSync(join(dir, "download"));
+    const key = join(dir, "ssh", "id_ed25519");
+    writeFileSync(key, "PRIVATE KEY");
+    const link = join(dir, "download", "README.md");
+    symlinkSync(key, link);
+    const plainFile = join(dir, "download", "notes.txt");
+    writeFileSync(plainFile, "notes");
+    const targets = [{ path: link, raws: [link] }, { path: plainFile, raws: [plainFile] }];
+    const argv = P.fileReadArgv(targets);
+    const reads = plain(P.fileReads(execFileSync(argv[0], argv.slice(1), { encoding: "utf8" }), true, targets));
+    assert.equal(reads[link].real, key);
+    assert.equal(reads[plainFile].real, undefined, "no link, nothing more said");
+    const files = P.attachFiles({}, targets, reads);
+    const message = "Explain what this file does:\n" + P.formatFileMention(link);
+    const out = P.expandFor("file", "Explain README.md", message, { files });
+    assert.ok(out.includes('[File "' + link + '", a link to "' + key + '":\nPRIVATE KEY'), out);
+    assert.equal(P.expandMentions("@f:" + plainFile, { files }), '[File "' + plainFile + '":\nnotes\n]');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
