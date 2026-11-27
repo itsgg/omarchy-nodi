@@ -159,6 +159,26 @@ test("Omarchy's real menu parses, and its guards run in one batch", { skip: !exi
   assert.ok(Object.values(g.checked).filter(Boolean).length >= 1, "at least one current choice is marked");
 });
 
+test("every menu id Nodi names is in Omarchy's real menu", { skip: !existsSync("/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc") }, () => {
+  const real = Menu.merge([Menu.parseItems(readFileSync("/usr/share/omarchy/default/omarchy/omarchy-menu.jsonc", "utf8"))]);
+  const keys = new Set(real.order.map(id => Menu.key(id)));
+  const actions = new Set(real.order.filter(id => real.items[id].action).map(id => Menu.key(id)));
+  const P = load("providers/menu.js");
+  const T = load("lib/Toggles.js");
+  const own = T.extras(real).map(t => t.id);
+  for (const t of T.TABLE) if (t.menu) assert.ok(actions.has(t.menu) || own.includes(t.id), "toggle " + t.menu);
+  for (const id of Object.keys(P.SYNONYMS)) assert.ok(keys.has(id), "synonym " + id);
+  for (const id of Object.keys(P.CONFIRM)) assert.ok(actions.has(Menu.key(id)), "confirm " + id);
+  // The gates' trees and the subtrees they let through.
+  const prefixes = ["install", "remove"];
+  for (const m of P.UNGATED.source.matchAll(/(install|remove)\\\.\(([^)]+)\)/g)) for (const leaf of m[2].split("|")) prefixes.push(m[1] + "." + leaf);
+  assert.ok(prefixes.length > 4, "read the subtrees of " + P.UNGATED.source);
+  for (const p of prefixes) {
+    assert.ok(P.GATED.test(p), p + " is gated");
+    assert.ok(real.items[p], "gate " + p);
+  }
+});
+
 test("guards: the package list is kept until the package database changes, the readers run side by side", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-guards-"));
   try {
