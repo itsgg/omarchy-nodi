@@ -248,7 +248,7 @@ function themeRows(needle, ctx) {
 
 function extraRows(q, ctx) {
   var out = []
-  var toggles = Toggles.extras()
+  var toggles = Toggles.extras(ctx.menu)
   for (var i = 0; i < toggles.length; i++) {
     var t = toggles[i]
     var tier = Score.tier(q, { name: t.title, keywords: t.keywords })

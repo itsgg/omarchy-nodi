@@ -895,6 +895,7 @@ Item {
     else Quickshell.execDetached(argv)
     if (run.kind === "app") launchFeedback.begin(name || (snap && snap.title) || run.id)
     if (key) root.remember(key, query, snap)
+    if (Menu.staleAfter(key)) root.guardsAt = 0
     if (toggleId) {
       root.toggleStates = Toggles.flipped(root.toggleStates, toggleId)
       toggleReprobe.restart()
@@ -1427,6 +1428,7 @@ Item {
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     if (remember) root.remember(k, "", s)
     if (s.toggle) { root.toggleStates = Toggles.flipped(root.toggleStates, s.toggle); toggleReprobe.restart() }
+    if (Menu.staleAfter(k)) root.guardsAt = 0
     if (s.run.kind === "copy") root.markOwnCopy(s.run.text)
     return "ok"
   }
