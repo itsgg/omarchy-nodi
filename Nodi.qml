@@ -2587,24 +2587,13 @@ Item {
     }
   }
 
+  // A direct Ask's query, and the question a query asks (lib/Agents.js).
   function queryUsesDirectAgent(query) {
-    if (!root.directAskAgent) return null
-    var direct = String(query || "").match(/^\s*(\S+)(?:\s+(.*))?$/)
-    var agent = Agents.byId(root.askRegistry, root.directAskAgent)
-    if (!direct || !agent) return false
-    var token = direct[1].toLowerCase()
-    if (token !== String(agent.id).toLowerCase()
-        && token !== String(agent.name || "").toLowerCase()) return false
-    return true
+    return Agents.usesDirect(query, root.askRegistry, root.directAskAgent)
   }
 
   function askQuestion(query) {
-    var text = String(query || "")
-    var ordinary = text.match(/^\s*ask\s+(.*)$/i)
-    if (ordinary) return ordinary[1].trim()
-    if (!root.queryUsesDirectAgent(text)) return null
-    var direct = text.match(/^\s*(\S+)(?:\s+(.*))?$/)
-    return String(direct[2] || "").trim()
+    return Agents.askQuestion(query, root.askRegistry, root.directAskAgent)
   }
 
   // The answer the card shows, while the query is the question it answers:

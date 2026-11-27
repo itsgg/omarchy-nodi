@@ -97,3 +97,21 @@ test("sessions from the script's lines: windowed, by isSession", () => {
     { tool: "codex", pid: "3", cwd: "/home/u/c", address: "0xc", argv: ["-p", "work"], said: "", at: 7 }];
   assert.deepEqual(plain(run("agents", { agentSessions: sessions }).filter(r => r.key.startsWith("agents:session")).map(r => r.title)), ["Claude Code in ~/b", "Codex in ~/c"]);
 });
+
+test("a query asks Ask after `ask `, or the agent asked directly by its id or name", () => {
+  const A = load("lib/Agents.js");
+  const registry = A.registry({});
+  const codex = A.byId(registry, "codex");
+  assert.ok(codex, "codex is registered");
+  assert.equal(A.usesDirect("codex why", registry, ""), null);
+  assert.equal(A.usesDirect("Codex why", registry, "codex"), true);
+  assert.equal(A.usesDirect(String(codex.name).toUpperCase() + " why", registry, "codex"), true);
+  assert.equal(A.usesDirect("claude why", registry, "codex"), false);
+  assert.equal(A.usesDirect("   ", registry, "codex"), false);
+  assert.equal(A.usesDirect("x", registry, "nobody"), false);
+  assert.equal(A.askQuestion(" ASK  why so ", registry, ""), "why so");
+  assert.equal(A.askQuestion("codex  why ", registry, "codex"), "why");
+  assert.equal(A.askQuestion("codex", registry, "codex"), "");
+  assert.equal(A.askQuestion("codex why", registry, ""), null);
+  assert.equal(A.askQuestion("askwhy", registry, ""), null);
+});
