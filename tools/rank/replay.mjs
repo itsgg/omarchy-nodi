@@ -73,13 +73,15 @@ export function seed(saved, log, assumeEarlier) {
 // state allows, and picking it flips the state. The replay cannot ask the
 // state, so both show until one is picked; after, only the other. Without
 // it "not" found Notifications On a minute after it was picked for
-// "notif", where the bar showed Silence Notifications instead.
-function flipped(when, items, key) {
+// "notif", where the bar showed Silence Notifications instead. A logged
+// pick of a half says that half was shown then, as when the state changed
+// outside Nodi: `flip` false sets that before it is ranked.
+function toggled(when, items, key, flip) {
   const m = /^menu:(.+)-(on|off)$/.exec(String(key));
   if (!m) return when;
-  const other = m[1] + "-" + (m[2] === "on" ? "off" : "on");
-  if (!items || !items[other] || !items[m[1] + "-" + m[2]]) return when;
-  return Object.assign(Object.create(null), when, { [m[1] + "-" + m[2]]: false, [other]: true });
+  const own = m[1] + "-" + m[2], other = m[1] + "-" + (m[2] === "on" ? "off" : "on");
+  if (!items || !items[other] || !items[own]) return when;
+  return Object.assign(Object.create(null), when, { [own]: !flip, [other]: !!flip });
 }
 
 // The services a replay runs over: this machine's lists from
@@ -123,6 +125,7 @@ export function replay(log, base, cfg) {
     // so never learned here (ROADMAP 87).
     if (String(e.key).indexOf("fallback:") === 0) continue;
     const at = e.at;
+    when = toggled(when, menu && menu.items, e.key, false);
     const svc = Object.assign({}, base, { history, picks, now: () => new Date(at) }, menu ? { menu: Object.assign({}, menu, { when }) } : {});
     const run = q => Engine.run(q, cfg, svc);
     const query = Match.normalise(e.query);
@@ -133,7 +136,7 @@ export function replay(log, base, cfg) {
     const before = lettersToFirst(query, e.key, run);
     history = History.record(history, e.key, at, History.snapshot(row));
     if (query) picks = History.pick(picks, query, e.key, at);
-    when = flipped(when, menu && menu.items, e.key);
+    when = toggled(when, menu && menu.items, e.key, true);
     const taught = Object.assign({}, svc, { history, picks }, menu ? { menu: Object.assign({}, menu, { when }) } : {});
     const after = lettersToFirst(query, e.key, q => Engine.run(q, cfg, taught));
     out.push({ query: e.query, key: e.key, logged: e.rank, place, before, after, gone: false });

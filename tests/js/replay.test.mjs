@@ -82,10 +82,15 @@ test("a replay starts from the history handed in: a query picked before the log 
 
 test("a menu toggle picked shows its other state's row after, as its when: has the bar do", () => {
   const merged = Menu.merge([Menu.parseItems('{ "quiet-on": {"label":"Quiet On","action":"true"}, "quiet-off": {"label":"Quiet Off","action":"true"} }')]);
-  const svc = services({ history: {}, picks: {}, menu: { items: merged.items, order: merged.order, when: {}, checked: {} } });
-  const log = [{ at: t, query: "quiet on", key: "menu:quiet-on", rank: 1 }, { at: t + 60000, query: "quiet", key: "menu:quiet-off", rank: 1 }];
-  const r = replay(log, svc, config);
-  assert.deepEqual(r.map(x => x.place), [1, 1], "Quiet On, picked for a longer query, is hidden at the next pick, not lifted over Quiet Off");
+  const svc = () => services({ history: {}, picks: {}, menu: { items: merged.items, order: merged.order, when: {}, checked: {} } });
+  const log = [{ at: t, query: "quiet on", key: "menu:quiet-on", rank: 1 }, { at: t + 60000, query: "quiet", key: "menu:quiet-off", rank: 1 },
+               { at: t + 120000, query: "quiet", key: "menu:quiet-on", rank: 1 }];
+  const r = replay(log, svc(), config);
+  assert.deepEqual(r.map(x => [x.place, x.after, x.gone]), [[1, 0, false], [1, 0, false], [1, 0, false]],
+                   "Quiet On, picked for a longer query, is hidden at the next pick, not lifted over Quiet Off; each half picked is hidden after");
+  const twice = replay([log[0], Object.assign({}, log[0], { at: t + 60000 })], svc(), config);
+  assert.deepEqual(twice.map(x => [x.place, x.gone]), [[1, false], [1, false]],
+                   "picked again, toggled outside Nodi in between: it was shown, and is ranked and learned");
 });
 
 test("a replay lists no windows: which were open at each pick is not logged", () => {
