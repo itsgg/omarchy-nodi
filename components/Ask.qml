@@ -5,6 +5,7 @@ import "../lib/Acp.js" as Acp
 import "../lib/AskTools.js" as AskTools
 import "../lib/AskActions.js" as AskActions
 import "../lib/AskOrigin.js" as AskOrigin
+import "../lib/AskServe.js" as AskServe
 import "../lib/Agents.js" as Agents
 import "../lib/PromptContext.js" as PromptContext
 import "../lib/AskInteraction.js" as AskInteraction
@@ -1559,124 +1560,30 @@ Item {
   }
 
   // `nodi mcp --ask`'s one carried relay envelope (Nodi.qml askMcp).
-  // Authentication happens before call, poll, or cancel is dispatched.
+  // Authentication happens before call, poll, or cancel is dispatched
+  // (lib/AskServe.js envelope).
   function serveCall(arg) {
-    var o = null
-    try { o = JSON.parse(String(arg)) } catch (e) { o = null }
-    if (!o || typeof o !== "object" || typeof o.token !== "string"
-        || typeof o.channel !== "string" || typeof o.op !== "string")
-      return JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "not a message for Ask" } })
-    if ((o.op === "poll" || o.op === "cancel") && typeof o.ticket === "string"
-        && Object.prototype.hasOwnProperty.call(ask.retiredToolResponses, o.ticket)) {
-      var retired = ask.retiredToolResponses[o.ticket]
-      if (o.token !== retired.token || o.channel !== retired.channel) return ""
-      delete ask.retiredToolResponses[o.ticket]
+    var d = AskServe.envelope(arg, ask.retiredToolResponses, {
+      token: ask.token, channel: ask.channel, recycling: ask.recycling
+    })
+    if (d.retired !== undefined) {
+      delete ask.retiredToolResponses[d.retired]
       ask.retiredToolResponseCount--
       ask.retiredToolResponsesChanged()
-      return o.op === "cancel" ? "ok" : retired.response
     }
-    if (!ask.token || o.token !== ask.token || !ask.channel
-        || o.channel !== ask.channel || ask.recycling) {
-      var staleId = null
-      var staleRequest = false
-      if (o.op === "call" && typeof o.line === "string") {
-        try {
-          var stale = JSON.parse(o.line)
-          staleRequest = !!stale && typeof stale === "object"
-            && stale.id !== undefined && typeof stale.method === "string"
-          if (staleRequest) staleId = stale.id
-        } catch (e) {}
-      }
-      return staleRequest
-        ? JSON.stringify({ jsonrpc: "2.0", id: staleId, error: { code: -32603, message: "This question's session has ended" } })
-        : ""
-    }
-    if (o.op === "poll" && typeof o.ticket === "string")
-      return JSON.stringify(ask.pollToolResponse(o.ticket))
-    if (o.op === "cancel" && typeof o.ticket === "string") {
-      ask.cancelToolResponse(o.ticket)
+    if (d.op === "poll") return JSON.stringify(ask.pollToolResponse(d.ticket))
+    if (d.op === "cancel") {
+      ask.cancelToolResponse(d.ticket)
       return "ok"
     }
-    if (o.op !== "call" || typeof o.line !== "string")
-      return JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32600, message: "not a message for Ask" } })
-    return String(ask.serve(o.token, o.channel, o.line))
+    if (d.op === "call") return String(ask.serve(d.token, d.channel, d.line))
+    return d.reply
   }
 
   // One message from the agent's `nodi mcp --ask`: the answer as a line,
-  // "" for a notification. A server another session started reaches
-  // nothing.
+  // "" for a notification (lib/AskServe.js).
   function serve(token, channel, line) {
-    var m = null
-    try { m = JSON.parse(String(line)) } catch (e) { return JSON.stringify({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "parse error" } }) }
-    var isRequest = !!m && typeof m === "object" && m.id !== undefined && typeof m.method === "string"
-    if (!ask.token || String(token) !== ask.token || !ask.channel
-        || String(channel) !== ask.channel || ask.recycling)
-      return isRequest ? JSON.stringify({ jsonrpc: "2.0", id: m.id, error: { code: -32603, message: "This question's session has ended" } }) : ""
-    var isRun = isRequest && m.method === "tools/call" && m.params && m.params.name === "run"
-    if (isRun) {
-      var replayRelay = ask.relayOrigin(m, m.id)
-      var replayArgs = m.params.arguments && typeof m.params.arguments === "object"
-        && !Array.isArray(m.params.arguments) ? m.params.arguments : {}
-      var pendingItem = ask.toolRequests[ask.toolRequestKey(m.id)]
-      // A live ID already owns its origin and shared mailbox. Validate a
-      // duplicate before consuming another origin or touching that mailbox.
-      if (pendingItem
-          && (pendingItem.state === "pending"
-              || pendingItem.state === "committed")) {
-        var accepted = ask.actionRequest(m.id)
-        var joined = accepted
-          ? ask.validateRunReplay(m.id, replayArgs, ask.actionServer,
-                                  replayRelay)
-          : { ok: false, error: "The pending action request has no accepted origin" }
-        if (!joined.ok)
-          return JSON.stringify(ask.actionResponse(m.id,
-            { status: "error", message: joined.error }, true))
-        var joinedTicket = ask.pendingToolResponse(m.id)
-        if (joinedTicket)
-          return JSON.stringify({ nodiPending: joinedTicket })
-        var capacityResult = ask.toolResponseFor(m.id)
-        return capacityResult ? JSON.stringify(capacityResult)
-          : JSON.stringify(ask.actionResponse(m.id, {
-              status: "error",
-              message: ask.capacityFailure || "The action session reached its capacity."
-            }, true))
-      }
-      if (ask.toolResponseFor(m.id)) {
-        var replay = ask.validateRunReplay(m.id, replayArgs, ask.actionServer,
-                                           replayRelay)
-        if (!replay.ok)
-          return JSON.stringify(ask.actionResponse(m.id,
-            { status: "error", message: replay.error }, true))
-        var replayTicket = ask.pendingToolResponse(m.id)
-        return replayTicket
-          ? JSON.stringify({ nodiPending: replayTicket })
-          : JSON.stringify(ask.toolResponseFor(m.id))
-      }
-      var args = replayArgs
-      var owned = ask.takeRunOrigin(m.id, args, ask.actionServer,
-                                    replayRelay)
-      var ticket = ask.pendingToolResponse(m.id)
-      if (!ticket) {
-        var capacityResponse = ask.toolResponseFor(m.id)
-        return capacityResponse ? JSON.stringify(capacityResponse)
-          : JSON.stringify(ask.actionResponse(m.id, {
-              status: "error",
-              message: ask.capacityFailure || "The action session reached its capacity."
-            }, true))
-      }
-      if (!owned.ok) {
-        ask.rememberOriginRejection(m.id, args, ask.actionServer, replayRelay)
-        ask.publishAction(m.id, { status: "error", message: owned.error }, true)
-        return JSON.stringify({ nodiPending: ticket })
-      }
-      ask.runTool(m.id, AskTools.runInput(args), owned.origin)
-      return JSON.stringify({ nodiPending: ticket })
-    }
-    var r = AskTools.mcp(m, {
-      search: function(q) { return ask.searcher ? ask.searcher(q, ask.actionTurn) : [] },
-      run: function(input) { return "" }
-    })
-    return r ? JSON.stringify(r) : ""
+    return AskServe.serve(ask, token, channel, line)
   }
 
   function preProposalFailure(requestId, message) {
@@ -1690,84 +1597,9 @@ Item {
     return AskOrigin.proposalGate(ask.originState(), origin)
   }
 
+  // lib/AskServe.js decides; the steps it takes are Ask's own.
   function runTool(requestId, input, origin) {
-    var begun = AskActions.begin(ask.actionBook, {
-      id: requestId,
-      session: origin.session,
-      turn: origin.turn,
-      channel: origin.channel,
-      callId: origin.callId,
-      providerTurn: origin.providerTurn || "",
-      adapterKey: origin.adapterKey || "",
-      inputKey: origin.inputKey,
-      operation: origin.operation || ("run:" + typeof requestId + ":" + String(requestId)),
-      server: origin.server,
-      kind: input.ok ? input.kind : "invalid",
-      value: input.ok ? input.value : null
-    })
-    ask.actionBook = begun.book
-    var effect = begun.effect || {}
-    if (effect.type === "join") return
-    if (effect.type === "replay") {
-      ask.publishAction(requestId, effect.result, effect.result.status === "error")
-      return
-    }
-    if (effect.type === "capacity") {
-      ask.sessionCapacityExceeded("action request records")
-      return
-    }
-    if (effect.type !== "resolve") {
-      ask.publishAction(requestId, {
-        status: "error", message: String(effect.error || "The action could not be started.")
-      }, true)
-      return
-    }
-    if (!input.ok) {
-      ask.preProposalFailure(requestId, input.error)
-      return
-    }
-    var gate = ask.proposalGate(origin)
-    if (gate) {
-      ask.preProposalFailure(requestId, gate)
-      return
-    }
-
-    var resolved
-    try {
-      resolved = ask.resolver ? ask.resolver(effect.kind, effect.value, origin.turn)
-                              : { ok: false, error: "The bar cannot resolve rows here." }
-    } catch (e) {
-      resolved = { ok: false, error: String(e) }
-    }
-    if (!resolved || !resolved.ok || !resolved.snapshot) {
-      ask.preProposalFailure(requestId,
-        resolved && resolved.error ? resolved.error : "No matching row")
-      return
-    }
-    gate = ask.proposalGate(origin)
-    if (gate) {
-      ask.preProposalFailure(requestId, gate)
-      return
-    }
-
-    var proposalId = ask.token + ":proposal:" + (++ask.nextProposal)
-    var snapshot = Object.assign({}, resolved.snapshot, {
-      id: proposalId,
-      session: origin.session,
-      turn: origin.turn,
-      operation: effect.operation
-    })
-    var proposed = AskActions.resolve(ask.actionBook, requestId, snapshot, proposalId)
-    ask.actionBook = proposed.book
-    if (!proposed.effect || proposed.effect.type !== "confirm") {
-      ask.publishAction(requestId, { status: "error", message: "The action request became stale." }, true)
-      return
-    }
-    ask.proposal = {
-      kind: "action", id: proposalId, requestId: requestId,
-      snapshot: ask.actionBook.proposal.snapshot, at: Date.now()
-    }
-    ask.phase = "proposing"
+    AskServe.runTool(ask, requestId, input, origin)
   }
 
   // ---------------------------------------------------------------- the process
