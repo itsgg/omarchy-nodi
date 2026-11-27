@@ -155,7 +155,7 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
 // 5. Agents
 {
   const src = read("Nodi.qml");
-  if (!/function agentRows\(q\) \{ return Engine\.agentRows\(q, root\.config, root\.services\(\)\) \}/.test(src))
+  if (!/function agentRows\(q\) \{ return Engine\.agentRows\(q, root\.configFiles\.config, root\.services\(\)\) \}/.test(src))
     problems.push("Nodi.qml: agentRows is not Engine.agentRows");
   const body = (src.match(/function runKey\(key, confirmed, agent\) \{[\s\S]*?\n  \}\n/) || [""])[0];
   const plan = (read("lib/NodiMcp.js").match(/function runPlan\(o\) \{[\s\S]*?\n\}\n/) || [""])[0];

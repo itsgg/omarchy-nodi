@@ -17,7 +17,7 @@ Item {
 
   function check(ok, what) { if (!ok) test.failures.push(what) }
   function configure() {
-    nodi.defaultConfig = {
+    nodi.configFiles.defaultConfig = {
       providers: ["system", "ask"],
       fallbacks: [],
       ask: {
@@ -28,13 +28,13 @@ Item {
         ]
       }
     }
-    nodi.userConfig = ({})
+    nodi.configFiles.userConfig = ({})
     nodi.prefs = Prefs.withAskAgent(Prefs.empty(), "beta")
     test.checkActionResolution()
   }
 
   function checkActionResolution() {
-    if (typeof nodi.askSnapshot !== "function" || typeof nodi.askResolve !== "function") {
+    if (typeof nodi.askBridge.askSnapshot !== "function" || typeof nodi.askBridge.askResolve !== "function") {
       test.failures.push("Nodi has no immutable action resolver")
       return
     }
@@ -42,19 +42,19 @@ Item {
     test.check(exploratory.length >= 2 && exploratory[0].key === "volume:5"
                && exploratory[1].key === "volume:-5",
                "exploratory volume search lost its runnable rows: " + JSON.stringify(exploratory))
-    var volume = nodi.askResolve("query", "volume", "turn-direct")
+    var volume = nodi.askBridge.askResolve("query", "volume", "turn-direct")
     test.check(volume.ok === false && !volume.snapshot && /cannot run/i.test(volume.error || ""),
                "direct volume substituted a lower runnable row: " + JSON.stringify(volume))
-    var help = nodi.askResolve("query", "?", "turn-direct")
+    var help = nodi.askBridge.askResolve("query", "?", "turn-direct")
     test.check(help.ok === false && /help/i.test(help.error || ""),
                "a help top row was not explicitly rejected: " + JSON.stringify(help))
-    var owned = nodi.askResolve("query", "ask firefox", "turn-direct")
+    var owned = nodi.askBridge.askResolve("query", "ask firefox", "turn-direct")
     test.check(owned.ok === false && /Nodi/i.test(owned.error || ""),
                "a Nodi-owned top row was not explicitly rejected: " + JSON.stringify(owned))
-    var runnable = nodi.askResolve("query", "volume up", "turn-direct")
+    var runnable = nodi.askBridge.askResolve("query", "volume up", "turn-direct")
     test.check(runnable.ok && runnable.snapshot.key === "volume:5",
                "a normal runnable top row did not resolve: " + JSON.stringify(runnable))
-    var typed = nodi.askCheckRow({
+    var typed = nodi.askBridge.askCheckRow({
       key: "danger", title: "Danger", confirmWord: "ERASE",
       run: { kind: "exec", argv: ["/usr/bin/test-action", "danger"] }
     })
@@ -64,8 +64,8 @@ Item {
       confirmWord: "", toggle: "locked", remember: true, undoable: true,
       run: { kind: "exec", argv: ["/usr/bin/test-action", "first"] }
     }
-    nodi.askRows = ({ turn: "turn-1", rows: ({ "menu:system.lock": row }) })
-    var resolved = nodi.askResolve("key", "menu:system.lock", "turn-1")
+    nodi.askBridge.askRows = ({ turn: "turn-1", rows: ({ "menu:system.lock": row }) })
+    var resolved = nodi.askBridge.askResolve("key", "menu:system.lock", "turn-1")
     test.check(resolved.ok && resolved.snapshot.key === "menu:system.lock",
                "the searched key did not resolve: " + JSON.stringify(resolved))
     row.run.argv[1] = "second"
@@ -76,9 +76,9 @@ Item {
                  && resolved.snapshot.history && resolved.snapshot.undoable === true,
                  "the action snapshot omitted commit data: " + JSON.stringify(resolved.snapshot))
     }
-    var stale = nodi.askResolve("key", "menu:system.lock", "turn-2")
+    var stale = nodi.askBridge.askResolve("key", "menu:system.lock", "turn-2")
     test.check(stale.ok === false, "a stale turn resolved search rows")
-    var rejected = nodi.askCommit({
+    var rejected = nodi.askBridge.askCommit({
       key: "bad", title: "Bad", run: { kind: "not-a-run" },
       toggle: "", rememberKey: "", history: null, undoable: false
     })
@@ -97,10 +97,10 @@ Item {
     id: setup
     onExited: {
       test.configure()
-      var alpha = nodi.askAgents.filter(function(a) { return a.id === "alpha" })[0]
+      var alpha = nodi.askBridge.askAgents.filter(function(a) { return a.id === "alpha" })[0]
       test.check(alpha && alpha.available === false,
                  "an unprobed agent appeared available: " + JSON.stringify(alpha))
-      test.check(!nodi.selectAskAgent("alpha"), "an unprobed non-current agent was selectable")
+      test.check(!nodi.askBridge.selectAskAgent("alpha"), "an unprobed non-current agent was selectable")
       firstProbe.start()
     }
   }
@@ -111,9 +111,9 @@ Item {
     repeat: true
     property int ticks: 0
     onTriggered: {
-      if ((nodi.agentAvailability.alpha !== true || nodi.agentAvailability.beta !== false) && ++ticks < 100) return
+      if ((nodi.askBridge.agentAvailability.alpha !== true || nodi.askBridge.agentAvailability.beta !== false) && ++ticks < 100) return
       stop()
-      test.check(nodi.resolvedAgent === "alpha", "the unavailable remembered beta did not fall back: " + nodi.resolvedAgent)
+      test.check(nodi.askBridge.resolvedAgent === "alpha", "the unavailable remembered beta did not fall back: " + nodi.askBridge.resolvedAgent)
       settled.start()
     }
   }
@@ -122,7 +122,7 @@ Item {
     id: settled
     interval: 500
     onTriggered: {
-      test.check(nodi.agentAvailability.beta === false, "beta changed before the open reprobe")
+      test.check(nodi.askBridge.agentAvailability.beta === false, "beta changed before the open reprobe")
       installBeta.command = ["/usr/bin/ln", "-sf", test.fake, test.base + "/beta"]
       installBeta.running = true
     }
@@ -144,10 +144,10 @@ Item {
     repeat: true
     property int ticks: 0
     onTriggered: {
-      if (nodi.resolvedAgent !== "beta" && ++ticks < 40) return
+      if (nodi.askBridge.resolvedAgent !== "beta" && ++ticks < 40) return
       stop()
-      test.check(nodi.agentAvailability.beta === true, "open did not refresh beta availability")
-      test.check(nodi.resolvedAgent === "beta", "remembered beta did not recover after install: " + nodi.resolvedAgent)
+      test.check(nodi.askBridge.agentAvailability.beta === true, "open did not refresh beta availability")
+      test.check(nodi.askBridge.resolvedAgent === "beta", "remembered beta did not recover after install: " + nodi.askBridge.resolvedAgent)
       removeAlpha.running = true
     }
   }
@@ -167,9 +167,9 @@ Item {
     repeat: true
     property int ticks: 0
     onTriggered: {
-      if (nodi.agentAvailability.alpha !== false && ++ticks < 40) return
+      if (nodi.askBridge.agentAvailability.alpha !== false && ++ticks < 40) return
       stop()
-      test.check(nodi.agentAvailability.alpha === false, "open did not notice removed non-current alpha")
+      test.check(nodi.askBridge.agentAvailability.alpha === false, "open did not notice removed non-current alpha")
       restoreAlpha.command = ["/usr/bin/ln", "-sf", test.fake, test.base + "/alpha"]
       restoreAlpha.running = true
     }
@@ -189,9 +189,9 @@ Item {
     repeat: true
     property int ticks: 0
     onTriggered: {
-      if (nodi.agentAvailability.alpha !== true && ++ticks < 40) return
+      if (nodi.askBridge.agentAvailability.alpha !== true && ++ticks < 40) return
       stop()
-      test.check(nodi.agentAvailability.alpha === true, "open did not notice restored non-current alpha")
+      test.check(nodi.askBridge.agentAvailability.alpha === true, "open did not notice restored non-current alpha")
       nodi.input.text = "alpha say ok"
       nodi.doNodi({ nodi: "askAs", data: { id: "alpha", question: "say ok" } })
       directDone.start()
@@ -211,10 +211,10 @@ Item {
                  "the direct Alpha turn did not finish on Alpha: " + JSON.stringify(ask))
       test.check(nodi.askOn && nodi.askShown === "ok",
                  "the direct Alpha answer was not shown in the pane")
-      test.check(nodi.resolvedAgent === "beta" && nodi.prefs.askAgent === "beta",
+      test.check(nodi.askBridge.resolvedAgent === "beta" && nodi.prefs.askAgent === "beta",
                  "the one-shot Alpha prefix changed the remembered default")
       nodi.input.text = "ask say a lot"
-      test.check(nodi.directAskAgent === "" && nodi.effectiveAskAgent === "beta",
+      test.check(nodi.askBridge.directAskAgent === "" && nodi.askBridge.effectiveAskAgent === "beta",
                  "leaving the direct query did not restore the remembered agent")
       startQuestion.start()
     }
@@ -239,7 +239,7 @@ Item {
       stop()
       test.check(nodi.services().ask.phase === "streaming", "the beta turn never became active: " + nodi.services().ask.phase)
       nodi.input.text = "ask keep these words"
-      nodi.shotAsk = ({ question: "pending capture", message: "pending capture", context: "window" })
+      nodi.askBridge.shotAsk = ({ question: "pending capture", message: "pending capture", context: "window" })
       routePalette.start()
     }
   }
@@ -268,21 +268,21 @@ Item {
       var ask = nodi.services().ask
       test.check(nodi.input.text === "ask keep these words", "palette switch changed the field: " + nodi.input.text)
       test.check(nodi.prefs.askAgent === "alpha", "palette switch did not save alpha: " + nodi.prefs.askAgent)
-      test.check(nodi.resolvedAgent === "alpha", "palette switch did not resolve alpha: " + nodi.resolvedAgent)
+      test.check(nodi.askBridge.resolvedAgent === "alpha", "palette switch did not resolve alpha: " + nodi.askBridge.resolvedAgent)
       test.check(!nodi.paletteOpen, "palette stayed open")
-      test.check(nodi.shotAsk === null, "palette switch left a pending screenshot question")
+      test.check(nodi.askBridge.shotAsk === null, "palette switch left a pending screenshot question")
       test.check(ask.phase === "idle" && ask.question === "" && ask.message === "",
                  "palette switch sent or kept the old turn: " + ask.phase + "/" + ask.question + "/" + ask.message)
-      nodi.agentAvailability = ({ alpha: true, beta: false })
+      nodi.askBridge.agentAvailability = ({ alpha: true, beta: false })
       nodi.prefs = Prefs.withAskAgent(nodi.prefs, "beta")
-      nodi.askRows = ({ turn: "kept", rows: ({ "menu:kept": { key: "menu:kept" } }) })
-      nodi.selectAskAgent("alpha")
-      test.check(!!nodi.askRows.rows["menu:kept"], "selecting the current agent cleared its action rows")
+      nodi.askBridge.askRows = ({ turn: "kept", rows: ({ "menu:kept": { key: "menu:kept" } }) })
+      nodi.askBridge.selectAskAgent("alpha")
+      test.check(!!nodi.askBridge.askRows.rows["menu:kept"], "selecting the current agent cleared its action rows")
       test.check(nodi.prefs.askAgent === "alpha", "selecting the current fallback did not remember it")
-      nodi.agentAvailability = ({ alpha: true, beta: true, agy: true })
-      test.check(nodi.selectAskAgent("gemini"), "a legacy Gemini selection was rejected")
+      nodi.askBridge.agentAvailability = ({ alpha: true, beta: true, agy: true })
+      test.check(nodi.askBridge.selectAskAgent("gemini"), "a legacy Gemini selection was rejected")
       test.check(nodi.prefs.askAgent === "agy", "a legacy Gemini selection was not persisted as Agy")
-      test.check(nodi.resolvedAgentId === "agy", "a legacy Gemini selection did not resolve to Agy")
+      test.check(nodi.askBridge.resolvedAgentId === "agy", "a legacy Gemini selection did not resolve to Agy")
       fallback.start()
     }
   }
@@ -305,7 +305,7 @@ Item {
     interval: 200
     onTriggered: {
       var ask = nodi.services().ask
-      test.check(nodi.resolvedAgent === "beta" && nodi.prefs.askAgent === "beta", "fallback did not switch to beta")
+      test.check(nodi.askBridge.resolvedAgent === "beta" && nodi.prefs.askAgent === "beta", "fallback did not switch to beta")
       test.check(nodi.input.text === "ask fallback question", "fallback field: " + nodi.input.text)
       test.check(ask.phase === "idle" && ask.question === "fallback question"
                  && ask.message === "say a lot" && ask.context === "selection",
@@ -336,7 +336,7 @@ Item {
     id: removeBetaForAvailability
     command: ["/usr/bin/rm", "-f", "--", test.base + "/beta"]
     onExited: {
-      nodi.agentAvailability = ({ alpha: true, beta: false })
+      nodi.askBridge.agentAvailability = ({ alpha: true, beta: false })
       availabilitySwitched.start()
     }
   }
@@ -346,7 +346,7 @@ Item {
     interval: 50
     onTriggered: {
       var ask = nodi.services().ask
-      test.check(nodi.resolvedAgent === "alpha", "availability change did not resolve alpha: " + nodi.resolvedAgent)
+      test.check(nodi.askBridge.resolvedAgent === "alpha", "availability change did not resolve alpha: " + nodi.askBridge.resolvedAgent)
       test.check(ask.phase === "idle" && ask.question === "" && ask.message === "",
                  "availability change kept the old turn: " + ask.phase + "/" + ask.question + "/" + ask.message)
       nodi.dismiss()
@@ -370,7 +370,7 @@ Item {
     id: deadline
     interval: 90000
     onTriggered: {
-      test.failures.push("timed out: availability " + JSON.stringify(nodi.agentAvailability) + ", resolved " + nodi.resolvedAgent)
+      test.failures.push("timed out: availability " + JSON.stringify(nodi.askBridge.agentAvailability) + ", resolved " + nodi.askBridge.resolvedAgent)
       cleanup.running = true
     }
   }

@@ -54,7 +54,7 @@ test("a result action is proposed, opened, typed or asked by what it holds", () 
   assert.deepEqual(open[0].args, ["https://a", { ask: true, turn: "t1" }]);
   assert.deepEqual(decide({ nodi: "askResult", data: { index: 0 } }, at({ query: 4 }))[0], { do: "text", text: "4", cursor: true });
   const prompt = decide({ nodi: "askResult", data: { index: 0 } }, at({ prompt: "why" }));
-  assert.deepEqual(steps(prompt), ["text", "dispatchAsk", "recompute"]);
+  assert.deepEqual(steps(prompt), ["text", "bridge.dispatchAsk", "recompute"]);
   assert.deepEqual(prompt[1].args, ["why", "why", "", "ask"]);
   assert.deepEqual(steps(decide({ nodi: "askResult", data: { index: 0 } }, at({ other: 1 }))), ["recompute"]);
 });
@@ -68,7 +68,7 @@ test("an Ask about the selection carries it in NODI_SELECTION", () => {
 
 test("New question recycles Ask unless it is busy, back on its prefix", () => {
   assert.deepEqual(decide({ nodi: "askNew" }, { askBusy: true }), []);
-  assert.deepEqual(steps(decide({ nodi: "askNew" })), ["ask.recycle", "set directAskAgent", "text", "recompute"]);
+  assert.deepEqual(steps(decide({ nodi: "askNew" })), ["ask.recycle", "bridge.endDirect", "text", "recompute"]);
   const direct = decide({ nodi: "askNew", data: { prefix: "codex" } });
   assert.deepEqual(steps(direct), ["ask.recycle", "text", "recompute"]);
   assert.equal(direct[1].text, "codex ");
@@ -79,8 +79,8 @@ test("a question about the window is shot at its monitor's scale, 1280 wide at m
   const w = { address: "0x1", stableId: "abc", width: 1600, monitor: 2 };
   const screens = () => ({ focused: { id: 1, lastIpcObject: { scale: 1 } }, all: [{ id: 2, lastIpcObject: { scale: 1.5 } }] });
   const e = decide({ nodi: "askWindow", ask }, { cameFrom: w, screens });
-  assert.deepEqual(steps(e), ["set askRows", "holdShotAsk", "shot.run", "text", "recompute"]);
-  assert.deepEqual(e[0].value, { turn: "", rows: {} });
+  assert.deepEqual(steps(e), ["bridge.clearRows", "bridge.holdShotAsk", "bridge.shoot", "text", "recompute"]);
+  assert.deepEqual(e[0].args, [], "the rows of the last turn cleared (AskBridge.qml clearRows)");
   assert.deepEqual(e[2].args[0].slice(-2), ["abc", (1280 / 2400).toFixed(3)]);
   const small = decide({ nodi: "askWindow", ask }, { cameFrom: { ...w, width: 800, monitor: 9 }, screens });
   assert.equal(small[2].args[0].at(-1), "1");
@@ -134,7 +134,7 @@ test("a streamed answer starts, or goes to Ask when it is one or names files", (
   const retry = decide({ nodi: "answer" }, { query: "a why", answers, answer: { message: "why, with more", keyword: "a", question: "why", conversation: "" } });
   assert.equal(retry[0].args[0].message, "why, with more");
   const mention = decide({ nodi: "answer" }, { query: "a read @f:/tmp/x", answers });
-  assert.deepEqual(steps(mention), ["dispatchAsk"]);
+  assert.deepEqual(steps(mention), ["bridge.dispatchAsk"]);
   assert.deepEqual(mention[0].args.slice(-2), [false, "a read @f:/tmp/x"]);
   assert.deepEqual(steps(decide({ nodi: "answer" }, { query: "zz why", answers })), ["recompute"]);
 });
@@ -142,11 +142,11 @@ test("a streamed answer starts, or goes to Ask when it is one or names files", (
 test("a failed agent's question moves to another, only once it is chosen", () => {
   const d = { id: "codex", question: "q", message: "m", context: "" };
   const direct = decide({ nodi: "askAgentFallback", data: { ...d, direct: true } });
-  assert.deepEqual(steps(direct), ["prepareDirectAsk", "text", "recompute"]);
+  assert.deepEqual(steps(direct), ["bridge.prepareDirectAsk", "text", "recompute"]);
   assert.equal(direct[0].need, true);
   assert.equal(direct[1].text, "codex q");
   const chosen = decide({ nodi: "askAgentFallback", data: d });
-  assert.deepEqual(steps(chosen), ["selectAskAgent", "ask.prepare", "text", "recompute"]);
+  assert.deepEqual(steps(chosen), ["bridge.selectAskAgent", "ask.prepare", "text", "recompute"]);
   assert.deepEqual(chosen[1].args, ["q", "m", ""]);
 });
 

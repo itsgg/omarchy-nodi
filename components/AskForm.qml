@@ -102,7 +102,7 @@ Column {
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
             if (event.matches(StandardKey.Paste)) {
-              formView.nodi.pasteInput(
+              formView.nodi.selections.pasteInput(
                 editor, fieldView.modelData.type === "multiline")
               event.accepted = true
               return
