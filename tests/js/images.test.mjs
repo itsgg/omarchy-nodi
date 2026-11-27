@@ -1,7 +1,7 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync, truncateSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, truncateSync, readdirSync, utimesSync, statSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync, inflateSync, crc32 } from "node:zlib";
@@ -19,9 +19,14 @@ function png(width = 2, height = 1, extras = []) {
   return Buffer.concat([Buffer.from("89504e470d0a1a0a", "hex"), chunk("IHDR", head), ...extras,
     chunk("IDAT", deflateSync(Buffer.from([0, 255, 0, 0, 0, 255, 0]))), chunk("IEND", Buffer.alloc(0))]);
 }
-function run(path, edge = 128) {
+// The worker's home and cache are the tests' own: run with his, they wrote
+// into his icon cache.
+const home = mkdtempSync(join(tmpdir(), "nodi-image-home-"));
+const cacheHome = join(home, "cache");
+after(() => rmSync(home, { recursive: true, force: true }));
+function run(path, edge = 128, cache = cacheHome) {
   return spawnSync("/usr/bin/python3", ["-I", join(root, "lib/raster.py"), String(edge)], {
-    env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin", LANG: "C.UTF-8", NODI_IMAGE: path },
+    env: { HOME: home, XDG_CACHE_HOME: cache, PATH: "/usr/bin:/bin", LANG: "C.UTF-8", NODI_IMAGE: path },
     encoding: "utf8", timeout: 7000, maxBuffer: 5500000
   });
 }
@@ -83,14 +88,14 @@ test("worker limits keep a lower hard limit and make it the OOM killer's first c
   const probe = "import resource, sys; sys.path.insert(0, sys.argv[1]); import raster; raster.limits(); " +
     "print(resource.getrlimit(resource.RLIMIT_AS)[1], resource.getrlimit(resource.RLIMIT_CPU)[1], open('/proc/self/oom_score_adj').read().strip())";
   const result = spawnSync("/usr/bin/prlimit", ["--as=" + hard, "--", "/usr/bin/python3", "-I", "-c", probe, join(root, "lib")], {
-    env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, encoding: "utf8", timeout: 7000
+    env: { HOME: home, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, encoding: "utf8", timeout: 7000
   });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(result.stdout.trim(), hard + " 3 1000");
   const iconProbe = "import resource, sys; sys.path.insert(0, sys.argv[1]); import raster; raster.limits(128); " +
     "print(resource.getrlimit(resource.RLIMIT_AS)[1], resource.getrlimit(resource.RLIMIT_CPU)[1], open('/proc/self/oom_score_adj').read().strip())";
   const iconResult = spawnSync("/usr/bin/prlimit", ["--as=" + hard, "--", "/usr/bin/python3", "-I", "-c", iconProbe, join(root, "lib")], {
-    env: { HOME: process.env.HOME, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, encoding: "utf8", timeout: 7000
+    env: { HOME: home, PATH: "/usr/bin:/bin", LANG: "C.UTF-8" }, encoding: "utf8", timeout: 7000
   });
   assert.equal(iconResult.status, 0, iconResult.stderr);
   assert.equal(iconResult.stdout.trim(), (512 * 1024 * 1024) + " 3 1000", "small app icon workers share a lower memory ceiling");
@@ -109,16 +114,79 @@ test("SVG previews scale and cannot include a neighbouring image", () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("disk icon cache preserves bounded PNG output across runs", () => {
+test("disk icon cache serves a second run without decoding again", () => {
   const dir = mkdtempSync(join(tmpdir(), "nodi-icon-cache-"));
   try {
+    const icon = join(dir, "app.png"), cache = join(dir, "cache"), icons = join(cache, "nodi", "icons");
+    writeFileSync(icon, png());
+    const first = decoded(run(icon, 128, cache));
+    assert.deepEqual([first.width, first.height], [2, 1]);
+    const files = readdirSync(icons).filter(f => f.endsWith(".png"));
+    assert.equal(files.length, 1, "the decode is kept");
+    // A different picture planted in the cached file: a second run that
+    // hands it back read the cache and decoded nothing.
+    const entry = join(icons, files[0]);
+    writeFileSync(entry, pngOf(3, 3));
+    utimesSync(entry, 1, 1);
+    const second = decoded(run(icon, 128, cache));
+    assert.deepEqual([second.width, second.height], [3, 3], "served from the cache");
+    assert.ok(statSync(entry).mtimeMs > 1000, "a hit marks the file used");
+    assert.equal(run(icon, 1000, cache).status, 0);
+    assert.equal(readdirSync(icons).filter(f => f.endsWith(".png")).length, 1, "previews are not cached");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// A bounded PNG of width x height made by the worker's own writer.
+function pngOf(width, height) {
+  const probe = "import sys; sys.path.insert(0, sys.argv[1]); import raster; " +
+    "sys.stdout.buffer.write(raster.png(" + width + ", " + height + ", 3, " + width * 3 + ", bytes(" + width * height * 3 + ")))";
+  const r = spawnSync("/usr/bin/python3", ["-I", "-c", probe, join(root, "lib")], { env: { HOME: home, PATH: "/usr/bin:/bin" }, timeout: 7000 });
+  assert.equal(r.status, 0, String(r.stderr));
+  return r.stdout;
+}
+
+function prune(dir, now, maxAge, maxFiles) {
+  const probe = "import sys; sys.path.insert(0, sys.argv[1]); import raster; " +
+    "print(raster.prune(sys.argv[2], float(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5])))";
+  const r = spawnSync("/usr/bin/python3", ["-I", "-c", probe, join(root, "lib"), dir, String(now), String(maxAge), String(maxFiles)],
+    { env: { HOME: home, PATH: "/usr/bin:/bin" }, encoding: "utf8", timeout: 7000 });
+  assert.equal(r.status, 0, r.stderr);
+  return Number(r.stdout.trim());
+}
+
+test("the icon cache drops icons unused for a month, then the oldest past its cap", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-icon-prune-"));
+  try {
+    const now = 2_000_000_000, day = 24 * 60 * 60;
+    const put = (name, age) => { const p = join(dir, name); writeFileSync(p, "x"); utimesSync(p, now - age, now - age); };
+    put("old.png", 31 * day);
+    for (let n = 0; n < 5; n++) put("a" + n + ".png", n * day);
+    put("left.png.tmp.123", 2 * 60 * 60);
+    put("writing.png.tmp.456", 10);
+    put("notes.txt", 365 * day);
+    assert.equal(prune(dir, now, 30 * day, 3), 3);
+    assert.deepEqual(readdirSync(dir).sort(), ["a0.png", "a1.png", "a2.png", "notes.txt", "writing.png.tmp.456"]);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("a decode that writes the cache looks it over once a day", () => {
+  const dir = mkdtempSync(join(tmpdir(), "nodi-icon-pruned-"));
+  try {
+    const cache = join(dir, "cache"), icons = join(cache, "nodi", "icons");
+    mkdirSync(icons, { recursive: true });
+    const stale = join(icons, "stale.png");
+    writeFileSync(stale, "x");
+    utimesSync(stale, 1, 1);
     const icon = join(dir, "app.png");
     writeFileSync(icon, png());
-    const first = decoded(run(icon, 128));
-    const second = decoded(run(icon, 128));
-    assert.deepEqual(first.pixels, second.pixels);
-    assert.equal(first.width, second.width);
-    assert.equal(first.height, second.height);
+    assert.equal(run(icon, 128, cache).status, 0);
+    assert.equal(existsSync(stale), false, "a month-old icon went with the first write");
+    assert.ok(existsSync(join(icons, ".pruned")));
+    writeFileSync(stale, "x");
+    utimesSync(stale, 1, 1);
+    writeFileSync(icon, png(2, 1, [chunk("tEXt", Buffer.from("k\0another"))]));
+    assert.equal(run(icon, 128, cache).status, 0);
+    assert.equal(existsSync(stale), true, "not looked over again the same day");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
