@@ -163,6 +163,21 @@ Everything Nodi reads, writes, starts and sends, and when.
   or the clipboard. Nothing is read before you choose, nothing goes in a
   command line, a log or a row's key, and the note is not kept with the
   conversation's summaries.
+- Mentions in a question you type are expanded before it is sent, to the
+  agent or to an answers program of yours (in `NODI_QUERY`, never its
+  arguments): `@window`, `@app` or `@w` to the window's title, class and
+  folder; `@clipboard`, `@cb` or `@c` to the clipboard's text and
+  `@selection` or `@s` to the selected text, 4 KB of each; `@file:` or
+  `@f:` and a path (in quotes when it holds a space) to that file's text.
+  Only what you type counts: a mention inside selected or copied text, a
+  window's title or a file's text is sent as written and reads nothing.
+  "Ask about this file" reads its file as `@f:` does. A file is read as you
+  choose the Ask, by an absolute path or one under `~`: at most eight
+  files, the first 16 KB of each, regular files only (never a device, a
+  pipe or a folder), by one `python3 -I` that may run a second. A link is
+  followed, and the question names the file it leads to; a file that
+  could not be read is named with why. What a file holds stays in the
+  conversation, and its cost in every question, until it starts afresh.
 - Its folders, `~/.cache/nodi/`, `~/.local/state/nodi/` and
   `~/.local/share/nodi/`, are yours alone (0700), made so at each start
   and each open; a file it replaces is written beside it under a name of

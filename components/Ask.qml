@@ -135,7 +135,10 @@ Item {
   // servers) restarts an idle session, so the next question has it (Fable
   // 2026-10-06: an added server waited for a fresh conversation).
   readonly property string launchKey: JSON.stringify([ask.agent, ask.registry, ask.model, ask.acts, ask.mcp, ask.program, ask.dataDir, ask.toolServer, ask.adaptersDir, ask.passed, ask.customInstructions])
-  onLaunchKeyChanged: if (proc.running && !ask.busy() && !ask.recycling) ask.restart(false)
+  // And warmed again. An agent switch still starts none (switchAway): its
+  // restart(false) either follows this one and wins, or comes first and
+  // this one skips, the session already recycling.
+  onLaunchKeyChanged: if (proc.running && !ask.busy() && !ask.recycling) ask.restart()
   // The adapter an npm agent runs from, as a key: "" for an agent that is
   // its own program (OpenCode, his own).
   readonly property string adapterKey: ask.spec && ask.spec.adapter ? JSON.stringify([ask.spec.adapter, ask.dataDir, ask.adaptersDir]) : ""
@@ -200,7 +203,6 @@ Item {
   property int readActivityCount: 0
   property string thoughtActivity: "" // current-turn thought, outside provider operation IDs
   property int activitySeq: 0
-  property string actionActivity: AskActions.display(ask.actionBook, ({}))
   readonly property string activity: AskActions.display(ask.actionBook, ask.readActivities)
     || ask.thoughtActivity
   property string setup: ""          // what the start does first: an adapter installing
@@ -1903,17 +1905,6 @@ Item {
     ask.toolResponseCount = 0
     ask.toolResponsesChanged()
     ask.retiredToolResponsesChanged()
-  }
-
-  // Even a response already known is collected through the mailbox: the
-  // shell IPC call returns promptly, and later action work can complete the
-  // same ticket after confirmation without holding that IPC connection.
-  function queueToolResponse(requestId, jsonRpcResult) {
-    var ticket = ask.pendingToolResponse(requestId)
-    if (!ticket) return jsonRpcResult
-    ask.completeToolResponse(requestId, typeof jsonRpcResult === "string"
-      ? jsonRpcResult : JSON.stringify(jsonRpcResult))
-    return { nodiPending: ticket }
   }
 
   function pollToolResponse(ticket) {

@@ -332,7 +332,8 @@ the pane as it arrives:
 
 `a why is it slow`, then Enter, runs `my-ask --markdown` with the same
 environment and `NODI_QUERY` as a script filter; with `"argument": true`
-the question is its last argument too.
+the question as typed is its last argument too. What a mention expands to
+(a file, the clipboard, the selection) is in `NODI_QUERY` alone.
 It runs for two minutes at most (`timeoutMs`, from 1000 to 600000) and may print
 120 KB. What it prints shows a word at a time, at its spaces, so text
 with no spaces (Chinese, a long URL) shows once it ends. Write each piece as you have it: a program whose output is

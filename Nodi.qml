@@ -2322,51 +2322,41 @@ Item {
 
   property var pendingFileAsk: null
 
-  // Dispatches an ask query after expanding context (window, clipboard, selection, and files)
-  // so that configured answer providers (e.g. Arivu) and ACP agents receive the exact same
-  // fully resolved question and context.
+  function askRoute(qText, agentId) {
+    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.config.answers, root.cameFrom), agentId: agentId || "",
+                                    busy: askSession.busy(), shooting: windowShot.active })
+  }
+
+  // An Ask, its context expanded (window, clipboard, selection and files),
+  // so that an answers filter of his and an ACP agent get the same question.
   function dispatchAsk(question, rawMessage, context, purpose, extraEnv, image, filePath, agentId, answerFresh, commandQuery) {
+    var qText = commandQuery || ("ask " + question)
+    // Busy: nothing of this Ask is done, the field left as he has it.
+    if (root.askRoute(qText, agentId) === "busy") return
     root.pendingFileAsk = null
     if (askFileReader.active) askFileReader.cancel()
-    var qText = commandQuery || ("ask " + question)
-    if (input.text !== qText) {
+    // An agent named in the field keeps its name there: "ask " would end
+    // the direct Ask (queryUsesDirectAgent).
+    if (!(agentId && !commandQuery) && input.text !== qText) {
       input.text = qText
       input.cursorPosition = input.text.length
     }
     var snap = root.askCapture(rawMessage || question, context, purpose).snapshot
     var env = extraEnv || (context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {})
 
-    // Security: Only parse @f: file mentions from user-typed input (question),
-    // never from untrusted desktop selection or clipboard context in rawMessage.
-    var mentionSource = (context === "selection") ? (question || "") : (rawMessage || question)
-    var fileMentions = PromptContext.parseFileMentions ? PromptContext.parseFileMentions(mentionSource) : []
-    var targetFiles = []
-    if (filePath) targetFiles.push(filePath)
-    for (var fi = 0; fi < fileMentions.length; fi++) {
-      var fp = fileMentions[fi].rawPath
-      if (targetFiles.indexOf(fp) === -1) targetFiles.push(fp)
-    }
+    // Only what he typed is read for mentions (PromptContext.mentionSource):
+    // selected or copied text may carry an @f: of its own.
+    var targets = PromptContext.fileTargets(PromptContext.mentionSource(context, question, rawMessage), filePath, root.home)
 
-    var resolvedFiles = []
-    for (var i = 0; i < targetFiles.length; i++) {
-      var p = targetFiles[i]
-      if (p.charAt(0) === "~") {
-        var home = Quickshell.env("HOME") || ""
-        p = home ? p.replace(/^~(?=\/|$)/, home) : p
-      }
-      if (p.charAt(0) === "/" && resolvedFiles.indexOf(p) === -1) resolvedFiles.push(p)
-    }
-
-    if (resolvedFiles.length > 0) {
+    if (targets.length > 0) {
       var token = Math.random()
       root.pendingFileAsk = {
         question: question, rawMessage: rawMessage, context: context,
-        purpose: purpose, extraEnv: env, image: image, targetFiles: resolvedFiles,
+        purpose: purpose, extraEnv: env, image: image, targets: targets,
         agentId: agentId, snapshot: snap, token: token,
         answerFresh: !!answerFresh, commandQuery: commandQuery
       }
-      var pythonScript = 'import sys, os, stat\nfor p in sys.argv[1:]:\n    try:\n        fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK)\n        try:\n            st = os.fstat(fd)\n            if stat.S_ISREG(st.st_mode):\n                data = os.read(fd, 16384).decode("utf-8", errors="replace")\n                print("---NODI_FILE---")\n                print(p)\n                print(data)\n        finally:\n            os.close(fd)\n    except Exception:\n        pass'
-      askFileReader.run(["/usr/bin/python3", "-c", pythonScript].concat(resolvedFiles), root.pendingFileAsk)
+      askFileReader.run(PromptContext.fileReadArgv(targets), root.pendingFileAsk)
       return
     }
 
@@ -2375,14 +2365,16 @@ Item {
 
   function finishDispatchAsk(question, rawMessage, context, purpose, extraEnv, image, snapshot, agentId, answerFresh, commandQuery) {
     var qText = commandQuery || ("ask " + question)
-    var expanded = PromptContext.expandMentions ? PromptContext.expandMentions(rawMessage || question, snapshot) : (rawMessage || question)
-    var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
-    if (ansSpec) {
+    var expanded = PromptContext.expandFor(context, question, rawMessage, snapshot)
+    // Again after a file read: the agent may have taken another question since.
+    var route = root.askRoute(qText, agentId)
+    if (route === "busy") return
+    if (route === "answer") {
+      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
       if (answerFresh) ansSpec.fresh = true
       answerSession.start(ansSpec)
       return
     }
-    if (askSession.busy() || windowShot.active) return
     root.askRows = ({ turn: "", rows: ({}) })
     root.startAsk(agentId || "", question, expanded, context, image, purpose, { snapshot: snapshot, address: String(root.cameFrom.address || "") })
   }
@@ -2440,14 +2432,22 @@ Item {
     }
   }
 
+  // Bounded (PromptContext.flushStep): an Ask whose agent never comes is
+  // given up, said in a toast, never left pending to refuse the next.
   function flushAsk() {
     var pending = root.pendingAsk
     if (!pending || pending.cwdWait) return
-    if (pending.direct ? askSession.agent !== pending.target : askSession.agent !== root.resolvedAgent) {
+    var step = PromptContext.flushStep(pending, askSession.agent, root.resolvedAgent, root.directAskAgent)
+    if (step === "wait") {
+      pending.tries = (pending.tries || 0) + 1
       Qt.callLater(root.flushAsk)
       return
     }
     root.pendingAsk = null
+    if (step === "drop") {
+      if (!pending.prepare) root.toast("Ask did not send the question", "The agent changed while it waited; ask again")
+      return
+    }
     if (pending.prepare) askSession.prepare(pending.question, pending.message, pending.context)
     else askSession.send(pending.question, pending.message, pending.context, pending.image, pending.snapshot)
   }
@@ -2624,24 +2624,15 @@ Item {
   Reader {
     id: askFileReader
     timeoutMs: 1000
-    maxBytes: 65536
+    maxBytes: PromptContext.FILE_READ_BYTES
     cancelable: true
     onFinished: function(text, ok, tag) {
       if (!tag || !root.pendingFileAsk || root.pendingFileAsk.token !== tag.token) return
       var pending = root.pendingFileAsk
       root.pendingFileAsk = null
-      if (ok && text) {
-        pending.snapshot.files = pending.snapshot.files || {}
-        var parts = text.split("---NODI_FILE---\n")
-        for (var pi = 1; pi < parts.length; pi++) {
-          var nl = parts[pi].indexOf("\n")
-          if (nl !== -1) {
-            var fPath = parts[pi].slice(0, nl)
-            var fData = parts[pi].slice(nl + 1)
-            pending.snapshot.files[fPath] = fData
-          }
-        }
-      }
+      // A file not read is said so in the prompt (PromptContext.fileReads).
+      pending.snapshot.files = PromptContext.attachFiles(pending.snapshot.files, pending.targets,
+                                                         PromptContext.fileReads(text, ok, pending.targets))
       root.finishDispatchAsk(
         pending.question, pending.rawMessage, pending.context,
         pending.purpose, pending.extraEnv, pending.image, pending.snapshot, pending.agentId,

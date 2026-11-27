@@ -93,7 +93,9 @@ function spec(query, settings, window, message, extraEnv) {
     message: effective,
     timeoutMs: Math.min(MAX_MS, Math.max(1000, Number(f.timeoutMs) || DEFAULT_MS)),
     freshMs: freshOf(f),
-    argv: f.command.concat(f.argument === true ? [effective] : []),
+    // The words he typed alone, with "argument": true: the message may hold
+    // a file's or the clipboard's text, which goes in no argument (lib/Run.js).
+    argv: f.command.concat(f.argument === true ? [hit.query] : []),
     env: env
   }
 }
