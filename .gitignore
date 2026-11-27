@@ -1,7 +1,5 @@
 node_modules/
 .worktrees/
-.superpowers/
-docs/superpowers/
 *.qmlc
 shots/
 __pycache__/
