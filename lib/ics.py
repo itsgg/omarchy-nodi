@@ -55,7 +55,7 @@ from zoneinfo import ZoneInfo
 
 # Raised with any change to what an expansion holds, so one kept by an
 # older lib/ics.py is not answered with (Sonnet 2026-10-06).
-VERSION = 4
+VERSION = 5
 FRESH_S = 600
 DAYS = 9
 TIMEOUT_S = 10
@@ -848,6 +848,34 @@ def google_page(uid, cal_id):
     return "https://calendar.google.com/calendar/event?eid=" + eid
 
 
+def following(ev, start, rid, master, cuts, moved, zones, local, lo, hi, date_budget, day_budget):
+    """The starts a THISANDFUTURE override `ev` (DTSTART `start`, naming the
+    occurrence `rid`) gives: its own, and the master's occurrences from
+    `rid` to the next such override, each moved as `rid` was moved."""
+    out = [start]
+    if master is None or isinstance(start, datetime) != isinstance(rid, datetime):
+        return out
+    mp, mv = master.first("DTSTART")
+    first = when(mp, mv, zones)
+    if first is None or isinstance(first, datetime) != isinstance(start, datetime):
+        return out
+    shift = start - rid
+    shift_s = shift.total_seconds()
+    at = instant(rid, local)
+    later = [c for c in cuts if c > at]
+    end = later[0] if later else None
+    seen = {key_of(start)}
+    for o in starts(master, first, zones, local, lo - shift_s, hi - shift_s, date_budget, day_budget):
+        t = instant(o, local)
+        if t < at or (end is not None and t >= end) or key_of(o) == key_of(rid) or key_of(o) in moved:
+            continue
+        o = o + shift
+        if key_of(o) not in seen:
+            seen.add(key_of(o))
+            out.append(o)
+    return out
+
+
 # The occurrences on between lo and hi, and each event's details apart, by
 # a key the occurrences carry ("d"): a weekly meeting's description once.
 def events_of(cal, cal_id, me, local, lo, hi):
@@ -860,20 +888,34 @@ def events_of(cal, cal_id, me, local, lo, hi):
             pass
     day_budget = [0]
     zones = Zones(cal, floating, day_budget)
-    masters, moved = [], {}
+    # An override with RANGE=THISANDFUTURE changes its occurrence and every
+    # one after it, up to the next such override: `future` keeps where each
+    # takes over, by the instant of the occurrence it names.
+    # `masters` pairs each VEVENT with its kind: False a series or a single
+    # event, True an occurrence moved on its own, a date or time the
+    # RECURRENCE-ID of a THISANDFUTURE override.
+    masters, moved, series, future = [], {}, {}, {}
     for ev in cal.children:
         if ev.name != "VEVENT":
             continue
         rp, rv = ev.first("RECURRENCE-ID")
+        uid_id = uid_key(ev.text("UID"))
         if rv is not None:
             r = when(rp, rv, zones)
             if r is not None:
-                moved.setdefault(uid_key(ev.text("UID")), set()).add(key_of(r))
-                masters.append((ev, True))
+                if param(rp, "RANGE").upper() == "THISANDFUTURE":
+                    future.setdefault(uid_id, []).append(instant(r, local))
+                    masters.append((ev, r))
+                else:
+                    moved.setdefault(uid_id, set()).add(key_of(r))
+                    masters.append((ev, True))
             continue
+        series.setdefault(uid_id, ev)
         masters.append((ev, False))
+    for ats in future.values():
+        ats.sort()
     out, details, date_budget = [], {}, [0]
-    for (ev, is_moved) in masters:
+    for (ev, kind) in masters:
         if ev.text("STATUS").upper() == "CANCELLED" or declined(ev, me):
             continue
         uid = ev.text("UID")
@@ -892,11 +934,18 @@ def events_of(cal, cal_id, me, local, lo, hi):
             length = d if d is not None else (86400 if not timed else 0)
         length = max(0, length)
         # One that began before the window and is still on counts.
-        occs = [start] if is_moved else starts(ev, start, zones, local, lo - length, hi, date_budget, day_budget)
+        if kind is False:
+            occs = starts(ev, start, zones, local, lo - length, hi, date_budget, day_budget)
+            # Those from the first THISANDFUTURE override on are its.
+            cut = future.get(uid_id, [None])[0]
+            occs = [o for o in occs if key_of(o) not in moved.get(uid_id, ()) and (cut is None or instant(o, local) < cut)]
+        elif kind is True:
+            occs = [start]
+        else:
+            occs = following(ev, start, kind, series.get(uid_id), future.get(uid_id, []), moved.get(uid_id, set()),
+                             zones, local, lo - length, hi, date_budget, day_budget)
         common, dkey = None, "e%d" % len(details)
         for o in occs:
-            if not is_moved and key_of(o) in moved.get(uid_id, ()):
-                continue
             s = instant(o, local)
             if timed:
                 e = s + length

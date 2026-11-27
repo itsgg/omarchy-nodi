@@ -369,3 +369,28 @@ test("ics: hourly and minutely rules, and a day's hours and minutes, in the wind
   assert.deepEqual(of("Pills"), ["Fri 09 07:00", "Fri 09 07:30", "Fri 09 19:00", "Fri 09 19:30", "Sat 10 07:00", "Sat 10 07:30"]);
   assert.deepEqual(of("All day"), ["Fri 09 00:00"], "no hours in a day-long event: its first day only");
 });
+
+test("ics: an override with RANGE=THISANDFUTURE moves its occurrence and every one after it", () => {
+  const feed = ics([
+    "BEGIN:VEVENT", "UID:s", "SUMMARY:Sync", "DTSTART:20261001T090000Z", "DURATION:PT30M", "RRULE:FREQ=DAILY", "END:VEVENT",
+    // From the 10th, an hour later and called Sync (new time).
+    "BEGIN:VEVENT", "UID:s", "RECURRENCE-ID;RANGE=THISANDFUTURE:20261010T090000Z", "SUMMARY:Sync (new time)",
+    "DTSTART:20261010T100000Z", "DURATION:PT45M", "END:VEVENT",
+    // The 11th alone moved again, and from the 13th the series renamed.
+    "BEGIN:VEVENT", "UID:s", "RECURRENCE-ID:20261011T090000Z", "SUMMARY:Sync (once)", "DTSTART:20261011T150000Z", "DURATION:PT30M", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:s", "RECURRENCE-ID;RANGE=THISANDFUTURE:20261013T090000Z", "SUMMARY:Sync (late)",
+    "DTSTART:20261013T170000Z", "DURATION:PT30M", "END:VEVENT"]);
+  const got = py([
+    "cal = ics.parse(sys.argv[2])",
+    "lo = ics.datetime(2026, 10, 9, tzinfo=ics.timezone.utc).timestamp()",
+    "rows, _ = ics.events_of(cal, '', set(), ics.timezone.utc, lo, lo + 6 * 86400)",
+    "print(json.dumps([[r['title'], ics.datetime.fromtimestamp(r['start'] / 1000, ics.timezone.utc).strftime('%d %H:%M'), (r['end'] - r['start']) // 60000] for r in rows]))"], [feed]);
+  assert.deepEqual(got.sort((a, b) => a[1].localeCompare(b[1])), [
+    ["Sync", "09 09:00", 30],
+    ["Sync (new time)", "10 10:00", 45],
+    ["Sync (once)", "11 15:00", 30],
+    ["Sync (new time)", "12 10:00", 45],
+    ["Sync (late)", "13 17:00", 30],
+    ["Sync (late)", "14 17:00", 30]
+  ], "the 9th as it was, the 10th and on an hour later, the 11th on its own, the 13th and on later still");
+});
