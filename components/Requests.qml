@@ -117,7 +117,9 @@ Item {
     reader.lastParseMs += Date.now() - began
     var before = requests.cache[tag.key]
     var after = Requests.progress(before, value)
-    var changed = !before || JSON.stringify(before.value) !== JSON.stringify(after.value)
+    var mark = Requests.partialMark(reader.sequence, after.value)
+    var changed = Requests.partialChanged(before, after, mark)
+    after.partialMark = mark
     requests.put(tag.key, after)
     if (changed) requests.arrived(tag.key)
   }

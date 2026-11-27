@@ -21,8 +21,14 @@ Item {
   property string socketPath: ""
   property string queryId: ""
   property var protocol: null
+  // The query's rows so far, appended in place: copied whole at each chunk,
+  // a 1000-row answer cost a quadratic copy. `pendingCount` is how many
+  // arrived since the last batch.
   property var rawRows: []
-  property var pendingRows: []
+  property int pendingCount: 0
+  // Chunks read, each with the query it was read under, worked through
+  // outside the socket's own read handler (drainChunks).
+  property var chunks: []
   property bool responseDone: false
   property int sequence: 0
   property int attempts: 0
@@ -64,7 +70,7 @@ Item {
       maxRows: Math.min(reader.maxRows, Number(param.max) || reader.maxRows)
     })
     reader.rawRows = []
-    reader.pendingRows = []
+    reader.pendingCount = 0
     reader.responseDone = false
     reader.attempts = 0
     reader.retryScheduled = false
@@ -118,8 +124,26 @@ Item {
       wire.flush()
     }
     reader.active = false
-    reader.pendingRows = []
+    reader.pendingCount = 0
     reader.responseDone = false
+  }
+
+  // A chunk as the socket hands it: kept, and worked through once the
+  // socket's handler has returned. Ending a read from inside it reaches
+  // what the rows land in, which can start the next query on this socket
+  // and tear it down, or tears it down here on a bad frame: quickshell
+  // 0.3.2 crashes on a socket disconnected inside its own handler (it did
+  // from onError).
+  function received(chunk) {
+    reader.chunks.push({ data: String(chunk), sequence: reader.sequence })
+    Qt.callLater(reader.drainChunks)
+  }
+
+  function drainChunks() {
+    var list = reader.chunks
+    reader.chunks = []
+    // In order; a chunk read under an earlier query is that query's.
+    for (var i = 0; i < list.length; i++) if (list[i].sequence === reader.sequence) reader.acceptChunk(list[i].data)
   }
 
   function acceptChunk(chunk) {
@@ -133,21 +157,24 @@ Item {
       return
     }
     if (result.rows.length) {
-      reader.rawRows = reader.rawRows.concat(result.rows)
-      reader.pendingRows = reader.pendingRows.concat(result.rows)
+      for (var i = 0; i < result.rows.length; i++) reader.rawRows.push(result.rows[i])
+      reader.pendingCount += result.rows.length
       if (!batch.running) batch.start()
     }
     if (result.done) {
       reader.responseDone = true
-      if (!reader.pendingRows.length) reader.end(true, "")
+      if (!reader.pendingCount) reader.end(true, "")
     }
   }
 
   function flushBatch() {
     if (!reader.active) return
-    if (reader.pendingRows.length) {
-      reader.pendingRows = []
-      reader.partial(reader.rawRows.slice(), reader.tag)
+    // The rows themselves, not a copy: what hears it reads them then
+    // (Requests.socketPartial parses them into rows of its own) and keeps
+    // nothing of the array.
+    if (reader.pendingCount) {
+      reader.pendingCount = 0
+      reader.partial(reader.rawRows, reader.tag)
     }
     if (reader.responseDone) reader.end(true, "")
   }
@@ -177,7 +204,7 @@ Item {
     var rows = reader.rawRows.slice()
     reader.active = false
     reader.protocol = null
-    reader.pendingRows = []
+    reader.pendingCount = 0
     reader.responseDone = false
     reader.finished(rows, ok, error, endedTag)
   }
@@ -190,7 +217,7 @@ Item {
         // Raw transport chunks reach Protocol.feed before SplitParser can
         // retain an unterminated line beyond the configured byte limits.
         splitMarker: ""
-        onRead: function(data) { reader.acceptChunk(data) }
+        onRead: function(data) { reader.received(data) }
       }
       onConnectionStateChanged: {
         if (transport !== reader.wire) return

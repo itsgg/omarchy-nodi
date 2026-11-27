@@ -2906,11 +2906,15 @@ Item {
     id: requests
     providers: Engine.providers()
     env: ({ user: root.user, home: root.home, cacheDir: root.cacheDir, pluginDir: root.pluginDir, path: Quickshell.env("PATH") || "" })
-    // Held, the read that completes the rows draws them once.
-    onArrived: if (root.opened) { if (root.homeHeld && root.homeReadsIn()) root.releaseHome(); else root.recompute() }
+    // Held, the read that completes the rows draws them once. Otherwise
+    // the rows are ranked once for every read that lands in one turn of
+    // the event loop (several sockets' batches, a seed with a read).
+    onArrived: if (root.opened) { if (root.homeHeld && root.homeReadsIn()) root.releaseHome(); else Qt.callLater(root.recomputeArrived) }
     // A read that brought the same rows again still completes them.
     onLanded: if (root.opened && root.homeHeld) root.settleHome()
   }
+
+  function recomputeArrived() { if (root.opened) root.recompute() }
 
   // The rates saved by the last read, so conversions work offline from the
   // start; a read replaces them only after the API's next-update time.
