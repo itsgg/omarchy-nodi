@@ -557,6 +557,10 @@ Item {
     root.endSteps()
     // Nothing of a step is kept past the open (providers/filters.js).
     requests.forget("filter-step")
+    // A close inside the open's first 60 ms runs none of its reads, and
+    // brings no tray menus up behind a hidden bar.
+    readsAfterFrame.stop()
+    root.readsPending = false
     trayMenus.active = false
     root.aliasRow = null
     root.endWord()
