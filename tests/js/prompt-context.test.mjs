@@ -307,3 +307,22 @@ test("a bare path ends before trailing punctuation; a quoted one keeps it", () =
   assert.equal(P.expandMentions("explain @f:/a/b.txt, please", { files: { "/a/b.txt": "B" } }), 'explain [File "/a/b.txt":\nB\n], please');
   assert.equal(P.expandMentions("what is in @f:~/x.md?", { files: { "~/x.md": "X" } }), 'what is in [File "~/x.md":\nX\n]?');
 });
+
+test("a pending Ask is sent to its agent, waits a bounded while, or is dropped", () => {
+  const direct = { direct: true, target: "codex" };
+  assert.equal(P.flushStep(direct, "codex", "claude", "codex"), "send");
+  assert.equal(P.flushStep(direct, "claude", "claude", "codex"), "wait", "the binding has not settled yet");
+  assert.equal(P.flushStep(direct, "claude", "claude", ""), "drop", "the query was edited: the direct agent is gone");
+  const plainAsk = { direct: false };
+  assert.equal(P.flushStep(plainAsk, "claude", "claude", ""), "send");
+  assert.equal(P.flushStep(plainAsk, "codex", "claude", ""), "wait");
+  assert.equal(P.flushStep({ direct: false, tries: P.FLUSH_TRIES }, "codex", "claude", ""), "drop", "never for ever");
+  assert.equal(P.flushStep({ direct: true, target: "codex", tries: P.FLUSH_TRIES }, "claude", "claude", "codex"), "drop");
+  assert.equal(P.flushStep(null, "claude", "claude", ""), "drop");
+  // As flushAsk drives it: a loop that never matches ends.
+  const p = { direct: false };
+  let step, turns = 0;
+  while ((step = P.flushStep(p, "codex", "claude", "")) === "wait") { p.tries = (p.tries || 0) + 1; turns++; }
+  assert.equal(step, "drop");
+  assert.ok(turns <= P.FLUSH_TRIES, String(turns));
+});

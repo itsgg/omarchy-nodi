@@ -2354,14 +2354,22 @@ Item {
     }
   }
 
+  // Bounded (PromptContext.flushStep): an Ask whose agent never comes is
+  // given up, said in a toast, never left pending to refuse the next.
   function flushAsk() {
     var pending = root.pendingAsk
     if (!pending || pending.cwdWait) return
-    if (pending.direct ? askSession.agent !== pending.target : askSession.agent !== root.resolvedAgent) {
+    var step = PromptContext.flushStep(pending, askSession.agent, root.resolvedAgent, root.directAskAgent)
+    if (step === "wait") {
+      pending.tries = (pending.tries || 0) + 1
       Qt.callLater(root.flushAsk)
       return
     }
     root.pendingAsk = null
+    if (step === "drop") {
+      if (!pending.prepare) root.toast("Ask did not send the question", "The agent changed while it waited; ask again")
+      return
+    }
     if (pending.prepare) askSession.prepare(pending.question, pending.message, pending.context)
     else askSession.send(pending.question, pending.message, pending.context, pending.image, pending.snapshot)
   }
