@@ -105,7 +105,6 @@ Item {
   property var userConfig: ({})
   property bool userConfigGood: false   // a nodi.json has parsed since load
   property string configWarned: ""      // the error last notified, so each is said once
-  property string hotkeyWarned: ""
   readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir,
                                               { home: root.home, runtimeDir: root.runtimeDir })
 
@@ -1749,24 +1748,12 @@ Item {
 
   // ---------------------------------------------------------------- hotkey
 
-  // Nodi binds its own hotkey in the running Hyprland (hyprctl eval): no
-  // config file is edited. Hyprland drops runtime binds when its config
-  // reloads, so this runs again after every reload, after a config change,
-  // and at startup. A key something else holds is left alone, asked again
-  // once in case the holder is unloading (the old bar on the swap).
+  // Nodi's hotkey and the rows' hotkeys, bound in the running Hyprland
+  // (components/HotkeyBinder.qml): asked again after every reload, after a
+  // config change, and at startup.
   property bool configsLoaded: false
-  property string boundHotkey: ""
-  property string warnedConflict: ""
-  property bool conflictRetried: false
   property bool defaultConfigSeen: false
   property bool userConfigSeen: false
-
-  // One reconcile at a time: a read of the binds, then the eval it plans,
-  // finished before the next read, so two reconciles cannot both see the key
-  // unbound and bind it twice (codex 2026-10-02). A request during one runs
-  // once after it.
-  property bool hotkeyQueued: false
-  property bool hotkeyFresh: true         // this Nodi has not bound its key yet
 
   // The hotkey, straight from Hyprland: no process is started for a press.
   GlobalShortcut {
@@ -1775,74 +1762,23 @@ Item {
     description: "Open or close Nodi"
     onPressed: { root.openBy = root.opened ? "" : "key"; root.toggle() }
   }
-  property string lastBinds: "[]"         // the binds as last read, for checking a chord being set
-  property var boundRows: ({})            // combo -> the row key this Nodi bound it to
-  property var rowConflictsWarned: ({})
 
-  function ensureHotkey() {
-    if (!root.configsLoaded) return
-    if (bindsReader.busy || evalReader.busy) { root.hotkeyQueued = true; return }
-    bindsReader.run(["/usr/bin/hyprctl", "binds", "-j"])
+  HotkeyBinder {
+    id: hotkeys
+    ready: root.configsLoaded
+    hotkey: String(root.config.hotkey || "").trim()
+    rowHotkeys: root.prefs.hotkeys
+    pluginId: root.pluginId
+    toggleShortcut: root.toggleShortcut
+    scrimAlpha: root.scrim.a
+    cardAlpha: root.background.a
+    onWarn: function(title, body) { root.toast(title, body) }
   }
+  readonly property alias boundHotkey: hotkeys.boundHotkey
+  readonly property alias lastBinds: hotkeys.lastBinds
+  readonly property alias boundRows: hotkeys.boundRows
 
-  // Deferred: `finished` is emitted while the reader's process may still
-  // count as running, and a request made then would queue with nothing left
-  // to start it (Fable 2026-10-02).
-  function hotkeyIdle() {
-    if (!root.hotkeyQueued) return
-    root.hotkeyQueued = false
-    Qt.callLater(root.ensureHotkey)
-  }
-
-  function reconcileHotkey(bindsJson) {
-    var hotkey = String(root.config.hotkey || "").trim()
-    if (hotkey && !Hotkey.parseCombo(hotkey) && root.hotkeyWarned !== hotkey) {
-      root.hotkeyWarned = hotkey
-      root.toast("Nodi has no hotkey",
-        "\"" + hotkey + "\" is not a key combination. Write it as \"SUPER + SPACE\" in ~/.config/omarchy/extensions/nodi.json.")
-    }
-    root.lastBinds = bindsJson
-    var p = Hotkey.plan(bindsJson, hotkey, root.toggleShortcut, { scrim: root.scrim.a, card: root.background.a }, root.hotkeyFresh)
-    if (p.bound) root.hotkeyFresh = false
-    // The rows' hotkeys (Ctrl+K, lib/Prefs.js) in the same eval.
-    var rows = Hotkey.planRows(bindsJson, root.prefs.hotkeys, root.pluginId, root.boundRows)
-    root.boundRows = rows.bound
-    for (var c = 0; c < rows.conflicts.length; c++) {
-      if (root.rowConflictsWarned[rows.conflicts[c]]) continue
-      root.rowConflictsWarned[rows.conflicts[c]] = true
-      root.toast("A row's hotkey is taken", rows.conflicts[c] + " is bound to something else now; set the row another one from Ctrl+K.")
-    }
-    var lua = p.lua.concat(rows.lua)
-    if (lua.length > 0) evalReader.run(["/usr/bin/hyprctl", "eval", lua.join("\n")])
-    else root.hotkeyIdle()
-    root.boundHotkey = p.bound ? hotkey : ""
-    if (p.conflict && !root.conflictRetried) {
-      root.conflictRetried = true
-      hotkeyRetry.start()
-      return
-    }
-    if (p.conflict && root.warnedConflict !== hotkey) {
-      root.warnedConflict = hotkey
-      console.warn("nodi: " + hotkey + " is already used by \"" + p.conflict + "\"; not binding it")
-      root.toast("Nodi has no hotkey",
-        hotkey + " already opens \"" + p.conflict + "\". Set another \"hotkey\" in ~/.config/omarchy/extensions/nodi.json.")
-    }
-    if (!p.conflict) root.conflictRetried = false
-  }
-
-  Reader {
-    id: bindsReader
-    timeoutMs: 3000
-    onFinished: function(text, ok) { if (ok) root.reconcileHotkey(text); else root.hotkeyIdle() }
-  }
-
-  Reader {
-    id: evalReader
-    timeoutMs: 3000
-    onFinished: root.hotkeyIdle()
-  }
-
-  Timer { id: hotkeyRetry; interval: 3000; onTriggered: root.ensureHotkey() }
+  function ensureHotkey() { hotkeys.ensure() }
 
   Connections {
     target: Hyprland
@@ -1872,19 +1808,10 @@ Item {
     if (root.defaultConfigSeen && root.userConfigSeen && !root.configsLoaded) {
       root.configsLoaded = true
       root.readAhead(false)
-      hotkeyStart.start()
-      hotkeyRecheck.start()
+      hotkeys.start()
       if (root.configPending) { var e = root.configPending; root.configPending = ""; root.configError(e) }
     }
   }
-
-  Timer { id: hotkeyStart; interval: 600; onTriggered: root.ensureHotkey() }
-
-  // A second look once a reload has settled: whatever an earlier instance
-  // did to the key while this one read the binds, the key is bound after.
-  // Released keys wait for no successor (Component.onDestruction), so this
-  // is the belt for a successor slower to load than that wait.
-  Timer { id: hotkeyRecheck; interval: 5000; onTriggered: root.ensureHotkey() }
 
   // ---------------------------------------------------------------- config
 
