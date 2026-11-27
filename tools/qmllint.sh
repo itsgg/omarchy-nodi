@@ -33,7 +33,9 @@ output=$("$linter" -I "$imports" Nodi.qml components/*.qml 2>&1 || true)
 # its internal _GlobalShortcuts module, and its type info names Quickshell
 # core's PostReloadHook as its base; qmllint follows neither and Quickshell
 # does (tools/compile-check.sh loads it), so those two are the linter's gap.
-structural=$( { grep -E '\[(property-override|index|unused-imports|duplicate|deprecated|incompatible-type|syntax|import)\]' <<<"$output" | grep -v 'PostReloadHook was not found'; grep -E 'is used but it is not resolved \[unresolved-type\]' <<<"$output" | grep -v 'Type GlobalShortcut is used'; } || true)
+# Qt 6.12.1's qmllint says the same gap as an import failure of
+# Quickshell.Hyprland and a GlobalShortcut not found; those lines go too.
+structural=$( { grep -E '\[(property-override|index|unused-imports|duplicate|deprecated|incompatible-type|syntax|import)\]' <<<"$output" | grep -v -e 'PostReloadHook was not found' -e 'importing module "Quickshell\.Hyprland"' -e 'Failed to import Quickshell\.Hyprland\.' -e ': GlobalShortcut was not found\. Did you add all imports'; grep -E 'is used but it is not resolved \[unresolved-type\]' <<<"$output" | grep -v 'Type GlobalShortcut is used'; } || true)
 # A member missing on QObject is the shell's Style and Color singletons, which
 # the linter cannot see into. A member missing on any other type is a name
 # resolving to the wrong object: an id called `palette` inside a delegate
