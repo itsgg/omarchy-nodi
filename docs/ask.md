@@ -87,11 +87,16 @@ minutes with no question.
 ### Context mentions
 
 A question can mention active context directly:
-- `@window` or `@app`: expands to the active window's title, class and working directory.
-- `@cb` or `@clipboard`: expands to the current clipboard text (up to 4 KB).
-- `@selection`: expands to the current primary selection (up to 4 KB).
+- `@window`, `@app` or `@w`: expands to the active window's title, class and working directory.
+- `@clipboard`, `@cb` or `@c`: expands to the current clipboard text (up to 4 KB).
+- `@selection` or `@s`: expands to the current primary selection (up to 4 KB).
+- `@file:<path>` or `@f:<path>`: expands to the file's first 16 KB, up to
+  eight files a question; quote a path that holds a space.
 
-For example, `ask @window why is this failing` or `claude format this as json: @cb`.
+For example, `ask @window why is this failing`, `claude format this as json: @cb`
+or `ask what does @f:~/notes.md say?`. Only mentions you type count: one inside
+the selected or copied text a question is about is sent as written
+([What it touches](privacy.md) says what is read).
 
 ### Agent interactions
 
