@@ -79,6 +79,13 @@ test("a provider turn binds once to the open turn and is refused from another", 
   assert.equal(O.bindProviderTurn({ ...claude, providerTurnBindingLimit: 0 }, "claude", cu).capacity, "Claude turn bindings");
 });
 
+test("only a strict-policy Claude through Nodi's adapter binds Claude turns", () => {
+  const cu = { sessionUpdate: "session_info_update", _meta: { nodi_claude_turn_started: true, nodi_claude_turn_id: "q" } };
+  assert.equal(O.bindProviderTurn(state({ agent: "claude", spec: { policy: "strict" } }), "claude", cu).value, true);
+  assert.equal(O.bindProviderTurn(state({ agent: "claude", spec: { policy: "unmanaged" } }), "claude", cu).value, false);
+  assert.equal(O.bindProviderTurn(state({ agent: "claude", spec: { policy: "strict" }, program: "claude-acp" }), "claude", cu).value, false);
+});
+
 test("a permission binds an ACP run origin, and a full table is a capacity end", () => {
   const s = state();
   const r = O.bindRunOrigin(s, 9, "call-1", { query: "lock" }, true, {});
