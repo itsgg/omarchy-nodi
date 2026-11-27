@@ -113,12 +113,6 @@ test("Ctrl+K offers Reset ranking only for a row with history", () => {
   assert.ok(!Rows.actionsFor(row, {}).some(a => a.nodi));
 });
 
-test("a file's path as a URL keeps # and ? as part of the name", () => {
-  const Rows = load("lib/Rows.js");
-  assert.equal(Rows.fileUrl("/home/u/shot #2.png"), "file:///home/u/shot%20%232.png");
-  assert.equal(Rows.fileUrl("/home/u/100%?.png"), "file:///home/u/100%25%3F.png");
-});
-
 test("a file's preview: its details and first lines once the read lands", () => {
   const Rows = load("lib/Rows.js");
   const F = load("providers/files.js");

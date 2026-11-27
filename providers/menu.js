@@ -233,7 +233,7 @@ function entriesOf(menu) {
       tree: GATED.test(id), ungated: UNGATED.test(id),
       contextWords: item.checked ? contextWords(above) : [],
       kind: kindOf(item, toggle, menu),
-      crumb: above.map(function(a) { return a.label }).join(" > "),
+      crumb: Menu.breadcrumb(menu.items, id),
       fields: Score.prepare({
         name: item.label,
         aliases: item.aliases.concat(synonyms(id)),
