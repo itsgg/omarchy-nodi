@@ -40,6 +40,7 @@ import "lib/Reminders.js" as Reminders
 import "lib/HomeSources.js" as HomeParser
 import "lib/PromptContext.js" as PromptContext
 import "lib/NodiActions.js" as NodiActions
+import "lib/NodiMcp.js" as NodiMcp
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -1331,16 +1332,12 @@ Item {
   // ---------------------------------------------------------------- nodi mcp
 
   // Rows another agent found through `nodi mcp` (bin/nodi, ROADMAP 45), by
-  // key, with when: a run names one no hotkey or history holds, for ten
-  // minutes, the last 64.
+  // key, with when (lib/NodiMcp.js keepFound).
   property var foundRows: ({})
   property var foundOrder: []
-  readonly property int foundMs: 10 * 60 * 1000
+  readonly property int foundMs: NodiMcp.FOUND_MS
 
-  function foundRow(key) {
-    var f = root.foundRows[String(key || "")]
-    return f && Date.now() - f.at < root.foundMs ? f.row : null
-  }
+  function foundRow(key) { return NodiMcp.foundRow(root.foundRows, key, Date.now()) }
 
   // What bin/nodi carries in a file, never an IPC argument (Carried.qml):
   // an agent's search, a row's key, Ask's tool server's messages. A path
@@ -1352,44 +1349,20 @@ Item {
     var query = carried.read(carriedQuery)
     if (query === null) return "[]"
     var rows = root.agentRows(query)
-    var found = {}
-    var order = root.foundOrder.slice()
-    var now = Date.now()
-    for (var k in root.foundRows) found[k] = root.foundRows[k]
-    for (var i = 0; i < rows.length; i++) {
-      if (!found[rows[i].key]) order.push(rows[i].key)
-      found[rows[i].key] = { row: rows[i], at: now }
-    }
-    while (order.length > 64) delete found[order.shift()]
-    root.foundRows = found
-    root.foundOrder = order
-    return JSON.stringify(rows.map(function(r) {
-      var d = root.agentData(r)
-      d.command = root.oneLine(Run.describe(r.run))
-      if (r.risk) d.risk = r.risk
-      return d
-    }))
+    var kept = NodiMcp.keepFound(root.foundRows, root.foundOrder, rows, Date.now())
+    root.foundRows = kept.rows
+    root.foundOrder = kept.order
+    return NodiMcp.searchReply(rows)
   }
 
-  // What a run does, said on one line: a copy keeps its text, a script its
-  // arguments (Fable 2026-10-06: the first line alone lost both).
-  function oneLine(text) {
-    var t = String(text || "").replace(/\s*\n+\s*/g, " ").trim()
-    return t.length > 300 ? t.slice(0, 297) + "..." : t
-  }
+  function oneLine(text) { return NodiMcp.oneLine(text) }
 
-  // What a key runs: { s: its snapshot, remember }, or null. With `agent`,
-  // a row `nodi mcp`'s search found runs as found, the fresher of the two,
-  // a moment's row (a kill) included, as Claude's run would, and is
-  // remembered only if its provider says so; else the saved row, as its
-  // provider gives it now (lib/Engine.js resolve), never a moment's.
+  // What a key runs (lib/NodiMcp.js keySnapshot): with `agent`, a row
+  // `nodi mcp`'s search found first; else the saved row as its provider
+  // gives it now.
   function keySnapshot(k, agent) {
-    var found = agent ? root.foundRow(k) : null
-    if (found) return { s: History.snapshot(found), remember: !!found.remember }
-    var saved = Prefs.snapshotFor(root.prefs, k, root.history)
-    var live = saved ? Engine.resolve(k, saved, root.config, root.services()) : null
-    var s = live ? History.snapshot(live) : saved
-    return History.replayable(s) ? { s: s, remember: true } : null
+    return NodiMcp.keySnapshot(k, agent, root.foundRows, root.prefs, root.history, Date.now(),
+      function(key, saved) { return Engine.resolve(key, saved, root.config, root.services()) })
   }
 
   // Rows `nodi mcp` showed him to propose, by key, kept until his Enter
@@ -1408,12 +1381,8 @@ Item {
     if (!a || !a.s || !a.s.run) return "unknown row"
     // One that asks for a typed word is never run for an agent, so it is
     // not kept for a run (bin/nodi refuses it before asking him).
-    if (!a.s.confirmWord) root.shownRows[k] = a
-    root.shownOrder = root.shownOrder.filter(function(x) { return x !== k }).concat([k])
-    while (root.shownOrder.length > 8) delete root.shownRows[root.shownOrder.shift()]
-    var s = a.s
-    return JSON.stringify({ key: k, title: String(s.title || ""), subtitle: String(s.subtitle || ""), command: Run.describe(s.run),
-                            risk: String(s.risk || ""), asks: s.confirmWord ? "a typed word" : s.confirm ? "a second Enter" : "" })
+    root.shownOrder = NodiMcp.keepShown(root.shownRows, root.shownOrder, k, a)
+    return NodiMcp.describeReply(k, a.s)
   }
 
   // `nodi mcp`'s run: a row its search found, else a saved one; a row that
@@ -1459,32 +1428,21 @@ Item {
     root.noteWindow()
     var k = String(key || "")
     var proposed = confirmed === true && agent === true
-    // A proposed row runs only as it was shown; none kept (evicted, or the
-    // shell reloaded since) is no row (Fable 2026-10-06).
-    if (proposed && !root.shownRows[k]) return "unknown row"
-    var a = proposed ? root.shownRows[k] : root.keySnapshot(k, agent === true)
+    // A proposed row runs only as it was shown (lib/NodiMcp.js takeShown).
+    var a
     if (proposed) {
-      delete root.shownRows[k]
-      root.shownOrder = root.shownOrder.filter(function(x) { return x !== k })
-    }
-    var s = a ? a.s : null
-    var remember = a ? a.remember : false
-    // An agent's run at once takes only a row no word of its own reaches
-    // (AskTools.refusedAtOnce); any other it proposes.
-    var refused = agent === true && !proposed && s ? AskTools.refusedAtOnce(k, s.provider) : ""
-    if (refused) return refused
-    if (s && s.provider === "home" && !root.currentHomeExecutable(s.run, k, s.homeExecution))
-      return "watched row is no longer current"
-    // Watched by its title unless the Undoer runs it and says so itself,
-    // as execute() has it: the Undoer takes an argv, and a watched run is
-    // a command and its environment since its title left the arguments
-    // (2026-10-09).
-    var argv = s ? Run.command(s.run, root.appAction, s.undoable && s.run.kind === "exec" ? "" : String(s.title || "")) : null
-    if (!argv) return "unknown row"
-    // A row that asks before it runs is run from the bar only: `nodi run`
-    // names any remembered row, where a hotkey or a link is never given one.
-    if (s.confirmWord) return "it asks for a typed word; open it in the bar"
-    if (s.confirm && confirmed !== true) return "it asks before it runs; open it in the bar"
+      var taken = NodiMcp.takeShown(root.shownRows, root.shownOrder, k)
+      if (!taken) return "unknown row"
+      a = taken.a
+      root.shownOrder = taken.order
+    } else a = root.keySnapshot(k, agent === true)
+    // Whether it may run, and as what (lib/NodiMcp.js runPlan).
+    var plan = NodiMcp.runPlan({ key: k, a: a, confirmed: confirmed, agent: agent, proposed: proposed,
+                                 homeCurrent: root.currentHomeExecutable, appAction: root.appAction })
+    if (plan.refusal) return plan.refusal
+    var s = plan.s
+    var argv = plan.argv
+    var remember = plan.remember
     // The bar is not open: what is focused now is what a launch replaces,
     // not what was focused when the bar last opened (codex 2026-10-04).
     if (s.run.kind === "app") launchFeedback.opened()
@@ -2517,10 +2475,7 @@ Item {
   function agentTop(q) { return Engine.agentTop(q, root.config, root.services()) }
 
   // A row as an agent reads it; a row that asks says how.
-  function agentData(r) {
-    return { key: r.key, title: r.title, subtitle: r.subtitle, kind: r.kind,
-             asks: r.confirmWord ? "a typed word" : r.confirm ? "a second Enter" : "" }
-  }
+  function agentData(r) { return NodiMcp.agentData(r) }
 
   // The agent's exploratory search: as data, with its live rows scoped to
   // the prompt turn that requested them.
