@@ -41,8 +41,10 @@ picks:
 	@node tools/picks.mjs
 
 # His picks replayed in order through today's ranking and learning, over
-# this machine's lists, from no history (tools/rank/replay.mjs): each
-# row's place now, and the letters to first before and after its pick.
+# this machine's lists, from what the bar had learned before the log
+# (tools/rank/replay.mjs; --fresh for nothing, --assume-earlier for runs
+# of no known date as earlier): each row's place now, and
+# the letters to first before and after its pick.
 # Not in `check`: the log is his.
 replay:
 	@node tools/rank/replay.mjs
