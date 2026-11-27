@@ -40,3 +40,12 @@ test("dates: a weekday ending a range falls on or after its start", () => {
   assert.equal(top("dec 25 to friday").subtitle, "Fri, 25 Dec 2026 to Fri, 25 Dec 2026");
   assert.equal(top("2026-10-01 to 2026-10-05").title, "4 days", "dates with years as given");
 });
+
+test("dates: a month or a year on keeps to the end of a shorter month", () => {
+  assert.equal(top("jan 31 + 1 month", "2026-01-10T10:00").title, "Sat, 28 Feb 2026");
+  assert.equal(top("2024-01-31 + 1 month").title, "Thu, 29 Feb 2024");
+  assert.equal(top("2024-02-29 + 1 year").title, "Fri, 28 Feb 2025");
+  assert.equal(top("2024-03-31 - 1 month").title, "Thu, 29 Feb 2024");
+  assert.equal(top("2026-01-15 + 13 months").title, "Mon, 15 Feb 2027");
+  assert.ok(!timeRows("today + 99999999999 months").some(r => /NaN/.test(r.title)));
+});

@@ -263,13 +263,22 @@ function following(r, first) {
 
 function addDays(d, n) { return ymd(d.getFullYear(), d.getMonth(), d.getDate() + n) }
 
+// The same day n months on, or the month's last when it is shorter:
+// "jan 31 + 1 month" is the end of February, not 3 March.
+function addMonths(d, n) {
+  var first = ymd(d.getFullYear(), d.getMonth() + n, 1)
+  if (isNaN(first.getTime())) return first
+  var last = ymd(first.getFullYear(), first.getMonth() + 1, 0).getDate()
+  return ymd(first.getFullYear(), first.getMonth(), Math.min(d.getDate(), last))
+}
+
 function addUnits(d, n, unit) {
   var u = unit.toLowerCase()
   var out = null
   if (/^(d|days?)$/.test(u)) out = addDays(d, n)
   else if (/^(w|wks?|weeks?)$/.test(u)) out = addDays(d, n * 7)
-  else if (/^(m|mos?|months?)$/.test(u)) out = ymd(d.getFullYear(), d.getMonth() + n, d.getDate())
-  else if (/^(y|yrs?|years?)$/.test(u)) out = ymd(d.getFullYear() + n, d.getMonth(), d.getDate())
+  else if (/^(m|mos?|months?)$/.test(u)) out = addMonths(d, n)
+  else if (/^(y|yrs?|years?)$/.test(u)) out = addMonths(d, n * 12)
   // An offset past what a Date can hold ("in 99999999999 days") is no date.
   return out && !isNaN(out.getTime()) ? out : null
 }
