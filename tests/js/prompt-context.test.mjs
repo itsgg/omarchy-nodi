@@ -295,3 +295,15 @@ test("a file read is found under the path as he wrote it, ~ and all", () => {
   assert.equal(P.expandMentions("explain @f:~/notes.md", { files }), 'explain [File "~/notes.md":\nNOTES\n]');
   assert.equal(P.expandMentions("and @f:/home/u/notes.md", { files }), 'and [File "/home/u/notes.md":\nNOTES\n]');
 });
+
+test("a bare path ends before trailing punctuation; a quoted one keeps it", () => {
+  const paths = (t) => plain(P.parseFileMentions(t)).map(m => m.rawPath);
+  assert.deepEqual(paths("explain @f:/a/b.txt, please"), ["/a/b.txt"]);
+  assert.deepEqual(paths("what is in @f:~/x.md?"), ["~/x.md"]);
+  assert.deepEqual(paths("see @f:/a.txt. Then @f:/b.txt; and @f:/c.txt! @f:/d.txt:"), ["/a.txt", "/b.txt", "/c.txt", "/d.txt"]);
+  assert.deepEqual(paths("keep @f:/a/v1.2/b.tar.gz"), ["/a/v1.2/b.tar.gz"], "inner dots stay");
+  assert.deepEqual(paths('quoted @f:"/a/b.txt," and @f:\'/c?\''), ["/a/b.txt,", "/c?"]);
+  assert.ok(P.hasMentions("what is in @f:~/x.md?"));
+  assert.equal(P.expandMentions("explain @f:/a/b.txt, please", { files: { "/a/b.txt": "B" } }), 'explain [File "/a/b.txt":\nB\n], please');
+  assert.equal(P.expandMentions("what is in @f:~/x.md?", { files: { "~/x.md": "X" } }), 'what is in [File "~/x.md":\nX\n]?');
+});
