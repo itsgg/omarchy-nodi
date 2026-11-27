@@ -86,7 +86,7 @@ test("ics: values that are no date, durations, and rules Nodi does not expand", 
     "print(json.dumps([",
     "  ics.when({}, '20261332T100000', z), ics.when({}, 'tomorrow', z),",
     "  ics.duration_s('PT1H30M'), ics.duration_s('-P1DT2H'), ics.duration_s('P2W'), ics.duration_s('P'), ics.duration_s('soon'),",
-    "  ics.parse_rule('FREQ=HOURLY'), ics.parse_rule('FREQ=DAILY;BYHOUR=9'), ics.parse_rule('FREQ=DAILY;INTERVAL=x'), ics.parse_rule('FREQ=DAILY;COUNT=two')]))"],
+    "  ics.parse_rule('FREQ=SECONDLY'), ics.parse_rule('FREQ=DAILY;BYHOUR=9;BYSETPOS=1'), ics.parse_rule('FREQ=DAILY;INTERVAL=x'), ics.parse_rule('FREQ=DAILY;COUNT=two')]))"],
     [ics([])]);
   assert.deepEqual(got, [null, null, 5400, -93600, 1209600, null, null, null, null, null, null]);
 });
@@ -347,4 +347,25 @@ test("ics: main with settings that do not parse reads no calendar; one that cann
     assert.deepEqual([broken.calendars[0].ok, broken.calendars[0].error, broken.calendars[0].name], [false, "could not be read (RuntimeError)", "Calendar 1"]);
     assert.ok(!existsSync(join(dir, "cache", "nothing")));
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("ics: hourly and minutely rules, and a day's hours and minutes, in the window", () => {
+  const feed = ics([
+    "BEGIN:VEVENT", "UID:h", "SUMMARY:Hourly", "DTSTART:20261009T080000Z", "DURATION:PT10M", "RRULE:FREQ=HOURLY;INTERVAL=3;COUNT=4", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:w", "SUMMARY:Water", "DTSTART:20260101T090000Z", "DURATION:PT5M", "RRULE:FREQ=HOURLY;BYHOUR=9,13,17;BYDAY=MO,TU,WE,TH,FR", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:m", "SUMMARY:Stretch", "DTSTART:20261010T100000Z", "DURATION:PT1M", "RRULE:FREQ=MINUTELY;INTERVAL=20;BYHOUR=10;COUNT=5", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:d", "SUMMARY:Pills", "DTSTART:20261009T070000Z", "DURATION:PT5M", "RRULE:FREQ=DAILY;BYHOUR=7,19;BYMINUTE=0,30;COUNT=6", "END:VEVENT",
+    "BEGIN:VEVENT", "UID:a", "SUMMARY:All day", "DTSTART;VALUE=DATE:20261009", "RRULE:FREQ=HOURLY", "END:VEVENT"]);
+  const got = py([
+    "cal = ics.parse(sys.argv[2])",
+    "lo = ics.datetime(2026, 10, 9, tzinfo=ics.timezone.utc).timestamp()",
+    "rows, _ = ics.events_of(cal, '', set(), ics.timezone.utc, lo, lo + 4 * 86400)",
+    "print(json.dumps([[r['title'], ics.datetime.fromtimestamp(r['start'] / 1000, ics.timezone.utc).strftime('%a %d %H:%M')] for r in rows]))"], [feed]);
+  const of = title => got.filter(r => r[0] === title).map(r => r[1]);
+  assert.deepEqual(of("Hourly"), ["Fri 09 08:00", "Fri 09 11:00", "Fri 09 14:00", "Fri 09 17:00"], "every three hours, four times");
+  assert.deepEqual(of("Water"), ["Fri 09 09:00", "Fri 09 13:00", "Fri 09 17:00", "Mon 12 09:00", "Mon 12 13:00", "Mon 12 17:00"],
+                   "a series from January reaches the window, on weekdays at its hours");
+  assert.deepEqual(of("Stretch"), ["Sat 10 10:00", "Sat 10 10:20", "Sat 10 10:40", "Sun 11 10:00", "Sun 11 10:20"], "within its hour only, five times");
+  assert.deepEqual(of("Pills"), ["Fri 09 07:00", "Fri 09 07:30", "Fri 09 19:00", "Fri 09 19:30", "Sat 10 07:00", "Sat 10 07:30"]);
+  assert.deepEqual(of("All day"), ["Fri 09 00:00"], "no hours in a day-long event: its first day only");
 });

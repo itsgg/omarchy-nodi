@@ -26,9 +26,10 @@
 # Only the standard library: the recurrence rules of RFC 5545 that calendars
 # write (DAILY to YEARLY; BYDAY with or without a position, BYMONTHDAY,
 # BYMONTH, BYYEARDAY, BYSETPOS; COUNT, UNTIL, INTERVAL, WKST), EXDATE,
-# RDATE, and an occurrence moved or cancelled on its own (RECURRENCE-ID).
-# A rule with BYWEEKNO, BYHOUR, BYMINUTE or BYSECOND, or a FREQ under a day,
-# gives its first occurrence only. A TZID is read from tzdata (Google
+# RDATE, and an occurrence moved or cancelled on its own (RECURRENCE-ID),
+# or with those after it (RANGE=THISANDFUTURE). HOURLY and MINUTELY, and
+# BYHOUR, BYMINUTE and BYSECOND, for a timed event. A rule with BYWEEKNO or
+# SECONDLY, or BYSETPOS over times of day, gives its first occurrence only. A TZID is read from tzdata (Google
 # writes IANA names), then from the feed's own VTIMEZONE (Outlook writes
 # Windows names with one), and a time with neither is the feed's
 # X-WR-TIMEZONE or this machine's.
@@ -49,11 +50,12 @@ import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone, tzinfo
+from datetime import time as dtime
 from zoneinfo import ZoneInfo
 
 # Raised with any change to what an expansion holds, so one kept by an
 # older lib/ics.py is not answered with (Sonnet 2026-10-06).
-VERSION = 3
+VERSION = 4
 FRESH_S = 600
 DAYS = 9
 TIMEOUT_S = 10
@@ -474,9 +476,10 @@ def parse_rule(value):
             k, v = part.split("=", 1)
             r[k.strip().upper()] = v.strip()
     freq = r.get("FREQ", "").upper()
-    if freq not in ("DAILY", "WEEKLY", "MONTHLY", "YEARLY"):
+    if freq not in ("MINUTELY", "HOURLY", "DAILY", "WEEKLY", "MONTHLY", "YEARLY"):
         return None
-    if any(k in r for k in ("BYWEEKNO", "BYHOUR", "BYMINUTE", "BYSECOND")):
+    # BYSETPOS over the times of a day, not its days, is not worked out.
+    if "BYWEEKNO" in r or ("BYSETPOS" in r and any(k in r for k in ("BYHOUR", "BYMINUTE", "BYSECOND"))):
         return None
     try:
         def ints(k, lo, hi):
@@ -502,6 +505,9 @@ def parse_rule(value):
             "bymonthday": ints("BYMONTHDAY", 1, 31),
             "byyearday": ints("BYYEARDAY", 1, 366),
             "bysetpos": ints("BYSETPOS", 1, 366),
+            "byhour": sorted({x for x in ints("BYHOUR", 0, 23) if x >= 0}),
+            "byminute": sorted({x for x in ints("BYMINUTE", 0, 59) if x >= 0}),
+            "bysecond": sorted({x for x in ints("BYSECOND", 0, 59) if x >= 0}),
             "byday": [],
             "wkst": WEEKDAYS.get(r.get("WKST", "MO").upper(), 0),
         }
@@ -625,6 +631,46 @@ def rule_days(start, rule, hi, lo=None, day_budget=None):
         k += 1
 
 
+def sub_daily(rule):
+    return rule["freq"] in ("HOURLY", "MINUTELY") or bool(rule["byhour"] or rule["byminute"] or rule["bysecond"])
+
+
+def rule_times(day0, clock, rule, hi_day, lo_day, day_budget):
+    """A timed rule's wall times from DTSTART's day and clock on, in order:
+    each day the rule makes at each BYHOUR, BYMINUTE and BYSECOND (its
+    clock's where a part is not given), or, for HOURLY and MINUTELY, every
+    INTERVAL hours or minutes on a day and at a time the BYxxx parts allow."""
+    hours = rule["byhour"] or [clock.hour]
+    minutes = rule["byminute"] or [clock.minute]
+    seconds = rule["bysecond"] or [clock.second]
+    if rule["freq"] not in ("HOURLY", "MINUTELY"):
+        clocks = [dtime(h, m, s) for h in hours for m in minutes for s in seconds]
+        for d in rule_days(day0, rule, hi_day, lo_day, day_budget):
+            for c in clocks:
+                yield datetime.combine(d, c)
+        return
+    # The days the BYxxx parts allow, as a daily rule makes them.
+    daily = dict(rule, freq="DAILY", interval=1, count=None, bysetpos=[])
+    first = lo_day if rule["count"] is None and lo_day > day0 else day0
+    days = set(rule_days(day0, daily, hi_day, first, day_budget))
+    step = timedelta(hours=rule["interval"]) if rule["freq"] == "HOURLY" else timedelta(minutes=rule["interval"])
+    t = datetime.combine(day0, clock)
+    if rule["count"] is None and first > day0:
+        # Straight to the step before the window: without a COUNT nothing
+        # before it is counted.
+        k = int((datetime.combine(first, dtime()) - t) / step)
+        t += step * max(0, k - 1)
+    while t.date() <= hi_day:
+        day_budget[0] += 1
+        if day_budget[0] > RULE_DAYS_TOTAL_MAX:
+            raise CalendarLimitError("calendar recurrence expansion is too large")
+        if (t.date() in days and (not rule["byhour"] or t.hour in rule["byhour"])
+                and (not rule["byminute"] or t.minute in rule["byminute"])
+                and (not rule["bysecond"] or t.second in rule["bysecond"])):
+            yield t
+        t += step
+
+
 def key_of(v):
     """What a RECURRENCE-ID or EXDATE is matched by: a date as itself, a
     time by its instant."""
@@ -645,6 +691,9 @@ def starts(ev, start, zones, local, lo, hi, date_budget=None, day_budget=None):
     tz = start.tzinfo if timed else local
     _, rr = ev.first("RRULE")
     rule = parse_rule(rr) if rr else None
+    # Times of day are no part of a day-long event: its first day only.
+    if rule and not timed and sub_daily(rule):
+        rule = None
     out, seen = [], set()
     date_budget = date_budget if date_budget is not None else [0]
 
@@ -681,10 +730,15 @@ def starts(ev, start, zones, local, lo, hi, date_budget=None, day_budget=None):
         clock = start.astimezone(tz).timetz().replace(tzinfo=None) if timed else None
         # DTSTART is the first occurrence, by the rule or not (RFC 5545).
         n = 1
-        for d in rule_days(day0, rule, hi_day, lo_day, day_budget):
+        made = (rule_times(day0, clock, rule, hi_day, lo_day, day_budget) if timed and sub_daily(rule)
+                else rule_days(day0, rule, hi_day, lo_day, day_budget))
+        for d in made:
             if rule["count"] is not None and n >= rule["count"]:
                 break
-            occ = datetime.combine(d, clock, tzinfo=tz) if timed else d
+            if isinstance(d, datetime):
+                occ = d.replace(tzinfo=tz)
+            else:
+                occ = datetime.combine(d, clock, tzinfo=tz) if timed else d
             if occ == start:
                 continue
             if until is not None and ((instant(occ, tz) > until) if timed else (occ > until)):
