@@ -42,7 +42,8 @@ picks:
 
 # His picks replayed in order through today's ranking and learning, over
 # this machine's lists, from what the bar had learned before the log
-# (tools/rank/replay.mjs; --fresh for nothing): each row's place now, and
+# (tools/rank/replay.mjs; --fresh for nothing, --assume-earlier for runs
+# of no known date as earlier): each row's place now, and
 # the letters to first before and after its pick.
 # Not in `check`: the log is his.
 replay:

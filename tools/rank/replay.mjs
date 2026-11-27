@@ -11,7 +11,7 @@
 // No windows: which were open at each pick is not logged, and the bench's
 // made-up ones (four "- Chromium" windows) outranked the apps he picked.
 // Not in `make check`: the log is his, and never leaves this machine.
-//   node tools/rank/replay.mjs [--since 2026-10-05T14:00] [--log FILE] [--fresh]   (make replay)
+//   node tools/rank/replay.mjs [--since 2026-10-05T14:00] [--log FILE] [--fresh | --assume-earlier]   (make replay)
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -25,13 +25,16 @@ const Match = load("lib/Match.js");
 const PickLog = load("lib/PickLog.js");
 
 // What the bar had learned before the first pick of `log`, from what it
-// holds now (`saved`, History.load of ~/.cache/nodi/history.json): every
-// row and pick entry less the runs the log itself replays. An entry last
-// run before the log began is as it was then; one run since keeps its
-// runs from before, dated just before the log, its true date unknown.
-// Without it the first pick of a query he had long used ranked as if new:
-// "mail" put Gmail over Omamail, picked for "mail" and "mai" since October.
-export function seed(saved, log) {
+// holds now (`saved`, History.load of ~/.cache/nodi/history.json). An
+// entry last run before the log began is as it was then. One run since
+// holds the log's runs and maybe others the log did not record, with no
+// date: before the log, or after it began (a run from the home, a pick
+// while logging was off). Those are left out, and counted in `unknown`
+// (runs of rows, picks for queries), unless `assumeEarlier`, which dates
+// them just before the log; that looks ahead when they came later.
+// Without a seed the first pick of a query he had long used ranked as if
+// new: "fil" and "fi" were picked for Files in October.
+export function seed(saved, log, assumeEarlier) {
   const start = log.length ? log[0].at : 0;
   const ran = Object.create(null), picked = Object.create(null);
   for (const e of log) {
@@ -40,23 +43,26 @@ export function seed(saved, log) {
     const q = Match.normalise(e.query);
     if (q) picked[q + "\n" + e.key] = (picked[q + "\n" + e.key] || 0) + 1;
   }
-  const before = (entry, n) => {
+  const unknown = { runs: 0, picks: 0 };
+  const before = (entry, n, what) => {
     if (entry.t < start) return { n: entry.n, t: entry.t, f: typeof entry.f === "number" ? entry.f : entry.n };
     const left = entry.n - n;
-    return left > 0 ? { n: left, t: start - 1, f: left } : null;
+    if (left <= 0) return null;
+    unknown[what] += left;
+    return assumeEarlier ? { n: left, t: start - 1, f: left } : null;
   };
   const history = Object.create(null), picks = Object.create(null);
   for (const k in (saved && saved.rows) || {}) {
-    const e = before(saved.rows[k], ran[k] || 0);
+    const e = before(saved.rows[k], ran[k] || 0, "runs");
     if (e) history[k] = e;
   }
   for (const q in (saved && saved.picks) || {}) {
     for (const k in saved.picks[q]) {
-      const e = before(saved.picks[q][k], picked[q + "\n" + k] || 0);
+      const e = before(saved.picks[q][k], picked[q + "\n" + k] || 0, "picks");
       if (e) (picks[q] || (picks[q] = Object.create(null)))[k] = e;
     }
   }
-  return { history, picks };
+  return { history, picks, unknown };
 }
 
 // A menu toggle shown in two rows by its `when:` ("Notifications On" while
@@ -151,6 +157,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const since = opt("--since") ? Date.parse(opt("--since")) : null;
   if (since !== null && Number.isNaN(since)) { console.error("replay: --since takes a time, as 2026-10-05T14:00"); process.exit(2); }
   const fresh = args.includes("--fresh");
+  const assumeEarlier = args.includes("--assume-earlier");
   const file = opt("--log") || join(process.env.XDG_CACHE_HOME || join(process.env.HOME || "", ".cache"), "nodi/picks-log.json");
   let log;
   try { log = PickLog.parse(readFileSync(file, "utf8")); } catch { console.log(`replay: no picks logged yet (${file})`); process.exit(0); }
@@ -160,14 +167,16 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   let learned = { history: {}, picks: {} };
   if (!fresh) {
     const saved = join(process.env.XDG_CACHE_HOME || join(process.env.HOME || "", ".cache"), "nodi/history.json");
-    try { learned = seed(History.load(readFileSync(saved, "utf8")), log); } catch { console.log(`replay: no history to seed from (${saved}), from none`); }
+    try { learned = seed(History.load(readFileSync(saved, "utf8")), log, assumeEarlier); } catch { console.log(`replay: no history to seed from (${saved}), from none`); }
   }
   const base = lists(d, learned);
   const results = replay(log, base, config);
   const s = summary(results);
   const kept = s.picks - s.gone;
   const fell = PickLog.fallbacks(log).reduce((n, f) => n + f.n, 0);
-  console.log(`replay: ${fresh ? "from no history" : "from the history learned before the log"}`);
+  const u = learned.unknown;
+  console.log(`replay: ${fresh ? "from no history" : "from the history learned before the log"}`
+    + (u && (u.runs || u.picks) ? `; ${u.runs} runs and ${u.picks} picks the log did not record, of no known date, ${assumeEarlier ? "assumed before it (--assume-earlier)" : "left out (--assume-earlier counts them)"}` : ""));
   console.log(`replay: ${s.picks} picks, ${s.gone} of rows the replay's lists do not hold (a keyword or snippet of yours, a device, a window since closed)`
     + (fell ? `; ${fell} fallbacks picked when nothing matched, not replayed` : ""));
   console.log(`replay: first when picked, ${s.loggedFirst} of ${kept} as logged, ${s.first} of ${kept} as ranked now`);

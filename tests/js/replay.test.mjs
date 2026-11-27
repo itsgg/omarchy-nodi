@@ -36,7 +36,7 @@ test("a fallback picked when nothing matched is not replayed: the bar learns not
   assert.deepEqual(r.map(x => x.key), ["app:firefox"]);
 });
 
-test("the seed is what was learned before the log: runs the log replays taken off, entries untouched since kept as they were", () => {
+test("the seed is what was learned before the log: entries untouched since kept as they were, runs of no known date counted and left out", () => {
   const before = t - 30 * 86400000;
   const saved = {
     rows: { "app:firefox": { n: 5, t: t + 60000, f: 4.2 }, "app:signal": { n: 2, t: before, f: 1.5 }, "app:code": { n: 1, t: t } },
@@ -46,10 +46,23 @@ test("the seed is what was learned before the log: runs the log replays taken of
                { at: t + 60000, query: "fire", key: "app:firefox", rank: 1 },
                { at: t + 90000, query: "zzqx", key: "fallback:ask", rank: 3 }];
   const s = seed(saved, log);
-  assert.deepEqual({ ...s.history }, { "app:firefox": { n: 4, t: t - 1, f: 4 }, "app:signal": { n: 2, t: before, f: 1.5 } },
-                   "Firefox ran 4 times before the log, dated just before it; Signal not since, as it was; Code only in the log");
-  assert.deepEqual(Object.keys(s.picks), ["fire"], "a query whose picks are all in the log is not seeded");
-  assert.deepEqual({ ...s.picks.fire }, { "app:firefox": { n: 2, t: t - 1, f: 2 }, "app:signal": { n: 1, t: before, f: 1 } });
+  assert.deepEqual({ ...s.history }, { "app:signal": { n: 2, t: before, f: 1.5 } },
+                   "Signal not run since, as it was; Firefox's 4 unlogged runs may have come after the log began; Code only in the log");
+  assert.deepEqual(Object.keys(s.picks), ["fire"]);
+  assert.deepEqual({ ...s.picks.fire }, { "app:signal": { n: 1, t: before, f: 1 } });
+  assert.deepEqual(s.unknown, { runs: 4, picks: 2 });
+  const a = seed(saved, log, true);
+  assert.deepEqual({ ...a.history["app:firefox"] }, { n: 4, t: t - 1, f: 4 }, "assumed earlier: dated just before the log");
+  assert.deepEqual({ ...a.picks.fire["app:firefox"] }, { n: 2, t: t - 1, f: 2 });
+});
+
+test("a pick the log did not record, made after it began, does not lift the log's first pick", () => {
+  const log = [{ at: t, query: "f", key: "app:firefox", rank: 2 }];
+  const saved = { rows: { "app:firefox": { n: 2, t: t + 86400000 } }, picks: { f: { "app:firefox": { n: 2, t: t + 86400000 } } } };
+  const s = seed(saved, log);
+  assert.equal(replay(log, services({ history: s.history, picks: s.picks }), config)[0].place, 2, "Files leads at f, as it did then");
+  const a = seed(saved, log, true);
+  assert.equal(replay(log, services({ history: a.history, picks: a.picks }), config)[0].place, 1, "only when assumed earlier");
 });
 
 test("a replay starts from the history handed in: a query picked before the log is first at its first logged pick", () => {
