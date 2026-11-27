@@ -625,11 +625,15 @@ BorderSurface {
             color: nodi.link
             x: Style.spacing.xs + nodi.rowInsetLeft
 
+            // The row's header and size from the selected row's own data:
+            // currentItem is only an Item to the type checker.
+            readonly property var marked: nodi.selectedRow || ({})
+            readonly property real markedHeight: marked.hero ? nodi.heroHeight : nodi.rowHeight
             readonly property real targetY: list.currentItem
-              ? (list.currentItem.y + (list.currentItem.section !== "" ? nodi.sectionHeight : 0) + (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) / 2 - height / 2)
+              ? (list.currentItem.y + (marked.section ? nodi.sectionHeight : 0) + markedHeight / 2 - height / 2)
               : 0
             readonly property real targetHeight: list.currentItem
-              ? Math.max(nodi.barWidth * 3, (list.currentItem.hero ? nodi.heroHeight : nodi.rowHeight) - nodi.barInset * 2)
+              ? Math.max(nodi.barWidth * 3, markedHeight - nodi.barInset * 2)
               : 0
 
             y: targetY
