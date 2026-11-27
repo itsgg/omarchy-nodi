@@ -39,6 +39,7 @@ import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
 import "lib/HomeSources.js" as HomeParser
 import "lib/PromptContext.js" as PromptContext
+import "lib/NodiActions.js" as NodiActions
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -1497,195 +1498,57 @@ Item {
     return "ok"
   }
 
-  // Enter on a row whose action is Nodi's own.
+  // Enter on a row whose action is Nodi's own: what it does is
+  // lib/NodiActions.js decide, its effects applied here in order.
   function doNodi(row) {
-    if (row.nodi === "saveAlias" && root.aliasRow) {
-      var next = Prefs.withAlias(root.prefs, root.queryNow(), root.aliasRow.key, History.snapshot(root.aliasRow))
-      if (next) root.savePrefs(next)
-      root.aliasRow = null
-      input.text = ""
-    } else if (row.nodi === "show") {
-      root.savePrefs(Prefs.shownRow(root.prefs, row.key))
-    } else if (row.nodi === "windowRule" && row.data) {
-      root.setWindowRule({ window: row.data.window, change: row.data.change }, row)
-    } else if (row.nodi === "askAllow") {
-      // Not in the first moment after it shows: an Enter pressed for the
-      // row that was there runs nothing (Fable 2026-10-06).
-      var shown = askSession.proposal ? Date.now() - (askSession.proposal.at || 0) : 0
-      if (shown < 400) return
-      askSession.allow()
-    } else if (row.nodi === "askDeny") {
-      askSession.deny()
-    } else if (row.nodi === "askCommand" && row.data) {
-      askSession.runCommand(row.data.name, row.data.input)
-    } else if (row.nodi === "askResume" && row.data) {
-      if (askSession.resumeRemote(row.data.index)) {
-        input.text = "ask "
-        input.cursorPosition = input.text.length
+    root.applyEffects(NodiActions.decide(row, {
+      query: root.queryNow(), now: Date.now(), prefs: root.prefs, aliasRow: root.aliasRow,
+      wordAsk: root.wordAsk, armedKey: root.armedKey, selection: root.selection,
+      cameFrom: root.cameFrom, answers: root.config.answers, conversations: root.conversations,
+      pickSession: root.pickSession, askBusy: askSession.busy(), proposal: askSession.proposal,
+      shooting: windowShot.active,
+      resultAction: function(index) { return askSession.resultAction(index) },
+      answer: { message: answerSession.message, keyword: answerSession.keyword,
+                question: answerSession.question, conversation: answerSession.conversation },
+      screens: function() { return { focused: Hyprland.focusedMonitor, all: Hyprland.monitors.values || [] } }
+    }))
+  }
+
+  // The effects lib/NodiActions.js returns, in order: a call that `need`s a
+  // result ends them without one, and its `then` runs only with one.
+  function applyEffects(effects) {
+    for (var i = 0; i < effects.length; i++) {
+      var e = effects[i]
+      if (e.do === "set") root[e.key] = e.value
+      else if (e.do === "text") {
+        input.text = e.text
+        if (e.cursor) input.cursorPosition = input.text.length
+      } else if (e.do === "recompute") root.recompute()
+      else if (e.do === "call") {
+        var target = e.on === "ask" ? askSession : e.on === "answer" ? answerSession
+          : e.on === "tray" ? trayMenus : e.on === "shot" ? windowShot : root
+        var result = target[e.fn].apply(target, e.args)
+        if (e.need && !result) return
+        if (e.then && result) root.applyEffects(e.then)
       }
-    } else if (row.nodi === "askResult" && row.data) {
-      var resultItem = askSession.resultAction(row.data.index)
-      if (!resultItem) return
-      var resultAction = resultItem.action || {}
-      if (resultAction.exec !== undefined || resultAction.copy !== undefined
-          || resultAction.paste !== undefined) {
-        askSession.proposeResultAction(row.data.index)
-      } else if (resultAction.open !== undefined) {
-        root.openLink(resultAction.open, { ask: true, turn: resultItem.turn })
-      } else if (resultAction.query !== undefined) {
-        input.text = String(resultAction.query)
-        input.cursorPosition = input.text.length
-      } else if (resultAction.prompt !== undefined) {
-        input.text = "ask " + String(resultAction.prompt)
-        input.cursorPosition = input.text.length
-        root.dispatchAsk(String(resultAction.prompt), String(resultAction.prompt), "", "ask")
-      }
-    } else if (row.nodi === "askWith" && row.ask) {
-      var extraEnv = row.ask.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
-      root.dispatchAsk(row.ask.question, row.ask.message, row.ask.context, row.ask.purpose, extraEnv, undefined, row.ask.file)
-    } else if (row.nodi === "askNew") {
-      if (askSession.busy()) return
-      askSession.recycle()
-      if (row.data && row.data.prefix) input.text = row.data.prefix + " "
-      else {
-        root.directAskAgent = ""
-        input.text = "ask "
-      }
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "askWindow" && row.ask) {
-      // The window the bar opened over, captured from its own buffer by
-      // its ext-foreign-toplevel handle (grim -T), so the bar on top is not
-      // in it; 1280 pixels wide at most (ROADMAP 43).
-      var w = root.cameFrom
-      if (askSession.busy() || windowShot.active || !w.stableId) return
-      root.askRows = ({ turn: "", rows: ({}) })
-      root.shotAsk = Object.assign({}, row.ask, { captured: root.askCapture(row.ask.message, row.ask.context, row.ask.purpose) })
-      // grim scales the window's buffer, which is its layout width times
-      // its own monitor's scale (Fable 2026-10-06), else the focused one's.
-      var mon = Hyprland.focusedMonitor
-      var mons = Hyprland.monitors.values || []
-      for (var mi = 0; mi < mons.length; mi++) if (mons[mi].id === w.monitor) mon = mons[mi]
-      var ms = mon && mon.lastIpcObject && Number(mon.lastIpcObject.scale) > 0 ? Number(mon.lastIpcObject.scale) : 1
-      var px = w.width * ms
-      var scale = px > 1280 ? (1280 / px).toFixed(3) : "1"
-      windowShot.run(["/usr/bin/bash", "-c", 'set -o pipefail; grim -T "$1" -s "$2" -t jpeg -q 80 - | base64 -w0', "nodi-shot", w.stableId, scale])
-      input.text = "ask " + row.ask.question
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "ask") {
-      var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
-      if (q && !askSession.busy() && !windowShot.active) {
-        root.dispatchAsk(q, q, "", "ask")
-      }
-    } else if (row.nodi === "askAs" && row.data) {
-      if (!askSession.busy() && !windowShot.active)
-        root.dispatchAsk(row.data.question, row.data.question, "", "ask", undefined, undefined, undefined, row.data.id)
-    } else if (row.nodi === "runWord" && root.wordAsk) {
-      if (root.queryNow().trim() !== root.wordAsk.word) return
-      var w = root.wordAsk
-      root.wordAsk = null
-      // The query is what the row was picked for, not the word (Fable
-      // 2026-10-05: typing "send" later lifted the row).
-      input.text = w.query
-      root.execute(w.run, w.toggle, w.key, w.snap, w.title, w.undoable)
-      return
-    } else if (row.nodi === "undo") {
-      // Enter twice: the empty bar opens on it, and one Enter there is too
-      // easily the Enter for the row under it.
-      if (root.armedKey !== row.key) { root.armedKey = row.key; return }
-      root.armedKey = ""
-      var u = undoer.take(row.key)
-      if (u) root.execute(u.run, "", "", null, u.title, false)
-      return
-    } else if (row.nodi === "answer" || row.nodi === "answerFresh") {
-      var retryMessage = Answers.retryMessage(root.queryNow(), root.config.answers, answerSession)
-      var spec = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom, retryMessage)
-      if (spec) {
-        if (spec.keyword === "ask" || (PromptContext.hasMentions && PromptContext.hasMentions(spec.question))) {
-          root.dispatchAsk(spec.question, retryMessage || spec.question, "", "ask", undefined, undefined, undefined, undefined, row.nodi === "answerFresh", root.queryNow())
-          return
-        }
-        spec.fresh = row.nodi === "answerFresh"
-        answerSession.start(spec)
-      }
-    } else if (row.nodi === "askFallback" && row.data) {
-      // The failed question, asked of the answer "fallback" names: the field
-      // on its keyword, so its rows and its pane are that answer's.
-      input.text = row.data.keyword + " " + row.data.question
-      input.cursorPosition = input.text.length
-      var fbSpec = Answers.spec(input.text, root.config.answers, root.cameFrom, row.data.message)
-      if (fbSpec) { fbSpec.fresh = row.data.fresh === true; answerSession.start(fbSpec) }
-    } else if (row.nodi === "askAgentFallback" && row.data) {
-      // Switch and preserve what the failed turn effectively sent, but keep
-      // it idle: Enter on the prepared Ask row is the first thing that sends.
-      if (row.data.direct) {
-        if (!root.prepareDirectAsk(row.data.id, row.data.question, row.data.message, row.data.context)) return
-        input.text = row.data.id + " " + row.data.question
-      } else {
-        if (!root.selectAskAgent(row.data.id)) return
-        askSession.prepare(row.data.question, row.data.message, row.data.context)
-        input.text = "ask " + row.data.question
-      }
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "answerResume" && row.data) {
-      // A kept conversation, reopened in the pane: the field on its keyword,
-      // a follow-up continuing it.
-      var kept = Conversations.find(root.conversations, row.data.id)
-      if (!kept) return
-      answerSession.resume(kept, Answers.freshFor(root.config.answers, kept.keyword))
-      input.text = kept.keyword + " "
-      input.cursorPosition = input.text.length
-    } else if (row.nodi === "answerChat" && row.data && row.data.run) {
-      // Carried on in a terminal, for good: marked so it reopens there, and
-      // let go here, its later turns being the terminal's.
-      root.conversations = Conversations.moved(root.conversations, row.data.id)
-      root.saveConversations()
-      if (answerSession.conversation === row.data.id) answerSession.reset()
-      root.execute(row.data.run, "", row.key, null, row.title, false)
-      return
-    } else if (row.nodi === "answerNew") {
-      // The conversation forgotten, the field left on its keyword for the
-      // next question.
-      var kw = answerSession.keyword
-      answerSession.reset()
-      if (kw) { input.text = kw + " "; input.cursorPosition = input.text.length }
-    } else if (row.nodi === "filterNext" && row.next) {
-      root.stepInto(row.next)
-      return
-    } else if (row.nodi === "filterDone") {
-      root.finish()
-      return
-    } else if (row.nodi === "saveDesktop" && row.data) {
-      var saved = Prefs.withDesktop(root.prefs, row.data.name, row.data.apps, Date.now())
-      if (saved) root.savePrefs(saved)
-      root.toast("Desktop \"" + row.data.name + "\" saved", row.subtitle)
-      root.finish()
-      return
-    } else if (row.nodi === "remindSet" && row.data) {
-      root.setReminder(row.data)
-      root.finish()
-      return
-    } else if (row.nodi === "remindClear") {
-      // Enter twice, as Omarchy's own clear asked.
-      if (root.armedKey !== row.key) { root.armedKey = row.key; return }
-      root.armedKey = ""
-      root.clearReminders()
-      root.finish()
-      return
-    } else if (row.nodi === "forgetDesktop" && row.data) {
-      root.savePrefs(Prefs.withoutDesktop(root.prefs, row.data.name))
-      input.text = ""
-    } else if (row.nodi === "tray") {
-      // As a click in the tray's own menu; the bar goes first, as for a run.
-      if (trayMenus.trigger(row.key)) root.finish()
-      return
-    } else if (row.nodi === "pick" && root.pickSession) {
-      var line = Pick.lineOf(row.key)
-      if (line < 0) return
-      root.endPick("pick " + line)
-      root.dismiss()
-      return
     }
-    root.recompute()
+  }
+
+  // A question about the window, held with what it is about until its
+  // picture is taken (askWindow, windowShot).
+  function holdShotAsk(a) {
+    root.shotAsk = Object.assign({}, a, { captured: root.askCapture(a.message, a.context, a.purpose) })
+  }
+
+  function runUndo(key) {
+    var u = undoer.take(key)
+    if (u) root.execute(u.run, "", "", null, u.title, false)
+  }
+
+  // The answer "fallback" names, asked of what the field now holds.
+  function startFallbackAnswer(data) {
+    var fbSpec = Answers.spec(input.text, root.config.answers, root.cameFrom, data.message)
+    if (fbSpec) { fbSpec.fresh = data.fresh === true; answerSession.start(fbSpec) }
   }
 
   // ---------------------------------------------------------------- steps

@@ -8,6 +8,7 @@ const card = readFileSync(join(root, "components/Card.qml"), "utf8");
 const nodi = readFileSync(join(root, "Nodi.qml"), "utf8");
 const homeSources = readFileSync(join(root, "components/HomeSources.qml"), "utf8");
 const ask = readFileSync(join(root, "components/Ask.qml"), "utf8");
+const actions = readFileSync(join(root, "lib/NodiActions.js"), "utf8");
 
 test("the card keeps no editable TextInput alive", () => {
   assert.doesNotMatch(card, /\bTextInput\s*\{/);
@@ -55,10 +56,10 @@ test("explicit paste advances the cursor and agent paste waits for confirmation"
   const insert = nodi.slice(nodi.indexOf("  function insertPaste("),
                             nodi.indexOf("\n  function ", nodi.indexOf("  function insertPaste(") + 1));
   assert.match(insert, /field\.insert\(start,\s*value\)[\s\S]*field\.cursorPosition\s*=\s*start\s*\+\s*value\.length/);
-  const resultStart = nodi.indexOf('row.nodi === "askResult"');
-  const result = nodi.slice(resultStart,
-                            nodi.indexOf('row.nodi === "askWith"', resultStart));
-  assert.match(result, /resultAction\.paste\s*!==\s*undefined[\s\S]*proposeResultAction/);
+  const resultStart = actions.indexOf('n === "askResult"');
+  const result = actions.slice(resultStart,
+                               actions.indexOf('n === "askWith"', resultStart));
+  assert.match(result, /action\.paste\s*!==\s*undefined[\s\S]*proposeResultAction/);
   assert.doesNotMatch(result, /Run\.paste|Run\.copy/);
   assert.match(ask, /ExternalRows\.actionOf\(item\.action,\s*\{[\s\S]*paste:\s*true/);
 });
@@ -83,8 +84,11 @@ test("Ask serializes cwd lookup and rebuilds resumed session authority", () => {
 });
 
 test("a window's picture question is snapshotted when chosen, and sent as it was", () => {
-  const chosen = nodi.slice(nodi.indexOf('row.nodi === "askWindow"'), nodi.indexOf('row.nodi === "ask")'));
-  assert.match(chosen, /root\.shotAsk\s*=\s*Object\.assign\(\{\},\s*row\.ask,\s*\{\s*captured:\s*root\.askCapture\(/, "taken at the row's invocation");
+  const chosen = actions.slice(actions.indexOf('n === "askWindow"'), actions.indexOf('n === "ask")'));
+  assert.match(chosen, /call\("holdShotAsk", \[row\.ask\]\)/, "taken at the row's invocation");
+  const hold = nodi.slice(nodi.indexOf("  function holdShotAsk("),
+                          nodi.indexOf("\n  function ", nodi.indexOf("  function holdShotAsk(") + 1));
+  assert.match(hold, /root\.shotAsk\s*=\s*Object\.assign\(\{\},\s*a,\s*\{\s*captured:\s*root\.askCapture\(/);
   const done = nodi.slice(nodi.indexOf("id: windowShot"), nodi.indexOf("What the agent found for one turn"));
   assert.equal((done.match(/a\.captured\)/g) || []).length, 1, "the capture sends that snapshot");
   assert.match(done, /Qt\.callLater\(function\(\) \{ root\.startAsk\(/, "after the reader has ended, which startAsk refuses while it reports");

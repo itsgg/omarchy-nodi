@@ -33,7 +33,8 @@
 //      comment, and a command of his own that Nodi only shows as an
 //      example (providers/shell.js's `> notify-send hi`). What no test
 //      reaches in Nodi.qml is held here: its toast over IPC takes only a
-//      payload carried in a file; clearing the reminders, Nodi's own verb,
+//      payload carried in a file; clearing the reminders, Nodi's own verb
+//      (lib/NodiActions.js),
 //      asks a second Enter; a reminders.json with an error is never
 //      written over; a hotkey's bind finds its row through
 //      Prefs.rowOfHotkey; and each open makes the folders 0700 again.
@@ -192,8 +193,8 @@ for (const rel of ["Nodi.qml", ...files("components")]) {
   const nodi = read("Nodi.qml");
   if (!/var text = a\.indexOf\("@file:"\) === 0 \? carried\.read\(a\) : null/.test(nodi))
     problems.push("Nodi.qml: toast over IPC takes more than a payload carried in a file");
-  if (!/row\.nodi === "remindClear"\) \{\s*(\/\/[^\n]*\s*)?if \(root\.armedKey !== row\.key\) \{ root\.armedKey = row\.key; return \}/.test(nodi))
-    problems.push("Nodi.qml: clearing the reminders does not ask a second Enter");
+  if (!/n === "remindClear"\) \{\s*(\/\/[^\n]*\s*)?if \(s\.armedKey !== row\.key\) return \[set\("armedKey", row\.key\)\]/.test(read("lib/NodiActions.js")))
+    problems.push("lib/NodiActions.js: clearing the reminders does not ask a second Enter");
   if (!/function saveReminders\(\) \{\s*if \(!root\.remindersLoaded\) return\s*if \(root\.remindersBroken\) return/.test(nodi))
     problems.push("Nodi.qml: saveReminders may write over a reminders.json with an error");
   // A hotkey's bind names its keys, never the row (Hotkey.planRows): runRow
