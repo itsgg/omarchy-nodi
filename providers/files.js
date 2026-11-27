@@ -1,10 +1,13 @@
 .pragma library
+.import "../lib/Util.js" as Util
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "chooser.js" as Chooser
 .import "../lib/Match.js" as Match
 .import "../lib/Sources.js" as Sources
 .import "../lib/Score.js" as Score
 .import "../lib/Ansi.js" as Ansi
+.import "../lib/PromptContext.js" as PromptContext
 
 // Files: the ones you opened recently, and any directory by its path.
 //
@@ -132,7 +135,7 @@ function foundRows(typed, ctx, home) {
                     hint: "find [img|doc|video|audio|dir] <name>" }]
   var got = ctx.request ? ctx.request("find", findParam(k.kind, q)) : { state: "pending" }
   var list = got.value
-  if (!list) return [{ title: got.state === "error" ? "Could not search" : "Searching for " + q + "...", subtitle: "Files", score: 40, copy: "" }]
+  if (!list) return [Rows.waiting(got, "Searching for " + q + "...", "Could not search", { subtitle: "Files" })]
   if (list.length === 0) return [{ title: "No file named \"" + q + "\"", subtitle: "Files", score: 40, copy: "" }]
   var out = []
   for (var i = 0; i < list.length && i < LIMIT; i++) out.push(fileRow(list[i].path, list[i].name, list[i].dir, 97 - i * 0.01, home))
@@ -152,11 +155,6 @@ function icon(path, isDir) {
 }
 
 function isImage(path) { return /\.(png|jpe?g|webp|gif|svg|bmp)$/i.test(String(path || "")) }
-
-function tilde(path, home) {
-  var s = String(path || "")
-  return home && (s === home || s.indexOf(home + "/") === 0) ? "~" + s.slice(home.length) : s
-}
 
 function expand(path, home) {
   var s = String(path || "")
@@ -260,23 +258,39 @@ function fileRow(path, name, isDir, score, home) {
   var row = {
     key: "file:" + path,
     title: name,
-    subtitle: tilde(isDir ? path : parentOf(path), home),
+    subtitle: Util.tilde(isDir ? path : parentOf(path), home),
     icon: icon(path, isDir),
     image: !isDir && isImage(path) ? path : "",
     imageFill: true,
     // An image shows itself; another file its details and first lines,
     // read only while it is the selected row; a folder what it is.
     // A folder its entries (ROADMAP 82).
-    preview: isImage(path) && !isDir ? { title: name, subtitle: tilde(path, home), image: path }
-           : { title: name, subtitle: tilde(path, home), read: { source: "file-head", param: path } },
+    preview: isImage(path) && !isDir ? { title: name, subtitle: Util.tilde(path, home), image: path }
+           : { title: name, subtitle: Util.tilde(path, home), read: { source: "file-head", param: path } },
     score: score,
     copy: path,
     actionLabel: "Open",
     run: Run.open(path),
     actions: [{ label: "Copy the path", icon: "󰆏", run: Run.copy(path) }]
   }
-  if (!isDir) row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
-  if (isDir) row.complete = tilde(path, home).replace(/\/?$/, "/")
+  if (!isDir) {
+    var fileMention = PromptContext.formatFileMention ? PromptContext.formatFileMention(path) : (path.indexOf(" ") !== -1 ? '@f:"' + path + '"' : "@f:" + path)
+    row.actions.unshift({ label: "Open the folder", icon: "󰉋", run: Run.open(parentOf(path)) })
+    row.actions.push({
+      label: "Ask about this file",
+      icon: "󰚩",
+      nodi: "askWith",
+      ask: {
+        question: "Explain " + name,
+        message: "Explain what this file does and summarize its key parts:\n" + fileMention,
+        file: path,
+        context: "file",
+        purpose: "ask"
+      }
+    })
+    row.actions.push({ label: "Move to trash", icon: "󰩺", run: Run.exec(["/usr/bin/gio", "trash", "--", path]), confirm: true })
+  }
+  if (isDir) row.complete = Util.tilde(path, home).replace(/\/?$/, "/")
   // A folder's, which over a file dialog types it in (providers/chooser.js).
   if (isDir) row.folder = path.length > 1 ? path.replace(/\/+$/, "") : path
   return row
@@ -323,15 +337,13 @@ function pathRows(typed, ctx, home) {
   var listing = got.value
   // A read that failed with nothing of this folder to show says so, rather
   // than "Reading..." for ever (codex 2026-10-05).
-  if (got.state === "error" && (!listing || listing.path !== dir))
-    return [{ title: "Cannot read " + tilde(dir, home), subtitle: String(got.error || "the listing failed"), score: 40, copy: "" }]
-  if (!listing || listing.path !== dir) return [{ title: "Reading " + tilde(dir, home) + "...", subtitle: "Files", score: 40, copy: "" }]
-  if (listing.error) return [{ title: "Cannot read " + tilde(dir, home), subtitle: listing.error, score: 40, copy: "" }]
+  if (!listing || listing.path !== dir) return [Rows.waiting(got, "Reading " + Util.tilde(dir, home) + "...", "Cannot read " + Util.tilde(dir, home), { subtitle: "Files" })]
+  if (listing.error) return [{ title: "Cannot read " + Util.tilde(dir, home), subtitle: listing.error, score: 40, copy: "" }]
 
   var out = []
   var base = dir === "/" ? "" : dir
   if (!prefix) {
-    var self = fileRow(dir, "Open " + tilde(dir, home), true, 98, home)
+    var self = fileRow(dir, "Open " + Util.tilde(dir, home), true, 98, home)
     self.folderSelf = true
     out.push(self)
   }
@@ -343,7 +355,7 @@ function pathRows(typed, ctx, home) {
     if (prefix && Match.fold(e.name).indexOf(Match.fold(prefix)) !== 0) continue
     out.push(fileRow(base + "/" + e.name, e.name, !!e.dir, 96 - out.length * 0.01, home))
   }
-  if (out.length === 0) return [{ title: "Nothing in " + tilde(dir, home) + " starts with \"" + prefix + "\"", subtitle: "Files", score: 40, copy: "" }]
+  if (out.length === 0) return [{ title: "Nothing in " + Util.tilde(dir, home) + " starts with \"" + prefix + "\"", subtitle: "Files", score: 40, copy: "" }]
   return out
 }
 
@@ -389,15 +401,15 @@ function contentRows(q, ctx, home) {
   // None to search: ripgrep would read its input until the deadline.
   if (!dirs.length) return [{ title: "No folder to search", subtitle: "Name some under \"files\": { \"contents\": [...] }", score: 40, copy: "", remember: false }]
   var got = ctx.request ? ctx.request("contents", JSON.stringify({ q: q, dirs: dirs })) : { state: "pending" }
-  if (!Array.isArray(got.value)) return [{ title: got.state === "error" ? "The search failed" : "Searching for " + q + "...", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", "), score: 40, copy: "" }]
+  if (!Array.isArray(got.value)) return [Rows.waiting(got, "Searching for " + q + "...", "The search failed", { subtitle: dirs.map(function(d) { return Util.tilde(d, home) }).join(", ") })]
   if (got.value.length === 1 && got.value[0].noFolder)
-    return [{ title: "No folder to search", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", ") + (dirs.length > 1 ? " are" : " is") + " not there: name others under \"files\": { \"contents\": [...] }",
+    return [{ title: "No folder to search", subtitle: dirs.map(function(d) { return Util.tilde(d, home) }).join(", ") + (dirs.length > 1 ? " are" : " is") + " not there: name others under \"files\": { \"contents\": [...] }",
               score: 40, copy: "", remember: false }]
-  if (!got.value.length) return [{ title: "No file holds \"" + q + "\"", subtitle: dirs.map(function(d) { return tilde(d, home) }).join(", "), score: 40, copy: "" }]
+  if (!got.value.length) return [{ title: "No file holds \"" + q + "\"", subtitle: dirs.map(function(d) { return Util.tilde(d, home) }).join(", "), score: 40, copy: "" }]
   return got.value.map(function(h, i) {
     var row = fileRow(h.path, h.path.split("/").pop(), false, 97 - i * 0.01, home)
     row.key = "file:in:" + h.path
-    row.subtitle = tilde(parentOf(h.path), home) + ", line " + h.line + ": " + h.text
+    row.subtitle = Util.tilde(parentOf(h.path), home) + ", line " + h.line + ": " + h.text
     row.remember = false
     return row
   })

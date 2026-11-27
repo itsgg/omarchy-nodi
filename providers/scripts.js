@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
 .import "../lib/Score.js" as Score
@@ -37,7 +38,6 @@
 
 var MODES = { silent: true, compact: true, fullOutput: true, inline: true }
 
-function tilde(path, home) { return home && path.indexOf(home + "/") === 0 ? "~" + path.slice(home.length) : path }
 function expand(path, home) { return /^~(\/|$)/.test(path) && home ? home + path.slice(1) : path }
 
 // The folders to read, from settings: ["~/.config/omarchy/nodi/scripts"].
@@ -227,7 +227,7 @@ function row(script, typed, ctx, extra) {
   var home = String(ctx.home || "")
   var icon = glyph(script.icon) || "󰆍"
   var out = { key: "script:" + script.path, title: script.title, icon: icon, group: "Scripts", remember: script.args.length === 0,
-              subtitle: script.description || script.packageName || tilde(script.path, home), copy: "",
+              subtitle: script.description || script.packageName || Util.tilde(script.path, home), copy: "",
               actions: [
                 { label: "Run in a terminal", icon: "󰆍", run: null },
                 { label: "Open in your editor", icon: "󰨞", run: Run.exec(["omarchy-launch-editor", script.path]) },
@@ -335,7 +335,7 @@ var provider = {
     var listing = String(query).match(/^\s*scripts?(?:\s+(.*))?$/i)
     if (listing) {
       if (all.length === 0) {
-        var where = dirs(ctx.settings, String(ctx.home || "")).map(function(d) { return tilde(d, String(ctx.home || "")) }).join(", ")
+        var where = dirs(ctx.settings, String(ctx.home || "")).map(function(d) { return Util.tilde(d, String(ctx.home || "")) }).join(", ")
         return [{ title: "No scripts found", subtitle: "Put executable files with a @nodi.title line in " + where, score: 50, copy: "", remember: false }]
       }
       var words = Match.normalise(listing[1]).split(" ").filter(Boolean)

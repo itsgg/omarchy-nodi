@@ -108,3 +108,18 @@ test("a socket transport failure keeps the last value with its precise error", (
   assert.deepEqual(plain(R.view(failed)), { state: "error", value: ["old"], error: "socket disconnected", at: 20 });
   assert.equal(failed.pending, false);
 });
+
+test("a socket batch is a change when its rows grew or its query is new, without writing them out", () => {
+  const first = R.progress(R.begun(null, 10), ["a"]);
+  const mark1 = R.partialMark(1, first.value);
+  assert.equal(R.partialChanged(null, first, mark1), true, "nothing held");
+  first.partialMark = mark1;
+  const grown = R.progress(first, ["a", "b"]);
+  assert.equal(R.partialChanged(first, grown, R.partialMark(1, grown.value)), true, "more rows");
+  const capped = R.progress(first, ["a"]);
+  assert.equal(R.partialChanged(first, capped, R.partialMark(1, capped.value)), false, "the same rows parsed again");
+  assert.equal(R.partialChanged(first, capped, R.partialMark(2, capped.value)), true, "another query's rows");
+  const ready = { state: "ready", value: ["old"], pending: false, at: 1 };
+  const held = R.progress(R.begun(ready, 10), ["partial"]);
+  assert.equal(R.partialChanged(ready, held, R.partialMark(3, held.value)), false, "a held value is no change");
+});

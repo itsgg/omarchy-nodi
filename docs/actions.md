@@ -8,7 +8,8 @@ one, is on its right.
 
 ## What a row's kind offers
 
-- A file: open its folder, copy its path.
+- A file: open its folder, copy its path, ask your coding agent about it, or
+  move it to trash (confirmed with a second Enter).
 - A window: bring it to this workspace, float it or tile it, close it,
   and its app's [window rules](#window-rules).
 - An app: copy its desktop id; uninstall it, as Omarchy's own launcher
@@ -16,6 +17,8 @@ one, is on its right.
   a terminal for its password), after a second Enter.
 - A clipboard entry: pin it, copy it without pasting, send it to a
   device.
+- An Ask question or answer: switch coding agent (Claude, Codex, OpenCode,
+  Pi, Agy), choose a model, ask again, or start a new conversation.
 - Anything that holds text: copy it (Ctrl+Enter, without opening
   Ctrl+K), and copy its title.
 

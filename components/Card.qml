@@ -2,6 +2,7 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 import "../lib/Scroll.js" as Scroll
+import "../lib/ListSync.js" as ListSync
 
 // The bar itself: the search field, the results or Ctrl+K's actions, and
 // the footer. Everything it shows and does comes from `nodi`, the Nodi
@@ -73,6 +74,44 @@ BorderSurface {
 
   // The pane beside the list, by lines or pages, from the keyboard.
   function scrollPane(lines, pages) { pane.scroll(lines, pages) }
+
+  // The rows as the list draws them, kept in step by key (lib/ListSync.js):
+  // a row still there keeps its delegate, moved where it now ranks, and is
+  // told again only when what it draws changed. Bound to the rows array,
+  // the list made every visible row again at each keystroke. Each entry is
+  // { uid, rev }; the row itself is read from rowByUid, which is filled in
+  // place and so notifies nothing: a delegate reads it again when its rev
+  // moves.
+  ListModel { id: rowModel }
+  property var rowItems: []
+  property var rowByUid: ({})
+  function rowFor(uid, rev) { return card.rowByUid[uid] || ({ key: "", title: "" }) }
+  function syncRows() {
+    var rows = (nodi && nodi.rows) || []
+    var p = ListSync.plan(card.rowItems, rows)
+    var map = card.rowByUid
+    var live = {}
+    for (var i = 0; i < p.items.length; i++) { map[p.items[i].uid] = rows[i]; live[p.items[i].uid] = true }
+    for (var j = 0; j < p.ops.length; j++) {
+      var o = p.ops[j]
+      if (o.op === "remove") rowModel.remove(o.at, o.n)
+      else if (o.op === "insert") rowModel.insert(o.at, { uid: o.item.uid, rev: 0 })
+      else if (o.op === "move") rowModel.move(o.from, o.to, 1)
+      else if (o.op === "set") rowModel.setProperty(o.at, "rev", rowModel.get(o.at).rev + 1)
+    }
+    for (var uid in map) if (!live[uid]) delete map[uid]
+    card.rowItems = p.items
+    // A row put in or taken out before the current one moves the list's
+    // own currentIndex, once the list takes the changes in; it follows the
+    // selection again.
+    if (!p.ops.length) return
+    list.forceLayout()
+    if (list.currentIndex !== nodi.selectedIndex)
+      list.currentIndex = Qt.binding(function() { return nodi.selectedIndex })
+  }
+  readonly property var shownRows: nodi ? nodi.rows : []
+  onShownRowsChanged: card.syncRows()
+  Component.onCompleted: card.syncRows()
 
   // The row at `index` in view, clear of the fades (lib/Scroll.js).
   function keepVisible(index) { Scroll.keep(list, index, nodi.rowPeek, ListView.Contain) }
@@ -559,7 +598,7 @@ BorderSurface {
         ListView {
           id: list
           anchors.fill: parent
-          model: nodi.rows
+          model: rowModel
           clip: true
           Accessible.role: Accessible.List
           Accessible.name: "Results"
@@ -569,7 +608,45 @@ BorderSurface {
           boundsBehavior: Flickable.StopAtBounds
           currentIndex: nodi.selectedIndex
 
-          delegate: ResultRow { nodi: card.nodi }
+          delegate: ResultRow { nodi: card.nodi; row: card.rowFor(uid, rev) }
+
+          // The selected row's mark, gliding from row to row. Inside the
+          // list's content, so it scrolls with its row and is clipped with
+          // it: in the unclipped box beside the list, a row wheeled out of
+          // view left it floating over the field or the footer.
+          Rectangle {
+            objectName: "selectionPill"
+            parent: list.contentItem
+            visible: list.count > 0 && list.currentItem !== null && !nodi.reducedMotion && nodi.selectionBar
+            z: 2
+            width: nodi.barWidth
+            radius: width / 2
+            color: nodi.link
+            x: Style.spacing.xs + nodi.rowInsetLeft
+
+            // The row's header and size from the selected row's own data:
+            // currentItem is only an Item to the type checker.
+            readonly property var marked: nodi.selectedRow || ({})
+            readonly property real markedHeight: marked.hero ? nodi.heroHeight : nodi.rowHeight
+            readonly property real targetY: list.currentItem
+              ? (list.currentItem.y + (marked.section ? nodi.sectionHeight : 0) + markedHeight / 2 - height / 2)
+              : 0
+            readonly property real targetHeight: list.currentItem
+              ? Math.max(nodi.barWidth * 3, markedHeight - nodi.barInset * 2)
+              : 0
+
+            y: targetY
+            height: targetHeight
+
+            Behavior on y {
+              enabled: card.animated && !nodi.reducedMotion
+              NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+            }
+            Behavior on height {
+              enabled: card.animated && !nodi.reducedMotion
+              NumberAnimation { duration: 110; easing.type: Easing.OutCubic }
+            }
+          }
         }
 
         // Rows hidden above or below fade the edge, as Omarchy's menu does
@@ -604,6 +681,11 @@ BorderSurface {
       PreviewPane {
         id: pane
         visible: !!nodi.preview
+        opacity: visible ? 1 : 0
+        Behavior on opacity {
+          enabled: !nodi.reducedMotion
+          NumberAnimation { duration: 100; easing.type: Easing.OutCubic }
+        }
         nodi: card.nodi
         preview: nodi.preview
         readonly property bool sideBySide: !!nodi.preview && nodi.twoColumn

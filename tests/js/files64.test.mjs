@@ -166,3 +166,33 @@ test("a name under home: the words in no argument, matched in the last part of a
     assert.notEqual(bad.status, 0, "a home fd cannot read");
   } finally { rmSync(h, { recursive: true, force: true }); }
 });
+
+test("a file row offers Open the folder, Ask about this file, Move to trash, and Copy path", () => {
+  const row = F.fileRow("/home/u/Work/notes.txt", "notes.txt", false, 90, "/home/u");
+  const labels = row.actions.map(a => a.label);
+  assert.deepEqual(plain(labels), [
+    "Open the folder",
+    "Copy the path",
+    "Ask about this file",
+    "Move to trash"
+  ]);
+  const askAction = row.actions.find(a => a.label === "Ask about this file");
+  assert.equal(askAction.nodi, "askWith");
+  assert.equal(askAction.ask.context, "file");
+  assert.equal(askAction.ask.file, "/home/u/Work/notes.txt");
+  assert.equal(askAction.ask.question, "Explain notes.txt");
+  assert.ok(askAction.ask.message.includes("@f:/home/u/Work/notes.txt"));
+
+  const trashAction = row.actions.find(a => a.label === "Move to trash");
+  assert.equal(trashAction.confirm, true);
+
+  const Rows = load("lib/Rows.js");
+  const paletteActs = Rows.actionsFor(row, {});
+  const paletteAsk = paletteActs.find(a => a.label === "Ask about this file");
+  assert.ok(paletteAsk, "palette includes Ask about this file");
+  assert.equal(paletteAsk.nodi, "askWith");
+  assert.equal(paletteAsk.ask.context, "file");
+  assert.equal(paletteAsk.ask.file, "/home/u/Work/notes.txt");
+  assert.equal(paletteAsk.ask.question, "Explain notes.txt");
+  assert.ok(paletteAsk.ask.message.includes("@f:/home/u/Work/notes.txt"));
+});

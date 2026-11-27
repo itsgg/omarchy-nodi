@@ -7,6 +7,7 @@ ship with Omarchy. No source bytes or metadata are passed to Qt.
 
 import base64
 import configparser
+import hashlib
 import os
 import re
 import resource
@@ -14,6 +15,7 @@ import signal
 import stat
 import struct
 import sys
+import time
 import zlib
 from urllib.parse import unquote, urlsplit
 
@@ -22,6 +24,12 @@ MEMORY_MAX = 2048 * 1024 * 1024
 ICON_MEMORY_MAX = 512 * 1024 * 1024
 PIXELS_MAX = 16 * 1024 * 1024
 EDGE_MAX = 1000
+# The icon cache keeps what was used in the last 30 days, at most 3000
+# files (about 20 KB each), looked over at most once a day, after a decode
+# wrote a new one: the cheap moment, as a decode already costs far more.
+CACHE_MAX_AGE = 30 * 24 * 60 * 60
+CACHE_MAX_FILES = 3000
+PRUNE_EVERY = 24 * 60 * 60
 
 
 def limits(edge=EDGE_MAX):
@@ -156,6 +164,101 @@ def raster(data, edge):
                pixbuf.get_rowstride(), pixbuf.get_pixels())
 
 
+def cache_entry(data, edge):
+    cache_base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    key = hashlib.sha256(struct.pack(">I", edge) + data).hexdigest()[:32]
+    return os.path.join(cache_base, "nodi", "icons", key + ".png")
+
+
+def get_cached(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        with os.fdopen(fd, "rb") as stream:
+            cached = stream.read()
+            if (len(cached) >= 12 and
+                    cached.startswith(b"\x89PNG\r\n\x1a\n") and
+                    cached.endswith(b"IEND\xaeB`\x82")):
+                # Its time is when it was last used, which pruning reads.
+                try:
+                    os.utime(stream.fileno())
+                except OSError:
+                    pass
+                return cached
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def prune(directory, now, max_age=CACHE_MAX_AGE, max_files=CACHE_MAX_FILES):
+    """Drop icons unused for max_age, then the least recently used past
+    max_files, and temporary files a killed worker left. Returns how many
+    remain."""
+    kept = []
+    try:
+        entries = list(os.scandir(directory))
+    except OSError:
+        return 0
+    for entry in entries:
+        try:
+            if not entry.is_file(follow_symlinks=False):
+                continue
+            used = entry.stat(follow_symlinks=False).st_mtime
+            name = entry.name
+            if ".tmp." in name:
+                if now - used > 3600:
+                    os.unlink(entry.path)
+                continue
+            if not name.endswith(".png"):
+                continue
+            if now - used > max_age:
+                os.unlink(entry.path)
+                continue
+            kept.append((used, entry.path))
+        except OSError:
+            continue
+    kept.sort()
+    while len(kept) > max_files:
+        try:
+            os.unlink(kept.pop(0)[1])
+        except OSError:
+            pass
+    return len(kept)
+
+
+def prune_due(directory, now):
+    """Whether a day has passed since the cache was last looked over; marks
+    it looked over now if so."""
+    marker = os.path.join(directory, ".pruned")
+    try:
+        if now - os.stat(marker).st_mtime < PRUNE_EVERY:
+            return False
+    except OSError:
+        pass
+    try:
+        fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_CLOEXEC, 0o600)
+        os.close(fd)
+        os.utime(marker, (now, now))
+    except OSError:
+        return False
+    return True
+
+
+def put_cached(path, png_bytes):
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
+        tmp = f"{path}.tmp.{os.getpid()}"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(png_bytes)
+        os.replace(tmp, path)
+        directory = os.path.dirname(path)
+        now = time.time()
+        if prune_due(directory, now):
+            prune(directory, now)
+    except (OSError, ValueError):
+        pass
+
+
 def main():
     edge = int(sys.argv[1]) if len(sys.argv) == 2 else 128
     if edge not in (128, EDGE_MAX):
@@ -163,7 +266,17 @@ def main():
     limits(edge)
     os.umask(0o077)
     path = icon_path(os.environ.pop("NODI_IMAGE", ""))
-    encoded = base64.b64encode(raster(read_image(path), edge)).decode("ascii")
+    data = read_image(path)
+    cpath = cache_entry(data, edge) if edge == 128 else None
+    if cpath:
+        cached = get_cached(cpath)
+        if cached:
+            print("data:image/png;base64," + base64.b64encode(cached).decode("ascii"))
+            return
+    out = raster(data, edge)
+    if cpath:
+        put_cached(cpath, out)
+    encoded = base64.b64encode(out).decode("ascii")
     print("data:image/png;base64," + encoded)
 
 

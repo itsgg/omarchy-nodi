@@ -1,4 +1,6 @@
 .pragma library
+.import "../lib/Util.js" as Util
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Score.js" as Score
 .import "../lib/Match.js" as Match
@@ -51,15 +53,13 @@ function param(settings) {
   return feeds.length ? JSON.stringify({ calendars: feeds, me: String((settings && settings.me) || "") }) : ""
 }
 
-function pad(n) { return (n < 10 ? "0" : "") + n }
-
 function clock(ms, h24) {
   var d = new Date(ms)
-  if (h24) return pad(d.getHours()) + ":" + pad(d.getMinutes())
-  return (d.getHours() % 12 || 12) + ":" + pad(d.getMinutes()) + (d.getHours() < 12 ? " AM" : " PM")
+  if (h24) return Util.pad(d.getHours()) + ":" + Util.pad(d.getMinutes())
+  return (d.getHours() % 12 || 12) + ":" + Util.pad(d.getMinutes()) + (d.getHours() < 12 ? " AM" : " PM")
 }
 
-function isoOf(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) }
+function isoOf(d) { return d.getFullYear() + "-" + Util.pad(d.getMonth() + 1) + "-" + Util.pad(d.getDate()) }
 
 // "Today", "Tomorrow", or "Thursday 8 Oct", for a day as lib/ics.py gives it.
 function dayName(iso, nowMs) {
@@ -182,7 +182,7 @@ function homeRows(ctx) {
 
 function listRows(ctx, words) {
   var got = data(ctx, true)
-  if (!got.value) return [{ title: got.state === "error" ? "The calendar could not be read" : "Reading the calendar...", subtitle: got.error || "", icon: ICON, score: 40, copy: "", remember: false }]
+  if (!got.value) return [Rows.waiting(got, "Reading the calendar...", "The calendar could not be read", { icon: ICON })]
   var nowMs = ctx.now().getTime()
   var h24 = clock24(ctx)
   var many = feedsOf(ctx.settings).length > 1

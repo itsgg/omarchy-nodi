@@ -29,6 +29,7 @@ import "lib/Describe.js" as Describe
 import "lib/Pick.js" as Pick
 import "lib/Pane.js" as Pane
 import "lib/Opens.js" as Opens
+import "lib/Probes.js" as Probes
 import "lib/Conversations.js" as Conversations
 import "lib/PickLog.js" as PickLog
 import "lib/Markdown.js" as Markdown
@@ -37,6 +38,7 @@ import "lib/Ansi.js" as Ansi
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
 import "lib/HomeSources.js" as HomeParser
+import "lib/PromptContext.js" as PromptContext
 import "providers/apps.js" as Apps
 import "providers/answers.js" as Answers
 import "providers/calendar.js" as Calendars
@@ -202,13 +204,18 @@ Item {
 
   // ---------------------------------------------------------------- lifecycle
 
+  property bool entered: false
+
   // payloadJson may carry a starting query: '{"query": ":"}' opens emoji search.
   function open(payloadJson) {
     // This open's times (lib/Opens.js), from its start: an open while the
     // bar is up is not one, and leaves the record as it was.
     var starting = !root.opened
     if (starting) {
+      root.entered = false
+      Qt.callLater(function() { root.entered = true })
       root.wideForOpen = false
+      root.frameShows = false
       root.openRec = Opens.start(Date.now(), root.openBy || "call", false)
     }
     root.openBy = ""
@@ -228,15 +235,23 @@ Item {
     if (root.pickSession && payload.pick !== root.pickSession.id) root.endPick("cancel")
     // So is a confirm word, before the payload's query is typed.
     root.endWord()
-    if (typeof payload.query === "string") {
-      input.text = payload.query
-      input.cursorPosition = payload.query.length
-    } else if (starting && input.text && Date.now() - root.closedAt > root.keepQueryMs) {
-      // A kept query lasts two minutes, then the bar opens on its home
-      // view (his call 2026-10-05; Raycast, PowerToys and Alfred keep one
-      // for 2 to 5 minutes). It is not kept across a restart: no file
-      // holds it since (Fable 2026-10-05).
-      input.text = ""
+    // The field set here is ranked once, below, with this open's state:
+    // ranked as it was set, the engine ran before the state was reset and
+    // again after it.
+    root.quietQuery = true
+    try {
+      if (typeof payload.query === "string") {
+        input.text = payload.query
+        input.cursorPosition = payload.query.length
+      } else if (starting && input.text && Date.now() - root.closedAt > root.keepQueryMs) {
+        // A kept query lasts two minutes, then the bar opens on its home
+        // view (his call 2026-10-05; Raycast, PowerToys and Alfred keep one
+        // for 2 to 5 minutes). It is not kept across a restart: no file
+        // holds it since (Fable 2026-10-05).
+        input.text = ""
+      }
+    } finally {
+      root.quietQuery = false
     }
     root.recallAt = -1
     // The selection is this open's: until it is read there is none, so the
@@ -258,7 +273,10 @@ Item {
     root.readAhead(true)
     launchFeedback.opened()
     root.opens++
-    root.makeFolders()
+    // A reopen refreshes the pictures whose rasters went stale, each alone.
+    images.refreshStale()
+    // Made once a shell: again at an open only until they are.
+    if (!root.cacheReady) root.makeFolders()
     root.placeholder = root.pickSession ? (root.pickSession.placeholder || "Pick one") : Engine.placeholder(root.config, root.opens)
     root.aliasRow = null
     root.endCapture()
@@ -271,10 +289,11 @@ Item {
     // of one with an error too, and one that broke it stops the saves
     // before any writes over it (codex's review, 2026-10-09).
     if (root.prefsLoaded) prefsFile.reload()
-    // Every registry program is looked for again at the open cadence: an
-    // installed remembered agent can recover precedence, and a removed
-    // non-current one is disabled before it is selected.
-    agentProbe.look()
+    // The registry's programs are looked for again when that look is old,
+    // or what it asked changed (lib/Probes.js): an installed remembered
+    // agent can recover precedence, and a removed non-current one is
+    // disabled before it is selected.
+    root.lookForAgents()
     card.hearAfresh()
     root.shownQuery = null
     root.armedKey = ""
@@ -309,6 +328,34 @@ Item {
 
   property bool readsPending: false
 
+  // When each probe an open would start last answered (lib/Probes.js): one
+  // seconds old is this open's, and the agents and the themes are kept
+  // longer, the current theme watched (themeName).
+  property real togglesAt: 0
+  property real appearanceAt: 0
+  property real themesAt: 0
+  property var agentsSeen: null
+  function agentsKey(tag) { return tag + "\n" + (Quickshell.env("PATH") || "") }
+  function lookForAgents() {
+    if (Probes.agentsDue(root.agentsSeen, Date.now(), root.agentsKey(agentProbe.probeTag()))) agentProbe.look()
+  }
+  Connections {
+    target: agentProbe
+    function onFinished(text, ok, tag) { if (ok && tag === agentProbe.probeTag()) root.agentsSeen = { at: Date.now(), key: root.agentsKey(tag) } }
+  }
+  Connections { target: togglesReader; function onFinished(text, ok) { if (ok) root.togglesAt = Date.now() } }
+  Connections { target: appearanceReader; function onFinished(text, ok) { if (ok) root.appearanceAt = Date.now() } }
+  Connections { target: themesReader; function onFinished(text, ok) { if (ok) root.themesAt = Date.now() } }
+  // An Ask that failed as a missing program fails: looked for again now.
+  Connections {
+    target: askSession
+    function onErrorChanged() {
+      if (!Probes.suggestsMissing(askSession.error)) return
+      root.agentsSeen = null
+      agentProbe.look()
+    }
+  }
+
   // The window that had the focus when the bar opened (README, "The window
   // you came from"), for the providers that act on it: Hyprland's active
   // toplevel at the press, before the bar's layer takes the keyboard (a
@@ -328,17 +375,17 @@ Item {
 
   function startReads() {
     // The card is on screen by now: its size changes animate from here on,
-    // unless it is still held unseen, when it shows at its size (Cursor
-    // 2026-10-07: the reveal grew in 90 ms).
+    // unless it is still held unseen, when it shows whole.
     card.animated = !root.contentHeld
     if (!root.readsPending) return
     root.readsPending = false
     readsAfterFrame.stop()
     root.refreshWindows()
-    root.refreshToggles()
-    root.refreshAppearance()
+    var now = Date.now()
+    if (Probes.due(root.togglesAt, now, Probes.FRESH_MS)) root.refreshToggles()
+    if (Probes.due(root.appearanceAt, now, Probes.FRESH_MS)) root.refreshAppearance()
     themeColors.reload()
-    root.refreshThemes()
+    if (Probes.due(root.themesAt, now, Probes.THEMES_MAX_AGE_MS)) root.refreshThemes()
     root.checkReminders()
     root.refreshZones()
     requests.request("omarchy-commands")
@@ -542,6 +589,7 @@ Item {
 
   function close() {
     root.closedAt = Date.now()
+    root.entered = false
     card.animated = false
     root.keepOpenTime()
     // A pick closed without a choice: its command hears that nothing was.
@@ -552,10 +600,16 @@ Item {
     root.endSteps()
     // Nothing of a step is kept past the open (providers/filters.js).
     requests.forget("filter-step")
+    // A close inside the open's first 60 ms runs none of its reads, and
+    // brings no tray menus up behind a hidden bar.
+    readsAfterFrame.stop()
+    root.readsPending = false
     trayMenus.active = false
     root.aliasRow = null
     root.endWord()
     root.endCapture()
+    root.pendingFileAsk = null
+    if (askFileReader.active) askFileReader.cancel()
     // Claude's conversation goes on (ROADMAP 43), so a kept question sent
     // with its text is asked again with it; a run it waits on is refused.
     askSession.hidden()
@@ -572,11 +626,18 @@ Item {
   // Emptied after the close too: a pick or a confirm word the close ends
   // gives the field back what it held, which an action's close must not
   // keep (Fable 2026-10-06: Claude's run landing while one was open).
+  // The field is emptied without ranking: the bar is closing, and the next
+  // open ranks what it opens on.
   function finish() {
-    input.text = ""
-    root.selectedIndex = 0
-    root.dismiss()
-    if (input.text !== "") input.text = ""
+    root.quietQuery = true
+    try {
+      input.text = ""
+      root.selectedIndex = 0
+      root.dismiss()
+      if (input.text !== "") input.text = ""
+    } finally {
+      root.quietQuery = false
+    }
   }
 
   function toggle() {
@@ -672,12 +733,22 @@ Item {
     onLoadFailed: root.openTimesLoaded = true
   }
 
-  // The first frame the bar's window swaps after the open.
+  // The first frame the bar's window swaps that shows the card (Opens.shows):
+  // one held is not seen (contentHeld), and one made while the entrance
+  // still had it at opacity 0 showed nothing. The card's opacity is read as
+  // a frame is made, after its animations step (afterAnimating), and that
+  // frame stamped once swapped; a card already whole stamps at its swap.
+  property bool frameShows: false
   Connections {
     target: card.Window.window
     ignoreUnknownSignals: true
-    // The first frame that shows the card: one held is not seen (contentHeld).
-    function onFrameSwapped() { if (root.openRec && root.openRec.frame === -1 && !root.contentHeld) Opens.stamp(root.openRec, "frame", Date.now()) }
+    function onAfterAnimating() {
+      if (root.openRec && root.openRec.frame === -1) root.frameShows = Opens.shows(card.opacity, root.contentHeld)
+    }
+    function onFrameSwapped() {
+      if (!root.openRec || root.openRec.frame !== -1) return
+      if (root.frameShows || (card.opacity >= 1 && Opens.shows(card.opacity, root.contentHeld))) Opens.stamp(root.openRec, "frame", Date.now())
+    }
   }
 
   // Hyprland maps the layer: what the compositor shows.
@@ -888,6 +959,7 @@ Item {
     else Quickshell.execDetached(argv)
     if (run.kind === "app") launchFeedback.begin(name || (snap && snap.title) || run.id)
     if (key) root.remember(key, query, snap)
+    if (Menu.staleAfter(key)) root.guardsAt = 0
     if (toggleId) {
       root.toggleStates = Toggles.flipped(root.toggleStates, toggleId)
       toggleReprobe.restart()
@@ -1032,7 +1104,23 @@ Item {
       root.forget(row.key)
       return
     }
-    if (a.nodi === "complete") { root.complete(row); return }
+    if (a.nodi === "askWith" && (a.ask || row.ask)) {
+      var askSpec = a.ask || row.ask
+      var extraEnv = askSpec.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
+      root.dispatchAsk(askSpec.question, askSpec.message, askSpec.context, askSpec.purpose, extraEnv, undefined, askSpec.file)
+      return
+    }
+    if (a.nodi === "complete") {
+      if (a.data) {
+        input.text = String(a.data)
+        input.cursorPosition = input.text.length
+        root.closePalette()
+        root.recompute()
+      } else {
+        root.complete(row)
+      }
+      return
+    }
     if (a.nodi === "askAgent" && a.data) { root.selectAskAgent(a.data.id); return }
     if (a.nodi) { root.setPref(a, row); return }
     var own = !!a.own
@@ -1404,6 +1492,7 @@ Item {
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     if (remember) root.remember(k, "", s)
     if (s.toggle) { root.toggleStates = Toggles.flipped(root.toggleStates, s.toggle); toggleReprobe.restart() }
+    if (Menu.staleAfter(k)) root.guardsAt = 0
     if (s.run.kind === "copy") root.markOwnCopy(s.run.text)
     return "ok"
   }
@@ -1449,16 +1538,11 @@ Item {
       } else if (resultAction.prompt !== undefined) {
         input.text = "ask " + String(resultAction.prompt)
         input.cursorPosition = input.text.length
-        askSession.send(String(resultAction.prompt))
+        root.dispatchAsk(String(resultAction.prompt), String(resultAction.prompt), "", "ask")
       }
     } else if (row.nodi === "askWith" && row.ask) {
-      // Claude on a text (the selection, a translation): asked as Ask asks,
-      // the field showing the question, so the answer and its paste are Ask's.
-      if (askSession.busy() || windowShot.active) return
-      root.askRows = ({ turn: "", rows: ({}) })
-      root.startAsk("", row.ask.question, row.ask.message, row.ask.context, undefined, row.ask.purpose)
-      input.text = "ask " + row.ask.question
-      input.cursorPosition = input.text.length
+      var extraEnv = row.ask.context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {}
+      root.dispatchAsk(row.ask.question, row.ask.message, row.ask.context, row.ask.purpose, extraEnv, undefined, row.ask.file)
     } else if (row.nodi === "askNew") {
       if (askSession.busy()) return
       askSession.recycle()
@@ -1489,14 +1573,12 @@ Item {
       input.cursorPosition = input.text.length
     } else if (row.nodi === "ask") {
       var q = root.queryNow().replace(/^\s*ask\s+/i, "").trim()
-      // Not while a window's picture is taken for this question (askWindow).
       if (q && !askSession.busy() && !windowShot.active) {
-        root.askRows = ({ turn: "", rows: ({}) })
-        root.startAsk("", q)
+        root.dispatchAsk(q, q, "", "ask")
       }
     } else if (row.nodi === "askAs" && row.data) {
       if (!askSession.busy() && !windowShot.active)
-        root.startAsk(row.data.id, row.data.question)
+        root.dispatchAsk(row.data.question, row.data.question, "", "ask", undefined, undefined, undefined, row.data.id)
     } else if (row.nodi === "runWord" && root.wordAsk) {
       if (root.queryNow().trim() !== root.wordAsk.word) return
       var w = root.wordAsk
@@ -1517,7 +1599,14 @@ Item {
     } else if (row.nodi === "answer" || row.nodi === "answerFresh") {
       var retryMessage = Answers.retryMessage(root.queryNow(), root.config.answers, answerSession)
       var spec = Answers.spec(root.queryNow(), root.config.answers, root.cameFrom, retryMessage)
-      if (spec) { spec.fresh = row.nodi === "answerFresh"; answerSession.start(spec) }
+      if (spec) {
+        if (spec.keyword === "ask" || (PromptContext.hasMentions && PromptContext.hasMentions(spec.question))) {
+          root.dispatchAsk(spec.question, retryMessage || spec.question, "", "ask", undefined, undefined, undefined, undefined, row.nodi === "answerFresh", root.queryNow())
+          return
+        }
+        spec.fresh = row.nodi === "answerFresh"
+        answerSession.start(spec)
+      }
     } else if (row.nodi === "askFallback" && row.data) {
       // The failed question, asked of the answer "fallback" names: the field
       // on its keyword, so its rows and its pane are that answer's.
@@ -1700,8 +1789,12 @@ Item {
     // Steps belong to their keyword: a query without it ends them.
     if (root.filterStep && !Engine.startsWithKeyword(root.queryNow(), root.filterStep.keyword)) root.endSteps()
     root.selectedIndex = 0
-    root.recompute()
+    if (!root.quietQuery) root.recompute()
   }
+
+  // Set while the bar changes the field itself and ranks after (open,
+  // finish): the change is not ranked as it is made.
+  property bool quietQuery: false
 
   // A key in the field: true when Nodi took it.
   function handleKey(key, modifiers, repeat) {
@@ -2084,9 +2177,11 @@ Item {
       }
     }
   }
-  // Each his alone (0700), made so or made so now; again at each open, so
-  // one deleted while the shell runs is not made again at 0755 by the next
-  // write (the marketplace's review, 2026-10-10).
+  // Each his alone (0700), made so or made so now: at start, and at an
+  // open only until they are made. Made again at every open, they cost a
+  // fork each time to cover a folder deleted while the shell runs, which
+  // the next write would make again at 0755 (the marketplace's review,
+  // 2026-10-10).
   function makeFolders() {
     cacheMaker.run(["/usr/bin/install", "-d", "-m", "700", root.cacheDir, root.stateDir, root.cacheDir + "/ask", root.dataDir])
   }
@@ -2205,7 +2300,12 @@ Item {
   // about it (`context`) and the message holds its text, so the structured
   // copy never carries what the textual prompt does not.
   function askContext(message, context, purpose) {
-    var snap = { purpose: purpose || "", window: Sources.windowSnapshot(root.cameFrom, root.windows) }
+    var snap = {
+      purpose: purpose || "",
+      window: Sources.windowSnapshot(root.cameFrom, root.windows),
+      clipboard: root.lastCopied || "",
+      primarySelection: root.selection || ""
+    }
     var source = context === "copied" ? "clipboard" : context === "selection" ? "selection" : ""
     if (source && root.selectionSource === source && root.selection !== "" && String(message || "").indexOf(root.selection) !== -1) {
       var seen = source === "clipboard" ? root.copiedSeenAt : root.selectionSeenAt
@@ -2220,6 +2320,65 @@ Item {
   // was asked about, not of the one the bar knows when the picture is done.
   function askCapture(message, context, purpose) {
     return { snapshot: root.askContext(message, context, purpose), address: String(root.cameFrom.address || "") }
+  }
+
+  property var pendingFileAsk: null
+
+  function askRoute(qText, agentId) {
+    return PromptContext.askRoute({ answered: !!Answers.spec(qText, root.config.answers, root.cameFrom), agentId: agentId || "",
+                                    busy: askSession.busy(), shooting: windowShot.active })
+  }
+
+  // An Ask, its context expanded (window, clipboard, selection and files),
+  // so that an answers filter of his and an ACP agent get the same question.
+  function dispatchAsk(question, rawMessage, context, purpose, extraEnv, image, filePath, agentId, answerFresh, commandQuery) {
+    var qText = commandQuery || ("ask " + question)
+    // Busy: nothing of this Ask is done, the field left as he has it.
+    if (root.askRoute(qText, agentId) === "busy") return
+    root.pendingFileAsk = null
+    if (askFileReader.active) askFileReader.cancel()
+    // An agent named in the field keeps its name there: "ask " would end
+    // the direct Ask (queryUsesDirectAgent).
+    if (!(agentId && !commandQuery) && input.text !== qText) {
+      input.text = qText
+      input.cursorPosition = input.text.length
+    }
+    var snap = root.askCapture(rawMessage || question, context, purpose).snapshot
+    var env = extraEnv || (context === "selection" && root.selection ? { NODI_SELECTION: root.selection } : {})
+
+    // Only what he typed is read for mentions (PromptContext.mentionSource):
+    // selected or copied text may carry an @f: of its own.
+    var targets = PromptContext.fileTargets(PromptContext.mentionSource(context, question, rawMessage), filePath, root.home)
+
+    if (targets.length > 0) {
+      var token = Math.random()
+      root.pendingFileAsk = {
+        question: question, rawMessage: rawMessage, context: context,
+        purpose: purpose, extraEnv: env, image: image, targets: targets,
+        agentId: agentId, snapshot: snap, token: token,
+        answerFresh: !!answerFresh, commandQuery: commandQuery
+      }
+      askFileReader.run(PromptContext.fileReadArgv(targets), root.pendingFileAsk)
+      return
+    }
+
+    root.finishDispatchAsk(question, rawMessage, context, purpose, env, image, snap, agentId, answerFresh, commandQuery)
+  }
+
+  function finishDispatchAsk(question, rawMessage, context, purpose, extraEnv, image, snapshot, agentId, answerFresh, commandQuery) {
+    var qText = commandQuery || ("ask " + question)
+    var expanded = PromptContext.expandFor(context, question, rawMessage, snapshot)
+    // Again after a file read: the agent may have taken another question since.
+    var route = root.askRoute(qText, agentId)
+    if (route === "busy") return
+    if (route === "answer") {
+      var ansSpec = Answers.spec(qText, root.config.answers, root.cameFrom, expanded, extraEnv)
+      if (answerFresh) ansSpec.fresh = true
+      answerSession.start(ansSpec)
+      return
+    }
+    root.askRows = ({ turn: "", rows: ({}) })
+    root.startAsk(agentId || "", question, expanded, context, image, purpose, { snapshot: snapshot, address: String(root.cameFrom.address || "") })
   }
 
   // `captured` (askCapture) is the context of an Ask chosen earlier.
@@ -2275,14 +2434,22 @@ Item {
     }
   }
 
+  // Bounded (PromptContext.flushStep): an Ask whose agent never comes is
+  // given up, said in a toast, never left pending to refuse the next.
   function flushAsk() {
     var pending = root.pendingAsk
     if (!pending || pending.cwdWait) return
-    if (pending.direct ? askSession.agent !== pending.target : askSession.agent !== root.resolvedAgent) {
+    var step = PromptContext.flushStep(pending, askSession.agent, root.resolvedAgent, root.directAskAgent)
+    if (step === "wait") {
+      pending.tries = (pending.tries || 0) + 1
       Qt.callLater(root.flushAsk)
       return
     }
     root.pendingAsk = null
+    if (step === "drop") {
+      if (!pending.prepare) root.toast("Ask did not send the question", "The agent changed while it waited; ask again")
+      return
+    }
     if (pending.prepare) askSession.prepare(pending.question, pending.message, pending.context)
     else askSession.send(pending.question, pending.message, pending.context, pending.image, pending.snapshot)
   }
@@ -2377,10 +2544,18 @@ Item {
     onFileChanged: reload()
   }
 
+  property bool askWasBusy: false
+
   // A quick answer from a coding agent, held open over ACP (components/Ask.qml).
   function syncAskPhase() {
     if (!askSession.busy() && root.directAskAgent && !root.queryUsesDirectAgent(root.queryNow()))
       root.directAskAgent = ""
+    if (root.askWasBusy && !askSession.busy() && askSession.phase === "done" && !root.opened) {
+      if (root.config.ask && root.config.ask.notifyOnDone && askSession.answer.trim()) {
+        toaster.show("Answer ready: " + askSession.agentName, askSession.question)
+      }
+    }
+    root.askWasBusy = askSession.busy()
     if (root.opened) root.recompute()
   }
 
@@ -2404,6 +2579,7 @@ Item {
     // "ask": { "actions": false } (ROADMAP 44).
     acts: !(root.config.ask && root.config.ask.actions === false)
     mcp: AskTools.servers(root.config.ask && root.config.ask.mcpServers)
+    customInstructions: String((root.config.ask && root.config.ask.instructions) || "")
     // Variables of his the agent needs beyond those Ask passes (Ask.qml).
     passed: Array.isArray(root.config.ask && root.config.ask.environment) ? root.config.ask.environment : []
     searcher: root.askSearch
@@ -2444,6 +2620,26 @@ Item {
       var message = data ? a.message : a.question + "\n\n(The window could not be captured.)"
       var context = data ? a.context : ""
       Qt.callLater(function() { root.startAsk("", a.question, message, context, image, a.purpose, a.captured) })
+    }
+  }
+
+  Reader {
+    id: askFileReader
+    timeoutMs: 1000
+    maxBytes: PromptContext.FILE_READ_BYTES
+    cancelable: true
+    onFinished: function(text, ok, tag) {
+      if (!tag || !root.pendingFileAsk || root.pendingFileAsk.token !== tag.token) return
+      var pending = root.pendingFileAsk
+      root.pendingFileAsk = null
+      // A file not read is said so in the prompt (PromptContext.fileReads).
+      pending.snapshot.files = PromptContext.attachFiles(pending.snapshot.files, pending.targets,
+                                                         PromptContext.fileReads(text, ok, pending.targets))
+      root.finishDispatchAsk(
+        pending.question, pending.rawMessage, pending.context,
+        pending.purpose, pending.extraEnv, pending.image, pending.snapshot, pending.agentId,
+        pending.answerFresh, pending.commandQuery
+      )
     }
   }
 
@@ -2570,6 +2766,11 @@ Item {
     target: answerSession
     function onPhaseChanged() {
       root.keepConversation()
+      if (answerSession.phase === "done" && !root.opened) {
+        if (root.config.ask && root.config.ask.notifyOnDone && answerSession.text.trim()) {
+          toaster.show("Answer ready: " + (answerSession.title || answerSession.keyword), answerSession.question)
+        }
+      }
       if (!root.answerShown) return
       if (answerSession.phase === "done") card.announce(answerSession.title + ". " + Markdown.spoken(answerSession.text, 600))
       else if (answerSession.phase === "error") card.announce(answerSession.title + " failed. " + (answerSession.error || ""))
@@ -2709,11 +2910,15 @@ Item {
     id: requests
     providers: Engine.providers()
     env: ({ user: root.user, home: root.home, cacheDir: root.cacheDir, pluginDir: root.pluginDir, path: Quickshell.env("PATH") || "" })
-    // Held, the read that completes the rows draws them once.
-    onArrived: if (root.opened) { if (root.homeHeld && root.homeReadsIn()) root.releaseHome(); else root.recompute() }
+    // Held, the read that completes the rows draws them once. Otherwise
+    // the rows are ranked once for every read that lands in one turn of
+    // the event loop (several sockets' batches, a seed with a read).
+    onArrived: if (root.opened) { if (root.homeHeld && root.homeReadsIn()) root.releaseHome(); else Qt.callLater(root.recomputeArrived) }
     // A read that brought the same rows again still completes them.
     onLanded: if (root.opened && root.homeHeld) root.settleHome()
   }
+
+  function recomputeArrived() { if (root.opened) root.recompute() }
 
   // The rates saved by the last read, so conversions work offline from the
   // start; a read replaces them only after the API's next-update time.
@@ -2729,12 +2934,8 @@ Item {
     if (zonesReader.busy || Date.now() - root.zonesFetchedAt < 60 * 60 * 1000) return
     var t = root.config.time || {}
     var extra = (t.zones || []).concat(t.home ? [t.home] : [])
-    // "@local Europe/Berlin" first, then "zone +hhmm ABBR" per zone.
-    zonesReader.run(["/usr/bin/bash", "-c",
-      "lz=$(timedatectl show -p Timezone --value 2>/dev/null); "
-      + "[ -n \"$lz\" ] || lz=$(readlink /etc/localtime 2>/dev/null | sed 's|.*/zoneinfo/||'); "
-      + "echo \"@local $lz\"; "
-      + "for z in \"$@\" $lz; do printf '%s ' \"$z\"; TZ=\"$z\" date +'%z %Z'; done", "nodi-zones"].concat(Tz.allZones(extra)))
+    // Sources.ZONES_READ: the local zone, then each zone tzdata has.
+    zonesReader.run(Sources.zonesArgv(Tz.allZones(extra)))
   }
 
   Reader {
@@ -2822,17 +3023,22 @@ Item {
       model: root.warmIcons
       Item {
         required property string modelData
-        IconTile { imageSource: root.iconSource(modelData, false, true); size: root.tileSize }
-        IconTile { imageSource: root.iconSource(modelData, false, true); size: Math.round(root.tileSize * 1.4) }
+        IconRef { id: warm; nodi: root; value: modelData; background: true }
+        IconTile { imageSource: warm.url; size: root.tileSize }
+        IconTile { imageSource: warm.url; size: Math.round(root.tileSize * 1.4) }
       }
     }
   }
 
-  Images { id: images; pluginDir: decodeURIComponent(root.pluginDir) }
+  Images { id: images; pluginDir: decodeURIComponent(root.pluginDir); onRasterChanged: function(key) { root.rasterChanged(key) } }
 
+  // A picture's raster landed or went, by its key ("" for all): each
+  // IconRef reads its own source again on its own key alone.
+  signal rasterChanged(string key)
+  function iconKey(icon, large) { return images.keyOf(String(icon || "") || "application-x-executable", large) }
+  // Called by an IconRef's binding, which says when to call it again; an
+  // open asks again for the stale ones (images.refreshStale).
   function iconSource(icon, large, background) {
-    // Depend on completed reads and on a reopen, which refreshes old images.
-    var revision = images.revision + root.opens
     var value = String(icon || "")
     return images.source(value || "application-x-executable", !!large, !!background, !!root.appIcons[value])
   }
@@ -2840,7 +3046,7 @@ Item {
   Timer {
     id: appsDebounce
     interval: 300
-    onTriggered: { root.rebuildApps(); images.invalidate() }
+    onTriggered: { root.rebuildApps(); images.catalog(root.apps) }
   }
 
   Connections {
@@ -2851,7 +3057,6 @@ Item {
   // GTK resolves named icons through this theme. Keep their rasters until
   // the catalog or theme changes; a settings edit starts a new cache epoch.
   FileView {
-    id: gtkIconSettings
     path: root.home + "/.config/gtk-3.0/settings.ini"
     watchChanges: true
     printErrors: false
@@ -2860,12 +3065,12 @@ Item {
     onLoaded: {
       var match = /^\s*gtk-icon-theme-name\s*=\s*(.*?)\s*$/m.exec(String(text()))
       var current = match ? match[1] : ""
-      if (initialized && current !== iconTheme) images.invalidate()
+      if (initialized && current !== iconTheme) images.invalidate("icon theme changed")
       iconTheme = current
       initialized = true
     }
     onLoadFailed: {
-      if (initialized && iconTheme !== "") images.invalidate()
+      if (initialized && iconTheme !== "") images.invalidate("icon theme unreadable")
       iconTheme = ""
       initialized = true
     }
@@ -3139,6 +3344,18 @@ Item {
 
   // ---------------------------------------------------------------- themes
 
+  // The current theme, watched: a switch is the next open's at once, with
+  // no probe at each open (lib/Probes.js keeps the list ten minutes). The
+  // name is written after the theme is in place (omarchy-theme-set), and
+  // read once it has settled.
+  FileView {
+    path: root.home + "/.local/state/omarchy/current/theme.name"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: { reload(); themeSwitched.restart() }
+  }
+  Timer { id: themeSwitched; interval: 200; onTriggered: { themeColors.reload(); root.refreshThemes() } }
+
   function refreshThemes() {
     themesReader.run(["/usr/bin/bash", "-c",
       "printf '@current\\t%s\\n' \"$(omarchy-theme-current 2>/dev/null)\"; "
@@ -3199,7 +3416,15 @@ Item {
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
     exclusionMode: ExclusionMode.Ignore
 
-    Rectangle { anchors.fill: parent; color: root.scrim }
+    Rectangle {
+      anchors.fill: parent
+      color: root.scrim
+      opacity: root.entered || root.reducedMotion ? 1.0 : 0.0
+      Behavior on opacity {
+        enabled: !root.reducedMotion
+        NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
+      }
+    }
 
     MouseArea { anchors.fill: parent; onClicked: root.dismiss() }
 
@@ -3208,13 +3433,20 @@ Item {
       nodi: root
       x: look.cardX
       y: look.cardTop
-      // Unseen until the empty bar's rows are whole: the GUI thread draws
-      // the first frame before it reads the selection's answer, so a card
-      // shown at once showed without the rows that then pushed the list
-      // down (measured 2026-10-07: the read in at 75 ms, the frame at 74).
-      // Shown a frame later, whole. Opacity, not visibility: the field
-      // takes the keys meanwhile.
-      opacity: root.contentHeld ? 0 : 1
+      // Unseen until the empty bar's rows are whole so the card fades in whole
+      // without popping from text-bar to expanded overlay.
+      opacity: (!root.contentHeld && (root.entered || root.reducedMotion)) ? 1.0 : 0.0
+      scale: root.entered || root.reducedMotion ? 1.0 : 0.96
+      transformOrigin: Item.Center
+
+      Behavior on opacity {
+        enabled: !root.reducedMotion && !root.contentHeld
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+      }
+      Behavior on scale {
+        enabled: !root.reducedMotion
+        NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
+      }
     }
   }
 }

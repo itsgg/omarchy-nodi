@@ -113,6 +113,13 @@ test("what the agent is told: the bar's rules, its tools only with actions, the 
   assert.match(A.ACTS, /search.+inspect alternatives/i);
 });
 
+test("user standing instructions are appended cleanly to agent system instructions", () => {
+  assert.equal(A.instructions(false, false, "Be brief and direct."), A.SYSTEM + "\n\nUser instructions:\nBe brief and direct.");
+  assert.equal(A.instructions(true, false, "  Trimmed.  "), A.SYSTEM + A.ACTS + "\n\nUser instructions:\nTrimmed.");
+  assert.equal(A.instructions(false, false, ""), A.SYSTEM);
+  assert.equal(A.instructions(false, false, null), A.SYSTEM);
+});
+
 test("each agent declares how Ask enforces its isolation policy", () => {
   const registered = G.registry({
     agents: [{ id: "free", name: "Free", command: ["free-acp"] }]
@@ -1307,8 +1314,16 @@ test("an agent's run at once takes only rows no word of its own reaches; its sea
   // 2026-10-10: `keys idle` flipped Stay Awake with no Enter).
   assert.match(A.refusedAtOnce("keys:SUPER CTRL + I", "keys"), /keybinding runs whatever it is bound to; propose it/);
   for (const [k, p] of [["app:firefox", "apps"], ["window:0xabc", "windows"], ["menu:trigger.capture.screenshot", "menu"], ["media:org.mpris.MediaPlayer2.spotify", "desktop"],
-                        ["system:shot-region", "system"], ["system:record-full", "system"]])
+                        ["system:shot-region", "system"], ["menu:trigger.capture.screenshot.region", "menu"]])
     assert.equal(A.refusedAtOnce(k, p), "", k + " still at once");
+  // A screen recording, a lock, a suspend or an end of the session waits
+  // for his Enter too.
+  for (const [k, p] of [["system:record-full", "system"], ["menu:trigger.capture.screenrecord", "menu"],
+                        ["menu:trigger.capture.screenrecord.desktop-audio", "menu"], ["menu:trigger.capture.screenrecord.webcam", "menu"],
+                        ["menu:system.lock", "menu"], ["menu:system.screensaver", "menu"], ["menu:system.suspend", "menu"],
+                        ["menu:system.hibernate", "menu"], ["menu:system.logout", "menu"], ["menu:system.reboot", "menu"],
+                        ["menu:system.restart", "menu"], ["menu:system.shutdown", "menu"]])
+    assert.match(A.refusedAtOnce(k, p), /records the screen or locks, suspends or ends his session; propose it/, k);
   assert.match(A.refusedAtOnce("k", undefined), /propose it/);
   const row = plain(run("> rm -rf ~", {}))[0];
   assert.deepEqual([row.key, row.provider], ["shell:rm -rf ~", "shell"]);

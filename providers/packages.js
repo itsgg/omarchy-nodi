@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 
 // Packages (ROADMAP 65, L 20): `pkg <name>` lists what pacman's repositories
@@ -165,10 +166,8 @@ var provider = {
     // One group: the bar gathers rows by group, which put every AUR row
     // under every repository row; the subtitle says "aur".
     var out = all.slice(0, LIMIT).map(function(p, i) { return rowOf(p, 97 - i * 0.01) })
-    var aurDown = aur.state === "error" && !Array.isArray(aur.value)
-    if (!Array.isArray(aur.value) && !aurDown)
-      out.push({ title: "Asking the AUR...", subtitle: "aur.archlinux.org", icon: ICON, score: 30, copy: "", remember: false })
-    if (aurDown) out.push({ title: "The AUR did not answer", subtitle: String(aur.error || "aur.archlinux.org"), icon: ICON, score: 30, copy: "", remember: false })
+    if (!Array.isArray(aur.value))
+      out.push(Rows.waiting(aur, "Asking the AUR...", "The AUR did not answer", { subtitle: "aur.archlinux.org", icon: ICON, score: 30 }))
     if (all.length === 0 && Array.isArray(repo.value) && Array.isArray(aur.value))
       return [{ title: "No package named or about \"" + q + "\"", subtitle: "pacman and the AUR", icon: ICON, score: 40, copy: "", remember: false }]
     return out

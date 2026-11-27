@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Rows.js" as Rows
 .import "../lib/Run.js" as Run
 .import "../lib/Match.js" as Match
 .import "../lib/Sources.js" as Sources
@@ -62,7 +63,7 @@ var provider = {
     var byPid = /^\d+$/.test(needle)
     var got = ctx.request ? ctx.request("processes") : { state: "pending" }
     var list = got.value
-    if (!list) return [{ title: got.state === "error" ? "Could not list your processes" : "Reading your processes...", subtitle: "Processes", score: 40, copy: "" }]
+    if (!list) return [Rows.waiting(got, "Reading your processes...", "Could not list your processes", { subtitle: "Processes" })]
 
     var signal = force ? "-KILL" : "-TERM"
     var verb = force ? "Force quit" : "Quit"

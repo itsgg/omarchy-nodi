@@ -51,3 +51,10 @@ test("an open says when its text was read, when its rows were whole, and whether
   assert.deepEqual(s.moved, { counted: 2, opens: 1 }, "opens from before the count, or closed before a frame, are not counted");
   assert.deepEqual(s.selection, { seen: 1, p50: 40, p90: 40 });
 });
+
+test("a frame shows the card only once it is drawn and not held", () => {
+  assert.equal(Opens.shows(0, false), false, "at the entrance's start, nothing is seen");
+  assert.equal(Opens.shows(0.08, false), true, "its first step is");
+  assert.equal(Opens.shows(1, true), false, "held unseen");
+  assert.equal(Opens.shows(1, false), true);
+});

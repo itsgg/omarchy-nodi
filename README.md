@@ -9,13 +9,17 @@ Nodi (நொடி) is Tamil for an instant.
 
 ## Features
 
-- Apps, windows, and everything in Omarchy's menu, with each toggle's state
-- Sums, units, currency, time zones and dates as you type
-- Clipboard history, files with a preview of each, emoji
-- Favourites, aliases, hotkeys and window rules from Ctrl+K
-- Answers from Claude, Codex, OpenCode, Pi, Agy or your own agent, over ACP, and
-  fixes or translations of the text you selected
-- Your own commands, script filters and answers
+- Apps, windows with live screencopy previews, and Hyprland window rules from Ctrl+K
+- Every action and toggle in Omarchy's menu with live ON/OFF state
+- Math sums, unit conversions, daily offline currency rates, time zones, dates and dictionary definitions
+- Fast file search, ripgrep content search, syntax-highlighted code previews, and file chooser jumps
+- Searchable clipboard history with OCR text detection inside images, pinned clips, and sequence pasting
+- Upcoming calendar meeting countdowns and direct join links (Meet, Zoom, Teams)
+- Arch Linux and AUR package installer and search (`pkg`)
+- Conversational answers from Claude, Codex, OpenCode, Pi, Agy, or your own agent over ACP
+- Context mentions in a question (`@w`/`@window`/`@app` for the active window, `@c`/`@cb`/`@clipboard` for the clipboard, `@s`/`@selection` for the selection, `@f:<path>`/`@file:<path>` for a file's text), standing instructions, and background completion notices
+- Quick actions on selected text: fix grammar, rewrite, summarize, translate, and change case
+- Custom bash scripts, rofi-compatible script filters, custom streaming answers, and a 10-minute action undo stack
 
 ## Requirements
 
@@ -64,12 +68,19 @@ go at logout.
 | Type | To |
 |---|---|
 | `chrom` | open an app |
-| `w git` | switch to a window |
+| `w git` | switch to a window (with live preview) |
 | `screenshot`, `gaps` | run a menu action, flip a toggle |
-| `12*8 + 15%`, `5 km to mi` | get an answer |
-| `cb invoice` | find a clipboard entry |
-| `find report` | find a file |
-| `ask why is the sky blue` | ask your agent |
+| `12*8 + 15%`, `5 km to mi` | calculate sums, convert units |
+| `$50`, `3pm to tokyo` | convert currency, compare time zones |
+| `cb invoice` | search clipboard history (including image OCR) |
+| `find report`, `in todo` | find files by name, search file contents |
+| `pkg ripgrep` | search and install pacman and AUR packages |
+| `cal` | check meetings and join video calls |
+| `note call bank` | append a dated note to Markdown |
+| `define serendipity` | lookup dictionary definitions |
+| `fix`, `tr es Hello` | fix or translate selected text |
+| `ask @w why this error` | ask your coding agent with active window context |
+| `undo` | undo a recent action |
 | `?` | see everything it does |
 
 Enter runs the selected row, Ctrl+K shows its other actions, Esc closes.
@@ -86,8 +97,9 @@ make check    # what CI runs, and more
 make reload   # install this tree and restart the shell
 ```
 
-[PLAN.md](PLAN.md) explains the design; [CHANGELOG.md](CHANGELOG.md)
-lists the releases.
+[PLAN.md](PLAN.md) holds the first design decisions and
+[ROADMAP.md](ROADMAP.md) the numbered items the code cites, both frozen;
+[CHANGELOG.md](CHANGELOG.md) lists the releases and what came after.
 
 ## Credits
 

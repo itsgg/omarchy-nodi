@@ -9,6 +9,10 @@ Item {
   visible: false
   property string pluginDir: ""
   property int revision: 0
+  // A raster for `key` (Images.key) landed or went; "" for every key. A
+  // picture listens for its own key (IconRef.qml), so a decoded icon
+  // rebinds the rows that show it and no others.
+  signal rasterChanged(string key)
   property var cacheState: Images.create()
   readonly property var readers: [reader0, reader1]
 
@@ -18,6 +22,8 @@ Item {
     return { NODI_IMAGE: String(path || ""), WAYLAND_DISPLAY: "" }
   }
 
+  function keyOf(value, large) { return Images.key(value, !!large) }
+
   function source(value, large, background, persistent) {
     var key = Images.key(value, large)
     if (!key) return ""
@@ -26,10 +32,18 @@ Item {
     return result
   }
 
-  function invalidate() {
+  // Every drop re-decodes each warm app icon, so each one says why in the
+  // shell's log.
+  function invalidate(reason) {
+    console.info("nodi: icon rasters dropped: " + (reason || "unknown"))
     Images.invalidate(cacheState)
     revision++
+    images.rasterChanged("")
     Qt.callLater(images.drain)
+  }
+
+  function catalog(apps) {
+    if (Images.catalogChanged(cacheState, apps)) invalidate("app catalog changed")
   }
 
   function drain() {
@@ -51,9 +65,20 @@ Item {
   }
 
   function finished(text, ok, tag) {
-    Images.finish(cacheState, tag.key, ok ? text.trim() : "", Date.now(), tag.generation)
+    var landed = Images.finish(cacheState, tag.key, ok ? text.trim() : "", Date.now(), tag.generation)
     revision++
+    if (landed) images.rasterChanged(tag.key)
+    // A worker is free: the pictures whose jobs a full queue dropped ask again.
+    var dropped = Images.takeDropped(cacheState)
+    for (var i = 0; i < dropped.length; i++) images.rasterChanged(dropped[i])
     Qt.callLater(images.drain)
+  }
+
+  // At an open: the pictures whose rasters are stale ask again, and no
+  // others (Images.stale).
+  function refreshStale() {
+    var keys = Images.stale(cacheState, Date.now())
+    for (var i = 0; i < keys.length; i++) images.rasterChanged(keys[i])
   }
 
   Reader {

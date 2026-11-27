@@ -8,22 +8,26 @@ Item {
   id: rowItem
   property var nodi
   required property int index
-  required property var modelData
+  // Its entry in the card's model (Card.syncRows) and the row it draws,
+  // read again when the entry's rev moves.
+  required property string uid
+  required property int rev
+  property var row: ({ key: "", title: "" })
   readonly property bool selected: index === nodi.selectedIndex
-  readonly property bool hero: !!modelData.hero
-  readonly property bool armed: nodi.armedKey !== "" && nodi.armedKey === modelData.key
-  readonly property string section: modelData.section || ""
+  readonly property bool hero: !!row.hero
+  readonly property bool armed: nodi.armedKey !== "" && nodi.armedKey === row.key
+  readonly property string section: row.section || ""
   // While Ctrl is held the first nine rows show the digit that runs them
   // (Ctrl+1 to Ctrl+9), in the badge slot (his ruling 2026-10-04); not
   // while a hotkey is being set, where Ctrl is part of the chord.
   readonly property bool digit: !!nodi.ctrlHeld && index < 9 && !nodi.captureRow && !armed
 
   width: ListView.view ? ListView.view.width : 0
-  height: nodi.rowSize(modelData)
+  height: nodi.rowSize(row)
   // A list item to a screen reader, as the card's spoken() says it (item 71).
   Accessible.role: Accessible.ListItem
-  Accessible.name: String(modelData.title || "")
-  Accessible.description: String(modelData.subtitle || "") + (armed ? (modelData.subtitle ? ", " : "") + "Enter again" : (modelData.badge ? (modelData.subtitle ? ", " : "") + modelData.badge : ""))
+  Accessible.name: String(row.title || "")
+  Accessible.description: String(row.subtitle || "") + (armed ? (row.subtitle ? ", " : "") + "Enter again" : (row.badge ? (row.subtitle ? ", " : "") + row.badge : ""))
   Accessible.selectable: true
   Accessible.selected: selected
 
@@ -60,7 +64,7 @@ Item {
 
     // The selected row's mark where the fill would be all (item 72).
     Rectangle {
-      visible: rowItem.selected && nodi.selectionBar
+      visible: rowItem.selected && nodi.selectionBar && nodi.reducedMotion
       anchors.left: parent.left
       anchors.leftMargin: Style.spacing.xs + nodi.rowInsetLeft
       anchors.verticalCenter: parent.verticalCenter
@@ -70,16 +74,19 @@ Item {
       color: nodi.foreground
     }
 
+    // Its picture, read again only when its own raster changes.
+    IconRef { id: picture; nodi: rowItem.nodi; value: rowItem.row.image || "" }
+
     IconTile {
       id: tile
       anchors.left: parent.left
       anchors.leftMargin: Style.spacing.lg + nodi.rowInsetLeft
       anchors.verticalCenter: parent.verticalCenter
-      glyph: rowItem.modelData.icon || ""
-      glyphFont: rowItem.modelData.iconFont || ""
-      imageSource: rowItem.modelData.image ? nodi.iconSource(rowItem.modelData.image) : ""
-      fill: !!rowItem.modelData.imageFill
-      swatch: rowItem.modelData.swatch || ""
+      glyph: rowItem.row.icon || ""
+      glyphFont: rowItem.row.iconFont || ""
+      imageSource: picture.url
+      fill: !!rowItem.row.imageFill
+      swatch: rowItem.row.swatch || ""
       selected: rowItem.selected
       size: rowItem.hero ? Math.round(nodi.tileSize * 1.4) : nodi.tileSize
       radius: nodi.tileRadius
@@ -92,16 +99,16 @@ Item {
     Keycap {
       id: badge
       objectName: "badge"
-      visible: rowItem.digit || rowItem.armed || rowItem.modelData.badge !== ""
+      visible: rowItem.digit || rowItem.armed || rowItem.row.badge !== ""
       anchors.right: parent.right
       anchors.rightMargin: Style.spacing.lg + nodi.rowInsetRight
       anchors.verticalCenter: parent.verticalCenter
-      label: rowItem.digit ? String(rowItem.index + 1) : (rowItem.armed ? "Enter again" : rowItem.modelData.badge)
-      strong: !rowItem.digit && (rowItem.armed || rowItem.modelData.badgeTone === "on")
+      label: rowItem.digit ? String(rowItem.index + 1) : (rowItem.armed ? "Enter again" : rowItem.row.badge)
+      strong: !rowItem.digit && (rowItem.armed || rowItem.row.badgeTone === "on")
       // The word in the text colour, the state in the fill and the border:
       // accent or urgent text on its own tint read under 4.5 in most themes.
       foreground: nodi.foreground
-      tone: rowItem.digit ? nodi.foreground : (rowItem.armed ? Commons.Color.urgent : (rowItem.modelData.badgeTone === "on" ? Commons.Color.accent : nodi.foreground))
+      tone: rowItem.digit ? nodi.foreground : (rowItem.armed ? Commons.Color.urgent : (rowItem.row.badgeTone === "on" ? Commons.Color.accent : nodi.foreground))
       fontFamily: nodi.fontFamily
       rounded: nodi.cornerRadius > 0
     }
@@ -120,7 +127,7 @@ Item {
         width: parent.width
         textFormat: Text.PlainText
         objectName: "title"
-        text: rowItem.modelData.title
+        text: rowItem.row.title
         // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
         horizontalAlignment: Text.AlignLeft
         color: rowItem.selected ? nodi.selectedInk : nodi.foreground
@@ -136,7 +143,7 @@ Item {
         width: parent.width
         visible: text !== ""
         textFormat: Text.PlainText
-        text: rowItem.modelData.subtitle || ""
+        text: rowItem.row.subtitle || ""
         // Left, as every row: right-to-left text is right-aligned unless told (ROADMAP 76).
         horizontalAlignment: Text.AlignLeft
         color: rowItem.selected ? nodi.secondaryOnSelected : nodi.secondary

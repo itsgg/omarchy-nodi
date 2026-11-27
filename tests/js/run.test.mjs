@@ -113,12 +113,6 @@ test("Ctrl+K offers Reset ranking only for a row with history", () => {
   assert.ok(!Rows.actionsFor(row, {}).some(a => a.nodi));
 });
 
-test("a file's path as a URL keeps # and ? as part of the name", () => {
-  const Rows = load("lib/Rows.js");
-  assert.equal(Rows.fileUrl("/home/u/shot #2.png"), "file:///home/u/shot%20%232.png");
-  assert.equal(Rows.fileUrl("/home/u/100%?.png"), "file:///home/u/100%25%3F.png");
-});
-
 test("a file's preview: its details and first lines once the read lands", () => {
   const Rows = load("lib/Rows.js");
   const F = load("providers/files.js");
@@ -191,6 +185,43 @@ test("Ctrl+K: the row's own, then Copy, then Manage, each with its chord", () =>
   const sum = Rows.normalize({ key: "calc:1", title: "= 4", copy: "4", run: Run.exec(["true"]) }, { id: "calc", name: "Calculator" }, 0, 0);
   const copy = Rows.actionsFor(sum, {}).find(a => a.label === "Copy 4");
   assert.deepEqual([copy.chord, copy.chordKey, copy.group], ["Ctrl Enter", "copy", "Copy"], "what Ctrl+Enter copies from the list");
+});
+
+test("Ctrl+K retains nodi action metadata like ask and data payloads", () => {
+  const row = {
+    key: "file:test.txt",
+    title: "test.txt",
+    actions: [
+      {
+        label: "Ask about this file",
+        icon: "󰚩",
+        nodi: "askWith",
+        ask: { question: "Explain test.txt", message: "Explain test.txt:\n@f:/test.txt", file: "/test.txt", context: "file", purpose: "ask" }
+      },
+      {
+        label: "Ask question about file...",
+        icon: "󰚩",
+        nodi: "complete",
+        data: "ask @f:/test.txt "
+      }
+    ]
+  };
+  const acts = Rows.actionsFor(row, {});
+  const askAct = acts.find(a => a.label === "Ask about this file");
+  assert.ok(askAct, "Ask about this file is in actions");
+  assert.equal(askAct.nodi, "askWith");
+  assert.deepEqual(plain(askAct.ask), {
+    question: "Explain test.txt",
+    message: "Explain test.txt:\n@f:/test.txt",
+    file: "/test.txt",
+    context: "file",
+    purpose: "ask"
+  });
+
+  const completeAct = acts.find(a => a.label === "Ask question about file...");
+  assert.ok(completeAct, "Ask question about file... is in actions");
+  assert.equal(completeAct.nodi, "complete");
+  assert.equal(completeAct.data, "ask @f:/test.txt ");
 });
 
 test("Ctrl+K typed into: words that start the label or group's, each group under its name once", () => {

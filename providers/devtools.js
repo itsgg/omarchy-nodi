@@ -1,4 +1,5 @@
 .pragma library
+.import "../lib/Util.js" as Util
 .import "../lib/Score.js" as Score
 
 // Small things a developer reaches for:
@@ -104,10 +105,8 @@ function parseColor(text) {
   return null
 }
 
-function pad(n) { return (n < 10 ? "0" : "") + n }
-
 function localStamp(d) {
-  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds())
+  return d.getFullYear() + "-" + Util.pad(d.getMonth() + 1) + "-" + Util.pad(d.getDate()) + " " + Util.pad(d.getHours()) + ":" + Util.pad(d.getMinutes()) + ":" + Util.pad(d.getSeconds())
 }
 
 var provider = {

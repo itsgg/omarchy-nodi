@@ -79,11 +79,13 @@ function chatRun(f, conversation) {
 // The run for what is typed, or null when it names no answer or asks
 // nothing: { keyword, title, question, timeoutMs, argv, env }, the query
 // and the window in the environment as a filter's are (filters.js).
-function spec(query, settings, window, message) {
+function spec(query, settings, window, message, extraEnv) {
   var hit = Filters.filterFor(query, settings)
   if (!hit || !hit.query) return null
   var f = hit.filter
   var effective = message === undefined ? hit.query : String(message)
+  var env = Filters.merged({ NODI_QUERY: effective }, Filters.windowEnv(window))
+  if (extraEnv && typeof extraEnv === "object") env = Filters.merged(env, extraEnv)
   return {
     keyword: f.keyword,
     title: f.title || f.keyword,
@@ -91,8 +93,10 @@ function spec(query, settings, window, message) {
     message: effective,
     timeoutMs: Math.min(MAX_MS, Math.max(1000, Number(f.timeoutMs) || DEFAULT_MS)),
     freshMs: freshOf(f),
-    argv: f.command.concat(f.argument === true ? [effective] : []),
-    env: Filters.merged({ NODI_QUERY: effective }, Filters.windowEnv(window))
+    // The words he typed alone, with "argument": true: the message may hold
+    // a file's or the clipboard's text, which goes in no argument (lib/Run.js).
+    argv: f.command.concat(f.argument === true ? [hit.query] : []),
+    env: env
   }
 }
 
@@ -185,9 +189,11 @@ var provider = {
                              nodi: "answerFresh", actionLabel: "Ask", remember: false })
       return rows
     }
-    if (a.phase === "waiting" || a.phase === "streaming")
-      return [{ key: key + "wait", title: a.phase === "waiting" ? "Asking " + title + "..." : "Answering...", subtitle: "Esc stops it",
+    if (a.phase === "waiting" || a.phase === "streaming") {
+      var askingWhom = String(title || "").replace(/^ask\s+/i, "") || title
+      return [{ key: key + "wait", title: a.phase === "waiting" ? "Asking " + askingWhom + "..." : "Answering...", subtitle: "Esc stops it",
                 icon: icon, score: 98, copy: "", remember: false }]
+    }
     if (a.phase === "error")
       return [{ key: key + "error", title: "Could not answer: " + (a.error || "it failed"), subtitle: q, icon: icon, score: 98,
                 copy: a.text || "", nodi: "answer", actionLabel: "Ask again", remember: false }]

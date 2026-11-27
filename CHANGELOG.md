@@ -5,7 +5,7 @@ What changed in each version of Nodi, newest first. A version is a tag
 follows the main branch, not the tags: it shows the diff from the commit
 you have and asks before pulling. ROADMAP.md has each item's detail.
 
-## Unreleased (2026-10-18)
+## Unreleased (2026-11-27)
 
 - Decode file, clipboard, theme, app and extension images in a worker with
   memory, CPU, file-size and time limits. Only a new PNG without source
@@ -24,6 +24,62 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   the Markdown with the links recoloured, laid out as before.
 - Draw a watched home row's icon name as its picture, not as text across
   the row.
+- Bound calendar feeds: parsing and recurrence expansion stop at fixed
+  counts of lines, components, properties, occurrences and events, a
+  redirect is followed without reading its body, and a local `.ics` file
+  over the size limit is refused by its size, before any of it is read.
+- Keep the preview pane's layout steady while its content arrives, and
+  load the icons of the rows on screen first (#8).
+- Tint symbolic icons with the theme's accent, and decode icons faster
+  once the image worker is warm (#8). App icons are kept on disk between
+  starts and held until their files change, so a rescan that finds the
+  same apps decodes nothing again.
+- Stream an agent's output through GNU's `fold`, `head` and `stdbuf` where
+  the system's are another implementation, which can hold the output back
+  past what `stdbuf` controls (#8).
+- Centre the card at every screen width. The two-column card sat to the
+  right of centre on narrower screens; a first preview that widens it now
+  grows it on both sides, once per open (#9).
+- Mention context in a question: `@w` (or `@window`, `@app`) for the
+  active window, `@c` (`@cb`, `@clipboard`) for the clipboard, `@s`
+  (`@selection`) for the selection, and `@f:<path>` (`@file:<path>`,
+  quoted when it has spaces) for a file's text. Only the question you
+  typed is read for file mentions, never the selected text.
+- "Ask about this file" and "Move to trash" on a file row's Ctrl+K
+  actions.
+- `"ask": { "instructions": "..." }` adds standing instructions to every
+  session, and `"notifyOnDone": true` shows a notice when an answer
+  finishes while the bar is closed. A change to the agent's settings
+  restarts an idle agent with them.
+- Open the card with a short fade and scale (none under reduced motion),
+  crossfade the preview pane, and glide the selection between rows. The
+  card no longer shows the bare field for a frame before its rows.
+- Work with Omarchy 4.5's menu: toggles split into on and off rows and
+  moved under Appearance get their ON/OFF badge, flip and search words
+  again ("caffeine", "dnd", "dark mode"), and Do Not Disturb is read with
+  `isDnd`. Tests now check every menu id and `omarchy-shell` call Nodi
+  names against the installed Omarchy, and CI checks them against
+  Omarchy's own tree.
+- Read `@f`, `@c`, `@s` and `@w` only from what is typed, never from the
+  selected or copied text a question is about. `@f:~/...` attaches the
+  file, trailing punctuation is not part of a path, a link is named with
+  its target, at most eight files go with a question and an unread one is
+  named in the prompt.
+- An agent's screen recording, lock, suspend and power rows wait for
+  Enter. An answers filter with `argument: true` gets only the typed query
+  in its arguments. An explicit agent choice is not overridden by an
+  `ask` answers filter. A direct ask that cannot reach its agent gives up
+  with a message instead of blocking later asks.
+- Keep result rows across keystrokes instead of rebuilding them, redraw
+  only the row whose icon decoded, cache the agent probe, watch the theme
+  and stream socket rows without copying them. The selection pill stays
+  inside the list. Unused icons leave the disk cache after 30 days.
+- Unknown time zones say so instead of showing UTC. "monday to friday"
+  runs forward, month and year sums stay in the month, "in 30 min" and
+  "in 2 hours" work and dates follow `time.home`. Calendar events that
+  repeat hourly or by hour, and changes to this and future events, show.
+- A failed read says why in its row.
+
 
 ## 0.5.0 (2026-10-14)
 
