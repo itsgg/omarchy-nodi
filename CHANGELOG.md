@@ -24,6 +24,38 @@ you have and asks before pulling. ROADMAP.md has each item's detail.
   the Markdown with the links recoloured, laid out as before.
 - Draw a watched home row's icon name as its picture, not as text across
   the row.
+- Bound calendar feeds: parsing and recurrence expansion stop at fixed
+  counts of lines, components, properties, occurrences and events, a
+  redirect is followed without reading its body, and a local `.ics` file
+  over the size limit is refused by its size, before any of it is read.
+- Keep the preview pane's layout steady while its content arrives, and
+  load the icons of the rows on screen first (#8).
+- Tint symbolic icons with the theme's accent, and decode icons faster
+  once the image worker is warm (#8). App icons are kept on disk between
+  starts and held until their files change, so a rescan that finds the
+  same apps decodes nothing again.
+- Stream an agent's output through GNU's `fold`, `head` and `stdbuf` where
+  the system's are another implementation, which can hold the output back
+  past what `stdbuf` controls (#8).
+- Centre the card at every screen width. The two-column card sat to the
+  right of centre on narrower screens; a first preview that widens it now
+  grows it on both sides, once per open (#9).
+- Mention context in a question: `@w` (or `@window`, `@app`) for the
+  active window, `@c` (`@cb`, `@clipboard`) for the clipboard, `@s`
+  (`@selection`) for the selection, and `@f:<path>` (`@file:<path>`,
+  quoted when it has spaces) for a file's text. Only the question you
+  typed is read for file mentions, never the selected text.
+- "Ask about this file" and "Move to trash" on a file row's Ctrl+K
+  actions.
+- `"ask": { "instructions": "..." }` adds standing instructions to every
+  session, and `"notifyOnDone": true` shows a notice when an answer
+  finishes while the bar is closed. A change to the agent's settings
+  restarts an idle agent with them.
+- Open the card with a short fade and scale (none under reduced motion),
+  crossfade the preview pane, and glide the selection between rows. The
+  card no longer shows the bare field for a frame before its rows.
+
+<!-- Fixes in progress land here, above 0.5.0. -->
 
 ## 0.5.0 (2026-10-14)
 
