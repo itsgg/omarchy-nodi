@@ -6,6 +6,7 @@ import "../lib/AskTools.js" as AskTools
 import "../lib/AskActions.js" as AskActions
 import "../lib/AskOrigin.js" as AskOrigin
 import "../lib/AskServe.js" as AskServe
+import "../lib/AskMailbox.js" as AskMailbox
 import "../lib/Agents.js" as Agents
 import "../lib/PromptContext.js" as PromptContext
 import "../lib/AskInteraction.js" as AskInteraction
@@ -753,9 +754,7 @@ Item {
   }
 
   function actionResponse(requestId, outcome, isError) {
-    var result = { content: [{ type: "text", text: JSON.stringify(outcome) }] }
-    if (isError) result.isError = true
-    return { jsonrpc: "2.0", id: requestId, result: result }
+    return AskMailbox.response(requestId, outcome, isError)
   }
 
   function publishAction(requestId, outcome, isError) {
@@ -1083,17 +1082,8 @@ Item {
     if (ask.proposal && ask.proposal.kind === "action")
       ask.cancelAction(why, true)
     ask.proposal = null
-    for (var key in ask.toolRequests) {
-      if (!Object.prototype.hasOwnProperty.call(ask.toolRequests, key)) continue
-      var item = ask.toolRequests[key]
-      if (!item || item.state === "ready") continue
-      var status = item.state === "committed" ? "unknown" : "error"
-      item.state = "ready"
-      item.response = JSON.stringify(ask.actionResponse(item.id, {
-        status: status, message: why
-      }, true))
-    }
-    ask.toolRequestsChanged()
+    var box = ask.mailbox()
+    ask.applyMailbox(box, AskMailbox.endAll(box, why))
     ask.terminalizeReadActivities("failed")
     ask.pending = null
     ask.allowed = ""
@@ -1453,110 +1443,72 @@ Item {
   // ---------------------------------------------------------------- the bar's tools
 
   function toolRequestKey(requestId) {
-    return typeof requestId + ":" + String(requestId)
+    return AskMailbox.key(requestId)
+  }
+
+  // The mailbox's state as lib/AskMailbox.js takes it, and what one of its
+  // steps did applied: the counts, the change notifications, and a limit
+  // reached, which ends the session.
+  function mailbox() {
+    return {
+      requests: ask.toolRequests, responses: ask.toolResponses,
+      retired: ask.retiredToolResponses, requestCount: ask.toolRequestCount,
+      responseCount: ask.toolResponseCount,
+      retiredCount: ask.retiredToolResponseCount, nextTicket: ask.nextTicket,
+      token: ask.token, channel: ask.channel,
+      ticketLimit: ask.mailboxTicketLimit, requestLimit: ask.actionRequestLimit,
+      retiredLimit: ask.retiredResponseLimit
+    }
+  }
+
+  function applyMailbox(box, r) {
+    ask.toolRequestCount = box.requestCount
+    ask.toolResponseCount = box.responseCount
+    ask.retiredToolResponseCount = box.retiredCount
+    ask.nextTicket = box.nextTicket
+    if (r.changed.requests) ask.toolRequestsChanged()
+    if (r.changed.responses) ask.toolResponsesChanged()
+    if (r.changed.retired) ask.retiredToolResponsesChanged()
+    if (r.capacity) ask.sessionCapacityExceeded(r.capacity)
+    return r.value
   }
 
   function pendingToolResponse(requestId) {
-    var key = ask.toolRequestKey(requestId)
-    if (ask.toolResponseCount + ask.retiredToolResponseCount
-        >= ask.mailboxTicketLimit) {
-      ask.sessionCapacityExceeded("mailbox tickets")
-      return ""
-    }
-    if (!Object.prototype.hasOwnProperty.call(ask.toolRequests, key)) {
-      if (ask.toolRequestCount >= ask.actionRequestLimit) {
-        ask.sessionCapacityExceeded("action request records")
-        return ""
-      }
-      ask.toolRequests[key] = { id: requestId, state: "pending", response: "" }
-      ask.toolRequestCount++
-      ask.toolRequestsChanged()
-    }
-    var ticket = ask.token + ":" + (++ask.nextTicket)
-    ask.toolResponses[ticket] = { requestKey: key }
-    ask.toolResponseCount++
-    ask.toolResponsesChanged()
-    return ticket
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.pending(box, requestId))
   }
 
   function markToolResponseCommitted(requestId) {
-    var item = ask.toolRequests[ask.toolRequestKey(requestId)]
-    if (!item || item.state !== "pending") return false
-    item.state = "committed"
-    ask.toolRequestsChanged()
-    return true
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.commit(box, requestId))
   }
 
   function completeToolResponse(requestId, response) {
-    var item = ask.toolRequests[ask.toolRequestKey(requestId)]
-    if (!item || item.state === "ready") return false
-    item.state = "ready"
-    item.response = String(response)
-    ask.toolRequestsChanged()
-    return true
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.complete(box, requestId, response))
   }
 
   function toolResponseFor(requestId) {
-    var item = ask.toolRequests[ask.toolRequestKey(requestId)]
-    if (!item || item.state !== "ready") return null
-    try { return JSON.parse(item.response) }
-    catch (e) { return { jsonrpc: "2.0", id: item.id, error: { code: -32603, message: "Ask produced an invalid action response" } } }
+    return AskMailbox.responseFor(ask.mailbox(), requestId)
   }
 
-  // A dead ACP session accepts no new calls, but tickets it already issued
-  // keep their authenticated terminal response until that ticket is polled.
   function retireToolResponses() {
-    if (!ask.token || !ask.channel) return
-    var retired = ask.retiredToolResponses
-    var tickets = Object.keys(ask.toolResponses)
-    for (var ti = 0; ti < tickets.length; ti++) {
-      var ticket = tickets[ti]
-      var transport = ask.toolResponses[ticket]
-      var item = transport ? ask.toolRequests[transport.requestKey] : null
-      if (item && item.state === "ready"
-          && !Object.prototype.hasOwnProperty.call(retired, ticket)) {
-        if (ask.retiredToolResponseCount >= ask.retiredResponseLimit) {
-          ask.sessionCapacityExceeded("retired action responses")
-          return
-        }
-        retired[ticket] = {
-          token: ask.token, channel: ask.channel, response: String(item.response)
-        }
-        ask.retiredToolResponseCount++
-      }
-      delete ask.toolResponses[ticket]
-    }
-    ask.toolResponseCount = 0
-    ask.toolResponsesChanged()
-    ask.retiredToolResponsesChanged()
+    var box = ask.mailbox()
+    ask.applyMailbox(box, AskMailbox.retire(box))
   }
 
   function pollToolResponse(ticket) {
-    var transport = ask.toolResponses[ticket]
-    var item = transport ? ask.toolRequests[transport.requestKey] : null
-    if (!item) return { jsonrpc: "2.0", id: null, error: { code: -32603, message: "This action response is no longer available" } }
-    if (item.state !== "ready") return { nodiPending: String(ticket) }
-    delete ask.toolResponses[ticket]
-    ask.toolResponseCount--
-    ask.toolResponsesChanged()
-    return ask.toolResponseFor(item.id)
+    var box = ask.mailbox()
+    return ask.applyMailbox(box, AskMailbox.poll(box, ticket))
   }
 
   function cancelToolResponse(ticket) {
-    var transport = ask.toolResponses[ticket]
-    if (!transport) return false
-    var item = ask.toolRequests[transport.requestKey]
-    delete ask.toolResponses[ticket]
-    ask.toolResponseCount--
-    ask.toolResponsesChanged()
-    if (!item || item.state !== "pending") return false
-    if (ask.proposal && ask.proposal.kind === "action"
-        && ask.toolRequestKey(ask.proposal.requestId) === transport.requestKey)
-      return ask.cancelAction("The action request was cancelled.", false)
-    return ask.completeToolResponse(item.id, JSON.stringify({
-      jsonrpc: "2.0", id: item.id,
-      result: { content: [{ type: "text", text: JSON.stringify({ status: "refused" }) }] }
-    }))
+    var box = ask.mailbox()
+    var shown = ask.proposal && ask.proposal.kind === "action"
+      ? ask.toolRequestKey(ask.proposal.requestId) : undefined
+    var r = AskMailbox.cancel(box, ticket, shown)
+    var done = ask.applyMailbox(box, r)
+    return r.cancelAction ? ask.cancelAction("The action request was cancelled.", false) : done
   }
 
   // `nodi mcp --ask`'s one carried relay envelope (Nodi.qml askMcp).
