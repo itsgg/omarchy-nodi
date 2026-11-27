@@ -203,7 +203,6 @@ Item {
   property int readActivityCount: 0
   property string thoughtActivity: "" // current-turn thought, outside provider operation IDs
   property int activitySeq: 0
-  property string actionActivity: AskActions.display(ask.actionBook, ({}))
   readonly property string activity: AskActions.display(ask.actionBook, ask.readActivities)
     || ask.thoughtActivity
   property string setup: ""          // what the start does first: an adapter installing
@@ -1906,17 +1905,6 @@ Item {
     ask.toolResponseCount = 0
     ask.toolResponsesChanged()
     ask.retiredToolResponsesChanged()
-  }
-
-  // Even a response already known is collected through the mailbox: the
-  // shell IPC call returns promptly, and later action work can complete the
-  // same ticket after confirmation without holding that IPC connection.
-  function queueToolResponse(requestId, jsonRpcResult) {
-    var ticket = ask.pendingToolResponse(requestId)
-    if (!ticket) return jsonRpcResult
-    ask.completeToolResponse(requestId, typeof jsonRpcResult === "string"
-      ? jsonRpcResult : JSON.stringify(jsonRpcResult))
-    return { nodiPending: ticket }
   }
 
   function pollToolResponse(ticket) {
