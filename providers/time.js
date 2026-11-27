@@ -10,6 +10,7 @@
 //
 //   time, time in tokyo, tokyo time, 3pm lkt to pst, 15:30 in london
 //   days until dec 25, today + 45 days, 2026-01-01 to 2026-09-23, next friday
+//   in 30 min, now + 90 minutes, 2 hours ago
 
 var DAY_MS = 86400000
 var WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
@@ -283,6 +284,33 @@ function addUnits(d, n, unit) {
   return out && !isNaN(out.getTime()) ? out : null
 }
 
+// Minutes in a unit of time of day, 0 for any other: "m" stays months.
+function minutesIn(unit) {
+  var u = unit.toLowerCase()
+  if (/^(mins?|minutes?)$/.test(u)) return 1
+  if (/^(h|hrs?|hours?)$/.test(u)) return 60
+  return 0
+}
+
+// The wall time n minutes from `w` (wallNow), with its date when that is
+// another day: "in 30 min", "now + 90 minutes", "2 hours ago".
+function timeRow(w, n, ctx, score) {
+  var t = new Date(w.getTime() + n * 60000)
+  if (isNaN(t.getTime())) return null
+  var day = ymd(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())
+  var otherDay = Math.floor(t.getTime() / DAY_MS) !== Math.floor(w.getTime() / DAY_MS)
+  var a = Math.abs(n)
+  var span = a % 60 === 0 ? (a / 60) + (a === 60 ? " hour" : " hours")
+                          : a < 60 ? a + (a === 1 ? " minute" : " minutes")
+                                   : Math.floor(a / 60) + "h " + (a % 60) + "m"
+  return {
+    title: clock(t, ctx) + (otherDay ? ", " + formatDate(day) : ""),
+    subtitle: n >= 0 ? "in " + span : span + " ago",
+    score: score,
+    copy: clock(t, ctx)
+  }
+}
+
 function daysBetween(a, b) { return Math.round((midnight(b) - midnight(a)) / DAY_MS) }
 
 // Four digits for a year under 1000, as ISO writes 0099; any other year
@@ -355,6 +383,10 @@ function matchDates(q, ctx) {
 
   // "today + 45 days", "dec 25 - 2 weeks"
   m = q.match(/^(.+?) ?([+-]) ?(\d+) ?([a-z]+)$/)
+  if (m && m[1] === "now" && minutesIn(m[4])) {
+    var later = timeRow(w, (m[2] === "-" ? -1 : 1) * parseInt(m[3], 10) * minutesIn(m[4]), ctx, 90)
+    if (later) return [later]
+  }
   if (m) {
     var base = parseDate(m[1], today)
     var from = base && (base.date || occurrence(base, today, 1))
@@ -364,11 +396,19 @@ function matchDates(q, ctx) {
 
   // "in 3 weeks", "3 weeks from now", "10 days ago"
   m = q.match(/^in (\d+) ?([a-z]+)$/) || q.match(/^(\d+) ?([a-z]+) (?:from now|from today|later)$/)
+  if (m && minutesIn(m[2])) {
+    var soon = timeRow(w, parseInt(m[1], 10) * minutesIn(m[2]), ctx, 88)
+    if (soon) return [soon]
+  }
   if (m) {
     var ahead = addUnits(today, parseInt(m[1], 10), m[2])
     if (ahead) return [dateRow(ahead, today, 88)]
   }
   m = q.match(/^(\d+) ?([a-z]+) ago$/)
+  if (m && minutesIn(m[2])) {
+    var before = timeRow(w, -parseInt(m[1], 10) * minutesIn(m[2]), ctx, 88)
+    if (before) return [before]
+  }
   if (m) {
     var back = addUnits(today, -parseInt(m[1], 10), m[2])
     if (back) return [dateRow(back, today, 88)]

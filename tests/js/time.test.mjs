@@ -59,3 +59,18 @@ test("dates: today is time.home's today when it is set", () => {
   const ny = Jsonc.merge(config, { time: { home: "America/New_York" } });
   assert.equal(top("today", utc, ny).title, "Wed, 23 Sep 2026");
 });
+
+test("times: minutes and hours from now give the time, and the date past midnight", () => {
+  // 14:00 in Colombo, the fixture's time.home.
+  const two = "2026-09-23T08:30:00Z";
+  for (const [q, title, sub] of [["in 30 min", "14:30", "in 30 minutes"], ["in 2 hours", "16:00", "in 2 hours"],
+    ["now + 90 minutes", "15:30", "in 1h 30m"], ["in 1 hr", "15:00", "in 1 hour"], ["in 45 mins", "14:45", "in 45 minutes"],
+    ["3 hours ago", "11:00", "3 hours ago"], ["now - 15 minute", "13:45", "15 minutes ago"], ["2h from now", "16:00", "in 2 hours"],
+    ["in 11 hours", "01:00, Thu, 24 Sep 2026", "in 11 hours"]]) {
+    const r = top(q, two);
+    assert.equal(r && r.title, title, q);
+    assert.equal(r.subtitle, sub, q);
+  }
+  assert.equal(top("in 2 m", two).title, "Mon, 23 Nov 2026", "m is still months");
+  assert.equal(top("in 2 m", two).provider, "time");
+});
