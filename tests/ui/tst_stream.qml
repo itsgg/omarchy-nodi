@@ -26,7 +26,7 @@ Item {
 
     function init() {
       look.highContrast = false
-      fake.reducedMotion = false
+      fake.desktop.reducedMotion = false
       fake.opens = true
       fake.typed = "pp how do tiling compositors differ"
       fake.rows = [Rows.normalize({ key: "answer:pp:wait", title: "Asking Perplexity...", subtitle: "Esc stops it", copy: "" }, { id: "answers", name: "Answers" }, 0, 0)]

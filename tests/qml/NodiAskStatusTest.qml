@@ -29,13 +29,13 @@ Item {
 
   function check(ok, what) { if (!ok) failures.push(what) }
 
-  // The window list as a step needs it. The shell keeps nodi.windows from
+  // The window list as a step needs it. The shell keeps nodi.desktop.windows from
   // Hyprland's own model, which a real session rewrites at any window event,
   // and an Ask checks it again as its read ends; so the step's list is set
   // again every millisecond while it runs.
   property var pinned: []
-  function pinWindows(list) { test.pinned = list; nodi.windows = list }
-  Timer { interval: 1; repeat: true; running: test.pinned.length > 0 && test.step < test.steps.length; onTriggered: nodi.windows = test.pinned }
+  function pinWindows(list) { test.pinned = list; nodi.desktop.windows = list }
+  Timer { interval: 1; repeat: true; running: test.pinned.length > 0 && test.step < test.steps.length; onTriggered: nodi.desktop.windows = test.pinned }
 
   function window(extra) {
     return Object.assign({ address: "0xa", "class": "foot", title: "project", pid: test.pid, workspace: "3", stableId: "", monitor: -1, width: 0, floating: false }, extra || {})

@@ -41,8 +41,8 @@ test("a window's working directory is read once, bounded, and only as an Ask sta
   assert.ok(call, "the read is started in startAsk");
   assert.match(call[1], /Sources\.cwdArgv\(\)/, "the argv is fixed: no pid in it");
   assert.match(call[1], /env:\s*env/, "the pid is carried in the reader's environment");
-  assert.match(nodi.slice(start, end), /Sources\.sameWindow\(root\.windows, address, pid\)[\s\S]*windowCwdReader\.run/, "only for a window the list still holds");
-  assert.match(nodi, /Sources\.sameWindow\(root\.windows, tag\.address, tag\.pid\)/, "and checked again before the answer is taken");
+  assert.match(nodi.slice(start, end), /Sources\.sameWindow\(desktop\.windows, address, pid\)[\s\S]*windowCwdReader\.run/, "only for a window the list still holds");
+  assert.match(nodi, /Sources\.sameWindow\(desktop\.windows, tag\.address, tag\.pid\)/, "and checked again before the answer is taken");
   assert.doesNotMatch(nodi, /snapshot\.window\.address|window:\s*\{[^}]*address/, "the address is not put in the snapshot");
   assert.doesNotMatch(nodi, /prepareDirectAsk[\s\S]{0,400}snapshot/, "a prepared ask collects nothing");
 });

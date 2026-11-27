@@ -13,7 +13,7 @@ import "../lib/Ansi.js" as Ansi
 // (Ui/MultiSelect.qml, the weather panel), a spinning 󰦖 and a dim line.
 // `markdown` is drawn as Markdown, its pictures and HTML taken out first
 // (lib/Markdown.js); `text` is drawn as it is; `code`, bat's coloured
-// text, in the theme's colours (lib/Ansi.js, `nodi.themeColours`); `window`, a
+// text, in the theme's colours (lib/Ansi.js, `nodi.desktop.themeColours`); `window`, a
 // window's address, is that window as it is now (WindowShot.qml), inside
 // the shell only (`nodi.captures`): the offscreen renders show its header
 // alone.
@@ -167,7 +167,7 @@ Rectangle {
         font.pixelSize: Style.font.caption
         RotationAnimator on rotation {
           id: turn
-          running: spinner.visible && pane.visible && !nodi.reducedMotion
+          running: spinner.visible && pane.visible && !nodi.desktop.reducedMotion
           from: 0
           to: 360
           duration: 800
@@ -371,7 +371,7 @@ Rectangle {
         textFormat: pane.hasMarkdown || pane.hasCode ? Text.RichText : Text.PlainText
         // Empty while a stream is drawn as blocks: bound to the answer, it
         // would be laid out whole at every word though nothing showed it.
-        text: pane.streams ? "" : pane.hasMarkdown ? pane.bodyHtml : pane.hasCode ? Ansi.html(pane.p.code, nodi.themeColours) : (pane.p.text || "")
+        text: pane.streams ? "" : pane.hasMarkdown ? pane.bodyHtml : pane.hasCode ? Ansi.html(pane.p.code, nodi.desktop.themeColours) : (pane.p.text || "")
         horizontalAlignment: Text.AlignLeft
         color: nodi.foreground
         linkColor: nodi.link

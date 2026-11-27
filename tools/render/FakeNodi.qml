@@ -19,8 +19,6 @@ QtObject {
   readonly property var selectedBorderSpec: look.selectedBorderSpec
   readonly property real rowInsetLeft: look.rowInsetLeft
   readonly property bool selectionBar: look.selectionBar
-  // Set by a test (tests/ui/tst_spinner.qml); the renders keep motion.
-  property bool reducedMotion: false
   readonly property int barWidth: look.barWidth
   readonly property int barInset: look.barInset
   readonly property real rowInsetRight: look.rowInsetRight
@@ -61,8 +59,13 @@ QtObject {
                              armed: !!paletteArmed && !!paletteActions[paletteIndex] && paletteArmed === paletteActions[paletteIndex].label } : null,
     row: selectedRow, armed: !!selectedRow && armedKey === selectedRow.key, anyPreview: anyPreview
   }))
-  // The theme's sixteen colours, as Nodi.qml reads them.
-  readonly property var themeColours: Ansi.paletteFrom(Theme.theme.colorsToml)
+  // What Nodi reads of the desktop (components/DesktopSources.qml), as the
+  // card reads it: the theme's sixteen colours, and reduced motion, set by
+  // a test (tests/ui/tst_spinner.qml); the renders keep motion.
+  readonly property QtObject desktop: QtObject {
+    readonly property var themeColours: Ansi.paletteFrom(Theme.theme.colorsToml)
+    property bool reducedMotion: false
+  }
   // A scene's `reads` stand in for the reader: path -> what file-head gives.
   property var reads: ({})
   function readPreview(p) {

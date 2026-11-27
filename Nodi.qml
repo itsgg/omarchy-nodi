@@ -8,8 +8,6 @@ import "lib/Engine.js" as Engine
 import "lib/Rows.js" as Rows
 import "lib/Run.js" as Run
 import "lib/Jsonc.js" as Jsonc
-import "lib/Menu.js" as Menu
-import "lib/Toggles.js" as Toggles
 import "lib/Sources.js" as Sources
 import "lib/AskTools.js" as AskTools
 import "lib/Acp.js" as Acp
@@ -24,7 +22,6 @@ import "lib/Starters.js" as Starters
 import "lib/WindowRules.js" as WindowRules
 import "lib/History.js" as History
 import "lib/Match.js" as Match
-import "lib/tzcities.js" as Tz
 import "lib/Describe.js" as Describe
 import "lib/Pick.js" as Pick
 import "lib/Pane.js" as Pane
@@ -33,8 +30,6 @@ import "lib/Probes.js" as Probes
 import "lib/Conversations.js" as Conversations
 import "lib/PickLog.js" as PickLog
 import "lib/Markdown.js" as Markdown
-import "lib/Appearance.js" as Appearance
-import "lib/Ansi.js" as Ansi
 import "lib/Toasts.js" as Toasts
 import "lib/Reminders.js" as Reminders
 import "lib/HomeSources.js" as HomeParser
@@ -108,36 +103,36 @@ Item {
   readonly property var config: Config.merge(defaultConfig, userConfig, root.pluginDir,
                                               { home: root.home, runtimeDir: root.runtimeDir })
 
-  property var zones: ({})          // { "Asia/Tokyo": { offset: 540, abbr: "JST" } }
-  property real zonesFetchedAt: 0
-  property string localZone: ""
-  property var emojis: []
-  property var apps: []
-  property var appIcons: Object.create(null)
-  property var appEntries: ({})
-  property var hiddenApps: ({})
   property var history: ({})        // row key -> { n, t }: what was run, how often, when (lib/History.js)
   property var picks: ({})          // query -> row key -> { n, t }: what was picked for what was typed
   property var reminders: []        // Nodi's own pending reminders (lib/Reminders.js)
-  property var windows: []
-  property var activeWorkspace: null
-  property var clipboard: []
-  property var recentFiles: []
-  property var menuDefault: []
-  property var menuUser: []
-  property var menu: ({ items: {}, order: [], when: {}, checked: {} })
-  property real guardsAt: 0
-  property var toggleStates: ({})
-  property var themes: ({ list: [], current: "" })
   property bool cacheReady: false
   property bool foldersWarned: false
+
+  // The apps, windows, menu, toggles, appearance, themes, zones, emoji,
+  // clipboard and recent files the rows are built from
+  // (components/DesktopSources.qml).
+  readonly property DesktopSources desktop: DesktopSources {
+    home: root.home
+    omarchyPath: root.omarchyPath
+    timeConfig: root.config.time
+    onUpdated: if (root.opened) root.recompute()
+    // New apps described, and their pictures catalogued.
+    onAppsRebuilt: { root.describeApps(); images.catalog(root.desktop.apps) }
+    onIconThemeChanged: function(why) { images.invalidate(why) }
+    onWindowsRead: {
+      if (root.cameFromTop) root.cameFrom = Sources.windowContext(root.cameFromTop, root.desktop.windows)
+      // A dialog whose floating only the list says: its folders, while held.
+      if (root.opened && root.homeHeld) root.readAhead(true)
+    }
+  }
 
   // ---------------------------------------------------------------- look
 
   // How it looks and measures, from components/Look.qml.
   // Held wide after a preview appears, so live search does not make the
   // card contract and expand as its result set changes.
-  Look { id: look; screenWidth: panel.width; screenHeight: panel.height; chrome: card.chrome; highContrast: root.appearance.highContrast
+  Look { id: look; screenWidth: panel.width; screenHeight: panel.height; chrome: card.chrome; highContrast: root.desktop.appearance.highContrast
          wide: root.wideForOpen || (root.shownQuery === root.queryNow()
            && (root.preview !== null || (root.paletteOpen && root.anyPreview))) }
   readonly property alias background: look.background
@@ -301,7 +296,7 @@ Item {
     root.closePalette()
     root.lastPointer = Qt.point(-1, -1)
     // The windows as last kept, for the first ranking.
-    root.readWindows()
+    desktop.readWindows()
     // The reads (windows, toggles, themes...) start 60 ms after, once the
     // card is on screen: each start forks the shell, and started here they
     // held the first frame back about 70 ms (161 ms from the key to the
@@ -329,19 +324,10 @@ Item {
 
   property bool readsPending: false
 
-  // When each probe an open would start last answered (lib/Probes.js): one
-  // seconds old is this open's, and the agents and the themes are kept
-  // longer, the current theme watched (themeName).
-  property real togglesAt: 0
-  property real appearanceAt: 0
-  property real themesAt: 0
   // The last login shell's PATH, { at, key, path } (lib/Probes.js): the
   // agents are looked for on it at every open without a login shell.
   property var agentsSeen: null
   function agentsKey(tag) { return tag + "\n" + (Quickshell.env("PATH") || "") }
-  Connections { target: togglesReader; function onFinished(text, ok) { if (ok) root.togglesAt = Date.now() } }
-  Connections { target: appearanceReader; function onFinished(text, ok) { if (ok) root.appearanceAt = Date.now() } }
-  Connections { target: themesReader; function onFinished(text, ok) { if (ok) root.themesAt = Date.now() } }
   // An Ask that failed as a missing program fails: looked for again now.
   Connections {
     target: askSession
@@ -366,7 +352,7 @@ Item {
     var t = Hyprland.activeToplevel
     root.cameFromTop = t ? { address: String(t.address || ""), title: String(t.title || ""), ipc: t.lastIpcObject || {},
                              workspace: t.workspace ? String(t.workspace.name || "") : "" } : null
-    root.cameFrom = Sources.windowContext(root.cameFromTop, root.windows)
+    root.cameFrom = Sources.windowContext(root.cameFromTop, desktop.windows)
   }
 
   function startReads() {
@@ -376,18 +362,18 @@ Item {
     if (!root.readsPending) return
     root.readsPending = false
     readsAfterFrame.stop()
-    root.refreshWindows()
+    desktop.refreshWindows()
     var now = Date.now()
-    if (Probes.due(root.togglesAt, now, Probes.FRESH_MS)) root.refreshToggles()
-    if (Probes.due(root.appearanceAt, now, Probes.FRESH_MS)) root.refreshAppearance()
-    themeColors.reload()
-    if (Probes.due(root.themesAt, now, Probes.THEMES_MAX_AGE_MS)) root.refreshThemes()
+    if (Probes.due(desktop.togglesAt, now, Probes.FRESH_MS)) desktop.refreshToggles()
+    if (Probes.due(desktop.appearanceAt, now, Probes.FRESH_MS)) desktop.refreshAppearance()
+    desktop.reloadThemeColours()
+    if (Probes.due(desktop.themesAt, now, Probes.THEMES_MAX_AGE_MS)) desktop.refreshThemes()
     root.checkReminders()
-    root.refreshZones()
+    desktop.refreshZones()
     requests.request("omarchy-commands")
     requests.request("agent-usage")
     trayMenus.active = true
-    if (Date.now() - root.guardsAt > 60 * 1000) root.evaluateGuards()
+    if (Date.now() - desktop.guardsAt > 60 * 1000) desktop.evaluateGuards()
   }
 
   Timer { id: readsAfterFrame; interval: 60; onTriggered: root.startReads() }
@@ -752,12 +738,12 @@ Item {
   property string askStatus: ""
 
   function services() {
-    var desktop = desktopState.snapshot()
+    var media = desktopState.snapshot()
     return {
-      zones: root.zones, localZone: root.localZone,
-      emojis: root.emojis, apps: root.apps, windows: root.windows, history: root.history, picks: root.picks, reminders: root.reminders,
-      activeWorkspace: root.activeWorkspace, clipboard: root.clipboard, files: root.recentFiles, menu: root.menu,
-      toggleStates: root.toggleStates, themes: root.themes, home: root.home, descriptions: root.appDescriptions,
+      zones: desktop.zones, localZone: desktop.localZone,
+      emojis: desktop.emojis, apps: desktop.apps, windows: desktop.windows, history: root.history, picks: root.picks, reminders: root.reminders,
+      activeWorkspace: desktop.activeWorkspace, clipboard: desktop.clipboard, files: desktop.recentFiles, menu: desktop.menu,
+      toggleStates: desktop.toggleStates, themes: desktop.themes, home: root.home, descriptions: root.appDescriptions,
       request: requests.request,
       pluginId: root.pluginId,
       tray: trayMenus.entries,
@@ -781,7 +767,7 @@ Item {
       window: root.cameFrom,
       selection: { text: root.selection, fresh: root.selectionFresh, source: root.selectionSource, clipboard: root.lastCopied },
       undo: undoer.entries,
-      desktop: desktop
+      desktop: media
     }
   }
 
@@ -911,7 +897,7 @@ Item {
   // A desktop action's command, by its place; a run that names the action's
   // id gets it only if that place still holds that action, else nothing.
   function appAction(id, index, actionId) {
-    var entry = root.appEntries[id]
+    var entry = desktop.appEntries[id]
     var action = entry && entry.actions ? entry.actions[index] : null
     if (action && actionId && String(action.id || "") !== actionId) action = null
     return action ? Array.prototype.slice.call(action.command || []) : null
@@ -947,11 +933,8 @@ Item {
     else Quickshell.execDetached(argv)
     if (run.kind === "app") launchFeedback.begin(name || (snap && snap.title) || run.id)
     if (key) root.remember(key, query, snap)
-    if (Menu.staleAfter(key)) root.guardsAt = 0
-    if (toggleId) {
-      root.toggleStates = Toggles.flipped(root.toggleStates, toggleId)
-      toggleReprobe.restart()
-    }
+    desktop.menuRan(key)
+    if (toggleId) desktop.flip(toggleId)
     return true
   }
 
@@ -979,7 +962,7 @@ Item {
 
   // What the palette needs to know besides the row.
   function paletteContext() {
-    return { activeWorkspace: root.activeWorkspace, prefs: root.prefs, knows: function(key) { return History.knows(root.history, root.picks, key) } }
+    return { activeWorkspace: desktop.activeWorkspace, prefs: root.prefs, knows: function(key) { return History.knows(root.history, root.picks, key) } }
   }
 
   // The palette acts on the row it opened for: results that refresh under it
@@ -1436,8 +1419,8 @@ Item {
     else Quickshell.execDetached(argv)
     if (s.run.kind === "app") launchFeedback.begin(s.title)
     if (remember) root.remember(k, "", s)
-    if (s.toggle) { root.toggleStates = Toggles.flipped(root.toggleStates, s.toggle); toggleReprobe.restart() }
-    if (Menu.staleAfter(k)) root.guardsAt = 0
+    if (s.toggle) desktop.flip(s.toggle)
+    desktop.menuRan(k)
     if (s.run.kind === "copy") root.markOwnCopy(s.run.text)
     return "ok"
   }
@@ -1737,7 +1720,7 @@ Item {
   onConfigChanged: {
     if (root.opened) root.recompute()
     if (root.configsLoaded) root.readAhead(false)
-    root.zonesFetchedAt = 0
+    desktop.forgetZones()
     root.ensureHotkey()
     root.describeApps()
   }
@@ -1823,18 +1806,6 @@ Item {
         console.warn("nodi: home source " + diagnostics[i].id + " (" + diagnostics[i].file + "): " + diagnostics[i].error)
       if (root.opened && !root.homeHeld && root.queryNow().trim() === "") root.recompute()
     }
-  }
-
-  // The theme's sixteen colours, which a file's coloured lines are drawn
-  // in (lib/Ansi.js, ROADMAP 82): read where the shell reads its theme,
-  // and again at each open, so a theme switched to is the next open's.
-  // The shell's path, which no XDG_STATE_HOME moves (Commons/Color.qml).
-  property var themeColours: ({})
-  FileView {
-    id: themeColors
-    path: root.home + "/.local/state/omarchy/current/theme/colors.toml"
-    printErrors: false
-    onLoaded: root.themeColours = Ansi.paletteFrom(text())
   }
 
   FileView {
@@ -2038,7 +2009,7 @@ Item {
   function askContext(message, context, purpose) {
     var snap = {
       purpose: purpose || "",
-      window: Sources.windowSnapshot(root.cameFrom, root.windows),
+      window: Sources.windowSnapshot(root.cameFrom, desktop.windows),
       clipboard: root.lastCopied || "",
       primarySelection: root.selection || ""
     }
@@ -2154,7 +2125,7 @@ Item {
     var pid = snapshot.window.pid || 0
     var address = made.address
     var env = Sources.cwdEnv(pid)
-    if (env && Sources.sameWindow(root.windows, address, pid)) {
+    if (env && Sources.sameWindow(desktop.windows, address, pid)) {
       root.pendingAsk.cwdWait = true
       root.pendingAsk.token = Math.random()
       windowCwdReader.run(Sources.cwdArgv(), { token: root.pendingAsk.token, pid: pid, address: address, env: env })
@@ -2182,7 +2153,7 @@ Item {
       // never matched and the Ask waited for good (NodiAskStatusTest.qml).
       var pending = root.pendingAsk
       if (!tag || !pending || pending.token !== tag.token) return
-      var cwd = ok && Sources.sameWindow(root.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
+      var cwd = ok && Sources.sameWindow(desktop.windows, tag.address, tag.pid) ? Sources.windowCwd(text, tag.pid) : ""
       if (cwd) pending.snapshot.window.cwd = cwd
       pending.cwdWait = false
       root.flushAsk()
@@ -2679,76 +2650,7 @@ Item {
     onLoaded: requests.seed("rates", "", text(), Date.now())
   }
 
-  // ---------------------------------------------------------------- zones
-
-  function refreshZones() {
-    if (zonesReader.busy || Date.now() - root.zonesFetchedAt < 60 * 60 * 1000) return
-    var t = root.config.time || {}
-    var extra = (t.zones || []).concat(t.home ? [t.home] : [])
-    // Sources.ZONES_READ: the local zone, then each zone tzdata has.
-    zonesReader.run(Sources.zonesArgv(Tz.allZones(extra)))
-  }
-
-  Reader {
-    id: zonesReader
-    timeoutMs: 5000
-    onFinished: function(text, ok) {
-      // A failed or cut read keeps the zones there were and is tried again
-      // in a minute, not an hour (codex 2026-10-04).
-      if (!ok) { root.zonesFetchedAt = Date.now() - 59 * 60 * 1000; return }
-      var z = Sources.zones(text)
-      root.zones = z.zones
-      if (z.local) root.localZone = z.local
-      root.zonesFetchedAt = Date.now()
-      if (root.opened) root.recompute()
-    }
-  }
-
-  // ---------------------------------------------------------------- emoji
-
-  FileView {
-    path: root.omarchyPath + "/shell/plugins/emojis/emojis.json"
-    printErrors: false
-    onLoaded: {
-      try {
-        var data = JSON.parse(text())
-        root.emojis = Array.isArray(data) ? data : []
-      } catch (e) {
-        console.warn("nodi: bad emojis.json: " + e)
-      }
-    }
-  }
-
   // ---------------------------------------------------------------- apps
-
-  // Desktop entries, filtered as Omarchy's launcher filters them: NoDisplay
-  // entries and the ids in its launcher.hides are left out.
-  function rebuildApps() {
-    var list = []
-    var byId = {}
-    var icons = Object.create(null)
-    var values = DesktopEntries.applications.values || []
-    for (var i = 0; i < values.length; i++) {
-      var e = values[i]
-      var id = String(e.id || "")
-      if (!id || e.noDisplay || root.hiddenApps[id]) continue
-      var keywords = []
-      try { for (var k = 0; k < e.keywords.length; k++) keywords.push(String(e.keywords[k])) } catch (err) {}
-      var actions = []
-      try { for (var a = 0; a < e.actions.length; a++) actions.push({ index: a, id: String(e.actions[a].id || ""), name: String(e.actions[a].name || "") }) } catch (err2) {}
-      var icon = String(e.icon || "")
-      if (icon) icons[icon] = true
-      byId[id] = e
-      list.push({ id: id, name: String(e.name || id), generic: String(e.genericName || ""), comment: String(e.comment || ""),
-                  keywords: keywords, icon: icon, wmclass: String(e.startupClass || ""), actions: actions,
-                  exec: String(e.execString || ""), terminal: !!e.runInTerminal })
-    }
-    root.appEntries = byId
-    root.apps = list
-    root.appIcons = icons
-    if (root.opened) root.recompute()
-    root.describeApps()
-  }
 
   // Up to 48 app icons, decoded once and held, at the sizes the rows draw them
   // (components/ResultRow.qml: a row's tile, the top hit's larger one). A
@@ -2762,8 +2664,8 @@ Item {
   readonly property var warmIcons: {
     var seen = ({})
     var out = []
-    for (var i = 0; i < root.apps.length && out.length < 48; i++) {
-      var icon = root.apps[i].icon
+    for (var i = 0; i < desktop.apps.length && out.length < 48; i++) {
+      var icon = desktop.apps[i].icon
       if (icon && !seen[icon]) { seen[icon] = true; out.push(icon) }
     }
     return out
@@ -2791,49 +2693,7 @@ Item {
   // open asks again for the stale ones (images.refreshStale).
   function iconSource(icon, large, background) {
     var value = String(icon || "")
-    return images.source(value || "application-x-executable", !!large, !!background, !!root.appIcons[value])
-  }
-
-  Timer {
-    id: appsDebounce
-    interval: 300
-    onTriggered: { root.rebuildApps(); images.catalog(root.apps) }
-  }
-
-  Connections {
-    target: DesktopEntries.applications
-    function onValuesChanged() { appsDebounce.restart() }
-  }
-
-  // GTK resolves named icons through this theme. Keep their rasters until
-  // the catalog or theme changes; a settings edit starts a new cache epoch.
-  FileView {
-    path: root.home + "/.config/gtk-3.0/settings.ini"
-    watchChanges: true
-    printErrors: false
-    property bool initialized: false
-    property string iconTheme: ""
-    onLoaded: {
-      var match = /^\s*gtk-icon-theme-name\s*=\s*(.*?)\s*$/m.exec(String(text()))
-      var current = match ? match[1] : ""
-      if (initialized && current !== iconTheme) images.invalidate("icon theme changed")
-      iconTheme = current
-      initialized = true
-    }
-    onLoadFailed: {
-      if (initialized && iconTheme !== "") images.invalidate("icon theme unreadable")
-      iconTheme = ""
-      initialized = true
-    }
-    onFileChanged: reload()
-  }
-
-  FileView {
-    path: root.omarchyPath + "/default/omarchy/launcher.hides"
-    watchChanges: true
-    printErrors: false
-    onLoaded: { root.hiddenApps = Sources.hidden(text()); appsDebounce.restart() }
-    onFileChanged: reload()
+    return images.source(value || "application-x-executable", !!large, !!background, !!desktop.appIcons[value])
   }
 
   // ---------------------------------------------------------------- app descriptions
@@ -2850,7 +2710,7 @@ Item {
   function describeApps() {
     if (!root.descriptionsLoaded || !root.cacheReady || !(root.config.apps && root.config.apps.describe === true)) return
     if (describer.busy || Date.now() - root.describeFailedAt < 60 * 60 * 1000) return
-    var list = Describe.wanted(root.apps, root.appDescriptions, Apps.undescribed)
+    var list = Describe.wanted(desktop.apps, root.appDescriptions, Apps.undescribed)
     if (list.length === 0) return
     // Ask's model when Ask holds Claude; another agent's model means
     // nothing to claude.
@@ -2884,134 +2744,6 @@ Item {
     onLoaded: { root.appDescriptions = Describe.load(text()); root.descriptionsLoaded = true; root.describeApps() }
     onLoadFailed: { root.descriptionsLoaded = true; root.describeApps() }
   }
-
-  // ---------------------------------------------------------------- windows
-
-  // The windows, kept current from Quickshell's own model of Hyprland
-  // (ROADMAP 32): it asks over Hyprland's socket, no program started, and
-  // each toplevel keeps its last `hyprctl clients` record. Asked again when
-  // Hyprland says a window opened, closed, moved, was retitled or took the
-  // focus, so the list is ready when the bar opens; before, each open
-  // started `hyprctl` 60 ms on, and `w` had no windows at its first key.
-  function refreshWindows() { Hyprland.refreshToplevels() }
-
-  function readWindows() {
-    var tops = Hyprland.toplevels.values
-    var clients = []
-    for (var i = 0; i < tops.length; i++) if (tops[i] && tops[i].lastIpcObject) clients.push(tops[i].lastIpcObject)
-    var fw = Hyprland.focusedWorkspace
-    var w = Sources.windowsFrom(clients, fw ? { id: fw.id, name: String(fw.name || "") } : null)
-    root.windows = w.list
-    root.activeWorkspace = w.activeWorkspace
-    if (root.cameFromTop) root.cameFrom = Sources.windowContext(root.cameFromTop, w.list)
-    // A dialog whose floating only the list says: its folders, while held.
-    if (root.opened && root.homeHeld) root.readAhead(true)
-  }
-
-  // A burst of records (one per window on a refresh) read once.
-  Timer { id: windowsSettle; interval: 30; onTriggered: { root.readWindows(); if (root.opened) root.recompute() } }
-  Timer { id: windowsAsk; interval: 120; onTriggered: root.refreshWindows() }
-
-  Instantiator {
-    model: Hyprland.toplevels
-    // A window gone changes no record: its removal is read too (Fable).
-    onObjectRemoved: windowsSettle.restart()
-    delegate: Connections {
-      required property var modelData
-      target: modelData
-      function onLastIpcObjectChanged() { windowsSettle.restart() }
-    }
-  }
-
-  readonly property var windowEvents: ({ openwindow: true, closewindow: true, movewindowv2: true, windowtitlev2: true,
-                                          activewindowv2: true, changefloatingmode: true, workspacev2: true })
-  Connections {
-    target: Hyprland
-    function onRawEvent(event) { if (event && root.windowEvents[String(event.name)] === true) windowsAsk.restart() }
-  }
-
-  // ---------------------------------------------------------------- Omarchy's menu
-
-  function rebuildMenu() {
-    var merged = Menu.merge([root.menuDefault, root.menuUser])
-    // The last guard answers stay until the new ones land; they are keyed by id.
-    root.menu = { items: merged.items, order: merged.order, when: root.menu.when, checked: root.menu.checked }
-    root.evaluateGuards()
-  }
-
-  function evaluateGuards() {
-    var script = Menu.guardScript({ items: root.menu.items, order: root.menu.order })
-    if (!script) return
-    // A login shell, as Omarchy's menu evaluates them, so a guard sees the
-    // PATH the user's profile sets. The order the script's indexes point
-    // into travels with the run.
-    guardsReader.run(["/usr/bin/bash", "-lc", script], root.menu.order)
-  }
-
-  Reader {
-    id: guardsReader
-    timeoutMs: 20000
-    onFinished: function(text, ok, tag) {
-      // A batch cut short has not answered every row; keep the last full one.
-      if (!ok) return
-      var g = Menu.parseGuards(text, { order: tag || [] })
-      root.menu = { items: root.menu.items, order: root.menu.order, when: g.when, checked: g.checked }
-      root.guardsAt = Date.now()
-      if (root.opened) root.recompute()
-    }
-  }
-
-  FileView {
-    path: root.omarchyPath + "/default/omarchy/omarchy-menu.jsonc"
-    watchChanges: true
-    printErrors: false
-    onLoaded: { root.menuDefault = Menu.parseItems(text()); root.rebuildMenu() }
-    onLoadFailed: { root.menuDefault = []; root.rebuildMenu() }
-    onFileChanged: reload()
-  }
-
-  FileView {
-    path: root.home + "/.config/omarchy/extensions/omarchy-menu.jsonc"
-    watchChanges: true
-    printErrors: false
-    onLoaded: { root.menuUser = Menu.parseItems(text()); root.rebuildMenu() }
-    onLoadFailed: { root.menuUser = []; root.rebuildMenu() }
-    onFileChanged: reload()
-  }
-
-  // ---------------------------------------------------------------- toggles
-
-  function refreshToggles() {
-    togglesReader.run(["/usr/bin/bash", "-c", Toggles.probeScript()])
-  }
-
-  // The desktop's motion and contrast preferences (ROADMAP 73), read at
-  // each open: higher contrast marks the selected row in every theme and
-  // raises secondary text to 7:1; reduced motion, or Hyprland's
-  // animations off, leaves the card's resizing unanimated.
-  property var appearance: ({ highContrast: false, reducedMotion: false })
-  readonly property bool reducedMotion: !!root.appearance.reducedMotion
-  function refreshAppearance() { appearanceReader.run(["/usr/bin/bash", "-c", Appearance.PROBE]) }
-  Reader {
-    id: appearanceReader
-    timeoutMs: 3000
-    onFinished: function(text, ok) {
-      var a = Appearance.parse(text)
-      if (a.highContrast !== root.appearance.highContrast || a.reducedMotion !== root.appearance.reducedMotion) root.appearance = a
-    }
-  }
-
-  Reader {
-    id: togglesReader
-    timeoutMs: 4000
-    onFinished: function(text, ok) {
-      root.toggleStates = Toggles.parse(text)
-      if (root.opened) root.recompute()
-    }
-  }
-
-  // After a toggle runs, ask again once its command has had time to land.
-  Timer { id: toggleReprobe; interval: 1500; onTriggered: root.refreshToggles() }
 
   // ---------------------------------------------------------------- reminders
 
@@ -3093,65 +2825,15 @@ Item {
     root.toast("Reminders cleared", "")
   }
 
-  // ---------------------------------------------------------------- themes
-
-  // The current theme, watched: a switch is the next open's at once, with
-  // no probe at each open (lib/Probes.js keeps the list ten minutes). The
-  // name is written after the theme is in place (omarchy-theme-set), and
-  // read once it has settled.
-  FileView {
-    path: root.home + "/.local/state/omarchy/current/theme.name"
-    watchChanges: true
-    printErrors: false
-    onFileChanged: { reload(); themeSwitched.restart() }
-  }
-  Timer { id: themeSwitched; interval: 200; onTriggered: { themeColors.reload(); root.refreshThemes() } }
-
-  function refreshThemes() {
-    themesReader.run(["/usr/bin/bash", "-c",
-      "printf '@current\\t%s\\n' \"$(omarchy-theme-current 2>/dev/null)\"; "
-      + "for d in \"$HOME/.config/omarchy/themes\"/*/ \"$OMARCHY_PATH/themes\"/*/; do "
-      + "[ -d \"$d\" ] || continue; p=\"\"; [ -f \"$d/preview.png\" ] && p=\"${d%/}/preview.png\"; "
-      + "printf '%s\\t%s\\n' \"$(basename \"$d\")\" \"$p\"; done"])
-  }
-
-  Reader {
-    id: themesReader
-    timeoutMs: 3000
-    onFinished: function(text, ok) {
-      root.themes = Sources.themes(text)
-      if (root.opened) root.recompute()
-    }
-  }
-
-  // ---------------------------------------------------------------- clipboard and files
-
-  FileView {
-    path: root.home + "/.local/state/omarchy/clipboard-history.json"
-    watchChanges: true
-    printErrors: false
-    onLoaded: { root.clipboard = Sources.clipboard(text()); if (root.opened) root.recompute() }
-    onLoadFailed: root.clipboard = []
-    onFileChanged: reload()
-  }
-
-  FileView {
-    path: root.home + "/.local/share/recently-used.xbel"
-    watchChanges: true
-    printErrors: false
-    onLoaded: { root.recentFiles = Sources.recentFiles(text(), 500); if (root.opened) root.recompute() }
-    onFileChanged: reload()
-  }
-
   Component.onCompleted: {
-    root.refreshWindows()
+    desktop.refreshWindows()
     // Before the first open, so it is drawn as asked (Sonnet 2026-10-06).
-    root.refreshAppearance()
+    desktop.refreshAppearance()
     // Each his alone (0700), made so or made so now: they hold what he
     // typed, pinned and set (codex's review, 2026-10-09).
     agentProbe.look()
     root.makeFolders()
-    appsDebounce.restart()
+    desktop.readAppsSoon()
     requests.request("omarchy-commands")
   }
 
@@ -3170,9 +2852,9 @@ Item {
     Rectangle {
       anchors.fill: parent
       color: root.scrim
-      opacity: root.entered || root.reducedMotion ? 1.0 : 0.0
+      opacity: root.entered || desktop.reducedMotion ? 1.0 : 0.0
       Behavior on opacity {
-        enabled: !root.reducedMotion
+        enabled: !desktop.reducedMotion
         NumberAnimation { duration: 90; easing.type: Easing.OutCubic }
       }
     }
@@ -3186,16 +2868,16 @@ Item {
       y: look.cardTop
       // Unseen until the empty bar's rows are whole so the card fades in whole
       // without popping from text-bar to expanded overlay.
-      opacity: (!root.contentHeld && (root.entered || root.reducedMotion)) ? 1.0 : 0.0
-      scale: root.entered || root.reducedMotion ? 1.0 : 0.96
+      opacity: (!root.contentHeld && (root.entered || desktop.reducedMotion)) ? 1.0 : 0.0
+      scale: root.entered || desktop.reducedMotion ? 1.0 : 0.96
       transformOrigin: Item.Center
 
       Behavior on opacity {
-        enabled: !root.reducedMotion && !root.contentHeld
+        enabled: !desktop.reducedMotion && !root.contentHeld
         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
       }
       Behavior on scale {
-        enabled: !root.reducedMotion
+        enabled: !desktop.reducedMotion
         NumberAnimation { duration: 120; easing.type: Easing.OutCubic }
       }
     }
